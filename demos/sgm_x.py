@@ -11,13 +11,13 @@ from fbs.nn.utils import make_nn_with_time
 from fbs.utils import discretise_lti_sde
 
 # General configs
-nsamples = 10_00
+nsamples = 10_000
 jax.config.update("jax_enable_x64", True)
 nn_param_init = nn.initializers.xavier_normal()
 key = jax.random.PRNGKey(666)
 
-dt = 0.001
-nsteps = 1000
+dt = 0.01
+nsteps = 100
 T = nsteps * dt
 ts = jnp.linspace(dt, T, nsteps)
 
@@ -49,8 +49,8 @@ def dispersion(_):
     return 1.
 
 
-def log_cond_pdf_t_0(x, t, x0):
-    return jax.scipy.stats.norm.logpdf(x, x0 * jnp.exp(-0.5 * t), jnp.sqrt(1 - jnp.exp(-t)))
+def cond_score_t_0(x, t, x0):
+    return jax.grad(jax.scipy.stats.norm.logpdf)(x, x0 * jnp.exp(-0.5 * t), jnp.sqrt(1 - jnp.exp(-t)))
 
 
 def simulate_forward(x0, _key):
@@ -67,22 +67,17 @@ def simulate_forward(x0, _key):
 
 
 # Draw some wild initial samples (e.g., Gaussian sum)
-# key, subkey = jax.random.split(key)
-# _s1, _s2 = jax.random.normal(subkey, (2, int(nsamples / 2)))
-# x0s = jnp.hstack([-1.5 + _s1, 1.5 + _s2])
-# plt.hist(x0s, density=True, bins=50)
-# plt.title('Histogram of the initial samples x0.')
-# plt.show()
 key, subkey = jax.random.split(key)
-x0s = 1 + 0.1 * jax.random.normal(subkey, (nsamples, ))
-plt.hist(x0s, density=True, bins=50, label='x0')
+_s1, _s2 = jax.random.normal(subkey, (2, int(nsamples / 2)))
+x0s = jnp.hstack([-1.5 + _s1, 1.5 + _s2])
+plt.hist(x0s, density=True, bins=50, label='x0', alpha=0.5)
 
 # Draw terminal samples
 key, subkey = jax.random.split(key)
 keys = jax.random.split(subkey, num=nsamples)
 paths = jax.vmap(simulate_forward, in_axes=[0, 0])(x0s, keys)
 xTs = paths[:, -1]
-plt.hist(xTs, density=True, bins=50, label='xT')
+plt.hist(xTs, density=True, bins=50, label='xT', alpha=0.5)
 plt.legend()
 plt.show()
 
@@ -112,7 +107,7 @@ if sgm:
         errs = (jax.vmap(jax.vmap(nn_eval,
                                   in_axes=[0, 0, None]),
                          in_axes=[0, None, None])(forward_paths, ts, _param) -
-                jax.vmap(jax.vmap(log_cond_pdf_t_0,
+                jax.vmap(jax.vmap(cond_score_t_0,
                                   in_axes=[0, 0, None]),
                          in_axes=[0, None, 0])(forward_paths, ts, x0s)) ** 2  # (nsamples, nsteps)
         return jnp.sum(jnp.mean(errs, 0))
@@ -130,7 +125,7 @@ if sgm:
     opt_state = optimiser.init(init_param)
     param = init_param
 
-    for i in range(300):
+    for i in range(200):
         key, subkey = jax.random.split(key)
         param, opt_state, loss = opt_step_kernel(param, opt_state, subkey)
         print(f'i: {i}, loss: {loss}')
@@ -157,7 +152,6 @@ key, subkey = jax.random.split(key)
 keys = jax.random.split(subkey, num=nsamples)
 approx_x0s = jax.vmap(simulate_backward, in_axes=[0, 0])(xTs, keys)
 plt.hist(x0s, density=True, bins=50, label='x0')
-# plt.hist(approx_x0s, density=True, bins=50, label='approx x0')
-plt.hist(approx_x0s[approx_x0s > -1], density=True, bins=50, label='approx x0')
+plt.hist(approx_x0s, density=True, bins=50, label='approx x0')
 plt.legend()
 plt.show()
