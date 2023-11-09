@@ -11,7 +11,7 @@ from fbs.nn.utils import make_nn_with_time
 from fbs.utils import discretise_lti_sde
 
 # General configs
-nsamples = 10_000
+nsamples = 10_00
 jax.config.update("jax_enable_x64", True)
 nn_param_init = nn.initializers.xavier_normal()
 key = jax.random.PRNGKey(666)
@@ -36,7 +36,7 @@ class MLP(nn.Module):
 
 mlp = MLP()
 key, subkey = jax.random.split(key)
-init_param, _, nn_eval = make_nn_with_time(mlp, dim_x=1, batch_size=10, key=subkey)
+init_param, _, nn_eval = make_nn_with_time(mlp, dim_in=1, batch_size=10, key=subkey)
 
 
 # Define forward noising model
@@ -125,7 +125,7 @@ if sgm:
     opt_state = optimiser.init(init_param)
     param = init_param
 
-    for i in range(200):
+    for i in range(100):
         key, subkey = jax.random.split(key)
         param, opt_state, loss = opt_step_kernel(param, opt_state, subkey)
         print(f'i: {i}, loss: {loss}')

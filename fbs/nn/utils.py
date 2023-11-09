@@ -7,7 +7,7 @@ from typing import Tuple, Callable
 
 
 def make_nn_with_time(nn: linen.Module,
-                      dim_x: int,
+                      dim_in: int,
                       batch_size: int,
                       key: JKey) -> Tuple[JArray, Callable[[JArray], dict], Callable[[JArray, JArray], JArray]]:
     """Make a neural network with time embedding (the baby version).
@@ -16,7 +16,7 @@ def make_nn_with_time(nn: linen.Module,
     ----------
     nn : linen.Module
         A neural network instance.
-    dim_x : int
+    dim_in : int
         The input dimension.
     batch_size : int
         The data batch size.
@@ -28,7 +28,7 @@ def make_nn_with_time(nn: linen.Module,
     JArray, Callable[[JArray], dict], Callable (d, ), (p, ) -> (d, )
         The initial parameter array, the array-to-dict ravel function, and the NN forward pass evaluation function.
     """
-    dict_param = nn.init(key, jnp.ones((batch_size, dim_x + 1)))
+    dict_param = nn.init(key, jnp.ones((batch_size, dim_in + 1)))
     array_param, array_to_dict = ravel_pytree(dict_param)
 
     def forward_pass(x: JArray, t: FloatScalar, param: JArray) -> JArray:
