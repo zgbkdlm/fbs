@@ -7,6 +7,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
+import matplotlib.pyplot as plt
 from flax import linen as nn
 from fbs.nn.utils import make_nn_with_time
 from functools import partial
@@ -142,21 +143,40 @@ if args.train:
 else:
     param = np.load('./param_sdsb.npy')
 
+    # Backward sampling
+    def simulate_backward(xT, _key):
+        def scan_body(carry, elem):
+            x = carry
+            t, dw = elem
 
-# Backward sampling
-def simulate_backward(xT, _key):
-    def scan_body(carry, elem):
-        x = carry
-        t, dw = elem
+            x = x + (-drift(x, xT, T - t) + nn_eval(x, T - t, param)) * dt + dw
+            return x, x
 
-        x = x + (-drift(x, xT, T - t) + nn_eval(x, T - t, param)) * dt + dw
-        return x, x
-
-    _, _subkey = jax.random.split(_key)
-    dws = jnp.sqrt(dt) * jax.random.normal(_subkey, (nsteps, 2))
-    return jax.lax.scan(scan_body, xT, (ts, dws))[1]
+        _, _subkey = jax.random.split(_key)
+        dws = jnp.sqrt(dt) * jax.random.normal(_subkey, (nsteps, 2))
+        return jax.lax.scan(scan_body, xT, (ts, dws))[1]
 
 
-key, subkey = jax.random.split(key)
-keys = jax.random.split(subkey, num=nsamples)
-backward_traj = jax.vmap(simulate_backward, in_axes=[0, 0])(ys, keys)
+    key, subkey = jax.random.split(key)
+    keys = jax.random.split(subkey, num=nsamples)
+    backward_traj = jax.vmap(simulate_backward, in_axes=[0, 0])(ys, keys)
+
+    # Show the original data
+    fig, axes = plt.subplots(ncols=2, figsize=(12, 5))
+    axes[0].scatter(ys[:, 0], ys[:, 1], s=1)
+    axes[1].scatter(xs[:, 0], xs[:, 1], s=1)
+
+    # Show the generated data
+    axes[1].scatter(backward_traj[:, -1, 0], backward_traj[:, -1, 1], s=1, c='tab:red', marker='x', alpha=0.3)
+
+    # Mark
+    idx = 0
+    key, subkey = jax.random.split(key)
+    keys = jax.random.split(subkey, num=nsamples)
+    mark_y = ys[idx]
+    mark_xs = jax.vmap(simulate_backward, in_axes=[None, 0])(mark_y, keys)[:, -1, :]
+    axes[0].scatter(mark_y[0], mark_y[1], s=10, c='tab:red')
+    axes[1].scatter(mark_xs[:, 0], mark_xs[:, 1], s=10, c='black', alpha=0.5, marker='x')
+    axes[1].scatter(xs[idx, 0], xs[idx, 1], s=10, c='tab:red', marker='x')
+    plt.tight_layout(pad=0.1)
+    plt.show()
