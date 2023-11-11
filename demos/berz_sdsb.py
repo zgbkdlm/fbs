@@ -167,16 +167,16 @@ else:
     axes[1].scatter(xs[:, 0], xs[:, 1], s=1)
 
     # Show the generated data
-    axes[1].scatter(backward_traj[:, -1, 0], backward_traj[:, -1, 1], s=1, c='tab:red', marker='x', alpha=0.3)
+    axes[1].scatter(backward_traj[:, -1, 0], backward_traj[:, -1, 1], s=1, c='tab:red', alpha=0.3)
 
     # Mark
-    idx = 0
+    idx = 10
     key, subkey = jax.random.split(key)
     keys = jax.random.split(subkey, num=nsamples)
     mark_y = ys[idx]
-    mark_xs = jax.vmap(simulate_backward, in_axes=[None, 0])(mark_y, keys)[:, -1, :]
+    mark_xs = jax.vmap(simulate_backward, in_axes=[None, 0])(mark_y, keys)[:, -1]
     axes[0].scatter(mark_y[0], mark_y[1], s=10, c='tab:red')
-    axes[1].scatter(mark_xs[:, 0], mark_xs[:, 1], s=10, c='black', alpha=0.5, marker='x')
+    axes[1].scatter(mark_xs[:, 0], mark_xs[:, 1], s=1, c='black')
     axes[1].scatter(xs[idx, 0], xs[idx, 1], s=10, c='tab:red', marker='x')
     plt.tight_layout(pad=0.1)
     plt.show()
