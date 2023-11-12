@@ -23,7 +23,7 @@ nn_param_init = nn.initializers.xavier_normal()
 key = jax.random.PRNGKey(666)
 
 dt = 0.01
-nsteps = 500
+nsteps = 400
 T = nsteps * dt
 ts = jnp.linspace(dt, T, nsteps)
 ts_training = ts[:-1]
@@ -33,11 +33,11 @@ ts_training = ts[:-1]
 class MLP(nn.Module):
     @nn.compact
     def __call__(self, x):
-        x = nn.Dense(features=100, param_dtype=nn_float, kernel_init=nn_param_init)(x)
-        x = nn.relu(x)
         x = nn.Dense(features=50, param_dtype=nn_float, kernel_init=nn_param_init)(x)
         x = nn.relu(x)
         x = nn.Dense(features=20, param_dtype=nn_float, kernel_init=nn_param_init)(x)
+        x = nn.relu(x)
+        x = nn.Dense(features=10, param_dtype=nn_float, kernel_init=nn_param_init)(x)
         x = nn.relu(x)
         x = nn.Dense(features=2, param_dtype=nn_float, kernel_init=nn_param_init)(x)
         return jnp.squeeze(x)
@@ -178,7 +178,7 @@ else:
     # Mark
     idx = 2
     key, subkey = jax.random.split(key)
-    keys = jax.random.split(subkey, num=10)
+    keys = jax.random.split(subkey, num=100)
     mark_y = ys[idx]
     mark_x = xs[idx]
     mark_xs = jax.vmap(simulate_backward, in_axes=[None, 0])(mark_y, keys)[:, -1, :]
@@ -189,3 +189,4 @@ else:
     # for ax in axes:
     #     ax.set_xlim([-4, 4])
     #     ax.set_ylim([-1, 1])
+    plt.show()
