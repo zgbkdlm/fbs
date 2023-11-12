@@ -12,5 +12,5 @@ source ./venv/bin/activate
 cd ./demos
 
 nvidia-smi
-python berz_sdsb.py --training
+python berz_sdsb.py --train
 

@@ -134,7 +134,7 @@ optimiser = optax.adam(learning_rate=1e-3)
 opt_state = optimiser.init(init_param)
 param = init_param
 
-if args.training:
+if args.train:
     for i in range(100000):
         key, subkey = jax.random.split(key)
         param, opt_state, loss = opt_step_kernel(param, opt_state, subkey)
