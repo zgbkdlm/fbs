@@ -16,7 +16,7 @@ parser.add_argument('--train', action='store_true', help='Whether to train or te
 args = parser.parse_args()
 
 # General configs
-nsamples = 400
+nsamples = 800
 jax.config.update("jax_enable_x64", True)
 nn_float = jnp.float64
 nn_param_init = nn.initializers.xavier_normal()
