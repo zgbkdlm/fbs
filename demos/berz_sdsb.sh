@@ -9,7 +9,7 @@ export XLA_PYTHON_CLIENT_PREALLOCATE=true
 cd $WRKDIR/fbs
 source ./venv/bin/activate
 
-cd ./experiments
+cd ./demos
 
 nvidia-smi
 python berz_sdsb.py --training
