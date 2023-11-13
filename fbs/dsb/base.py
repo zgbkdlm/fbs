@@ -53,9 +53,10 @@ def ipf_fwd_loss(b_param: JArray,
         return (x, err), None
 
     key, subkey = jax.random.split(key)
-    dws = jnp.sqrt(dts)[:, None] * jax.random.normal(subkey, (dts.shape[0], d))
-    errs = jax.vmap(lambda x0: jax.lax.scan(init_scan, (x0, 0.), (ts[:-1], ts[1:], dws))[0][1], in_axes=[0])(x0s)
-    return jnp.mean(errs)
+    dwss = jnp.sqrt(dts)[None, :, None] * jax.random.normal(subkey, (n, dts.shape[0], d))
+    errs = jax.vmap(lambda x0, dws: jax.lax.scan(init_scan, (x0, 0.), (ts[:-1], ts[1:], dws))[0][1],
+                    in_axes=[0, 0])(x0s, dwss)
+    return jnp.mean(errs) / (ts.shape[0] - 1)
 
 
 def ipf_bwd_loss(f_param: JArray,
@@ -69,7 +70,7 @@ def ipf_bwd_loss(f_param: JArray,
 
     See the docstring of `ipf_fwd_loss`. Note that `ts = (t_T, t_{T-1}, ..., t_0) = T - ts = ts[::-1]`
     """
-    dts = jnp.diff(ts)
+    dts = jnp.abs(jnp.diff(ts))
     n, d = xTs.shape
 
     def init_scan(carry, elem):
@@ -81,9 +82,10 @@ def ipf_bwd_loss(f_param: JArray,
         return (x, err), None
 
     key, subkey = jax.random.split(key)
-    dws = jnp.sqrt(dts) * jax.random.normal(subkey, (dts.shape[0], d))
-    errs = jax.vmap(lambda xT: jax.lax.scan(init_scan, (xT, 0.), (ts[:-1], ts[1:], dws))[0][1], in_axes=[0])(xTs)
-    return jnp.mean(errs)
+    dwss = jnp.sqrt(dts)[None, :, None] * jax.random.normal(subkey, (n, dts.shape[0], d))
+    errs = jax.vmap(lambda xT, dws: jax.lax.scan(init_scan, (xT, 0.), (ts[:-1], ts[1:], dws))[0][1],
+                    in_axes=[0, 0])(xTs, dwss)
+    return jnp.mean(errs) / (ts.shape[0] - 1)
 
 
 def simulate_discrete_time(f: Callable[[JArray, FloatScalar, ...], JArray],
@@ -95,7 +97,7 @@ def simulate_discrete_time(f: Callable[[JArray, FloatScalar, ...], JArray],
 
     .. math::
 
-        X_k = f(X_{k-1}, t_{k-1}) + Q_{k}
+        X_k = f(X_{k-1}, t_{k-1}) + Q_{k},   Q_{k} ~ N(0, dt).
 
     Parameters
     ----------
@@ -112,8 +114,8 @@ def simulate_discrete_time(f: Callable[[JArray, FloatScalar, ...], JArray],
     JArray (n, nsteps, d)
         Trajectories at `t_1, t_2, ...t_T`.
     """
-    d = x0s.shape[0]
-    dts = jnp.diff(ts)
+    n, d = x0s.shape
+    dts = jnp.abs(jnp.diff(ts))
 
     def scan_body(carry, elem):
         x = carry
@@ -123,5 +125,6 @@ def simulate_discrete_time(f: Callable[[JArray, FloatScalar, ...], JArray],
         return x, x
 
     _, subkey = jax.random.split(key)
-    dws = jnp.sqrt(dts)[:, None] * jax.random.normal(subkey, (dts.shape[0], d))
-    return jax.vmap(lambda x0: jax.lax.scan(scan_body, x0, (ts[:-1], dws))[1], in_axes=[0])(x0s)
+    dwss = jnp.sqrt(dts)[None, :, None] * jax.random.normal(subkey, (n, dts.shape[0], d))
+    return jax.vmap(lambda x0, dws: jax.lax.scan(scan_body, x0, (ts[:-1], dws))[1],
+                    in_axes=[0, 0])(x0s, dwss)

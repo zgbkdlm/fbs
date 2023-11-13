@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -A Berzelius-2023-194
 #SBATCH --gpus=1
-#SBATCH -t 05:00:00
+#SBATCH -t 03:00:00
 
 source ~/.bashrc
 export XLA_PYTHON_CLIENT_PREALLOCATE=true
