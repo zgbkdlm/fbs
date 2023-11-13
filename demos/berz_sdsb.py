@@ -49,12 +49,12 @@ init_param, _, nn_eval = make_nn_with_time(mlp, dim_in=2, batch_size=10, key=sub
 
 # Draw training samples
 key, subkey = jax.random.split(key)
-keys = jax.random.split(subkey, num=4)
-g1 = jnp.array([3, 3]) + 0.2 * jax.random.normal(keys[0], (int(nsamples / 4), 2))
-g2 = jnp.array([-3, 3]) + 0.2 * jax.random.normal(keys[1], (int(nsamples / 4), 2))
-g3 = jnp.array([-3, -3]) + 0.2 * jax.random.normal(keys[2], (int(nsamples / 4), 2))
-g4 = jnp.array([3, -3]) + 0.2 * jax.random.normal(keys[3], (int(nsamples / 4), 2))
-xs = jnp.concatenate([g1, g2, g3, g4], axis=0)
+keys = jax.random.split(subkey, num=2)
+g1 = jnp.array([3, 3]) + 0.2 * jax.random.normal(keys[0], (int(nsamples / 2), 2))
+# g2 = jnp.array([-3, 3]) + 0.2 * jax.random.normal(keys[1], (int(nsamples / 4), 2))
+g3 = jnp.array([-3, -3]) + 0.2 * jax.random.normal(keys[1], (int(nsamples / 2), 2))
+# g4 = jnp.array([3, -3]) + 0.2 * jax.random.normal(keys[3], (int(nsamples / 4), 2))
+xs = jnp.concatenate([g1, g3], axis=0)
 ys = -5 / xs
 
 
@@ -110,12 +110,12 @@ def loss_fn(_param, _key, overfit=False):
         _ys = ys
     else:
         _key, _subkey = jax.random.split(_key)
-        _keys = jax.random.split(_subkey, num=4)
-        _g1 = jnp.array([3, 3]) + 0.2 * jax.random.normal(_keys[0], (int(nsamples / 4), 2))
-        _g2 = jnp.array([-3, 3]) + 0.2 * jax.random.normal(_keys[1], (int(nsamples / 4), 2))
-        _g3 = jnp.array([-3, -3]) + 0.2 * jax.random.normal(_keys[2], (int(nsamples / 4), 2))
-        _g4 = jnp.array([3, -3]) + 0.2 * jax.random.normal(_keys[3], (int(nsamples / 4), 2))
-        _xs = jnp.concatenate([_g1, _g2, _g3, _g4], axis=0)
+        _keys = jax.random.split(_subkey, num=1)
+        _g1 = jnp.array([3, 3]) + 0.2 * jax.random.normal(_keys[0], (int(nsamples / 2), 2))
+        # _g2 = jnp.array([-3, 3]) + 0.2 * jax.random.normal(_keys[1], (int(nsamples / 4), 2))
+        _g3 = jnp.array([-3, -3]) + 0.2 * jax.random.normal(_keys[1], (int(nsamples / 2), 2))
+        # _g4 = jnp.array([3, -3]) + 0.2 * jax.random.normal(_keys[3], (int(nsamples / 4), 2))
+        _xs = jnp.concatenate([_g1, _g3], axis=0)
         _ys = -5 / xs
     _keys = jax.random.split(_key, num=nsamples)
     errs = jax.vmap(compute_errs, in_axes=[0, 0, None, 0])(_xs, _ys, _param, _keys)
