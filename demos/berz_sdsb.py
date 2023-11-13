@@ -23,7 +23,7 @@ nn_param_init = nn.initializers.xavier_normal()
 key = jax.random.PRNGKey(666)
 
 dt = 0.01
-nsteps = 400
+nsteps = 500
 T = nsteps * dt
 ts = jnp.linspace(dt, T, nsteps)
 ts_training = ts[:-1]
@@ -36,8 +36,6 @@ class MLP(nn.Module):
         x = nn.Dense(features=50, param_dtype=nn_float, kernel_init=nn_param_init)(x)
         x = nn.relu(x)
         x = nn.Dense(features=20, param_dtype=nn_float, kernel_init=nn_param_init)(x)
-        x = nn.relu(x)
-        x = nn.Dense(features=10, param_dtype=nn_float, kernel_init=nn_param_init)(x)
         x = nn.relu(x)
         x = nn.Dense(features=2, param_dtype=nn_float, kernel_init=nn_param_init)(x)
         return jnp.squeeze(x)
@@ -130,7 +128,7 @@ def opt_step_kernel(_param, _opt_state, _key):
     return _param, _opt_state, _loss
 
 
-optimiser = optax.adam(learning_rate=1e-3)
+optimiser = optax.adam(learning_rate=1e-2)
 opt_state = optimiser.init(init_param)
 param = init_param
 
@@ -164,19 +162,11 @@ else:
 
     fig, axes = plt.subplots()
     axes.scatter(ys[:, 0], ys[:, 1], s=1)
-    axes.scatter(xs[:, 0], xs[:, 1], s=1)
-    # for ax in axes:
-    #     ax.set_xlim([-4, 4])
-    #     ax.set_ylim([-1, 1])
-    plt.show()
-
-    fig, axes = plt.subplots()
-    axes.scatter(ys[:, 0], ys[:, 1], s=1)
     axes.scatter(backward_traj[:, -1, 0], backward_traj[:, -1, 1], s=1)
     plt.tight_layout(pad=0.1)
 
     # Mark
-    idx = 2
+    idx = 766
     key, subkey = jax.random.split(key)
     keys = jax.random.split(subkey, num=100)
     mark_y = ys[idx]
