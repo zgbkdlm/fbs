@@ -13,13 +13,13 @@ jax.config.update("jax_enable_x64", True)
 
 # Config
 nsamples = 600
-niters = 200
+niters = 1
 key = jax.random.PRNGKey(666)
 nn_float = jnp.float64
 nn_param_init = nn.initializers.xavier_normal()
 
 dt = 0.01
-nsteps = 500
+nsteps = 1000
 T = nsteps * dt
 ts = jnp.linspace(0, T, nsteps + 1)
 
@@ -58,9 +58,9 @@ def drift(x, _):
 class MLP(nn.Module):
     @nn.compact
     def __call__(self, x):
-        x = nn.Dense(features=20, param_dtype=nn_float, kernel_init=nn_param_init)(x)
-        x = nn.relu(x)
         x = nn.Dense(features=10, param_dtype=nn_float, kernel_init=nn_param_init)(x)
+        x = nn.relu(x)
+        x = nn.Dense(features=5, param_dtype=nn_float, kernel_init=nn_param_init)(x)
         x = nn.relu(x)
         x = nn.Dense(features=2, param_dtype=nn_float, kernel_init=nn_param_init)(x)
         return jnp.squeeze(x)
@@ -72,7 +72,7 @@ init_param_fwd, _, nn_fwd = make_nn_with_time(mlp, dim_in=2, batch_size=10, key=
 key, subkey = jax.random.split(key)
 init_param_bwd, _, nn_bwd = make_nn_with_time(mlp, dim_in=2, batch_size=10, key=subkey)
 
-optimiser = optax.adam(learning_rate=1e-2)
+optimiser = optax.adam(learning_rate=1e-3)
 f_param = init_param_fwd
 b_param = init_param_bwd
 
@@ -82,7 +82,7 @@ def init_f(x, t, _): return x + drift(x, t) * dt
 
 
 @jax.jit
-def opt_step_kernel_init(_b_param, _opt_state, _key):
+def optax_kernel_init(_b_param, _opt_state, _key):
     _key, _subkey = jax.random.split(_key)
     _x0s = sample_x0s(_subkey)
     _, _subkey = jax.random.split(_key)
@@ -93,7 +93,7 @@ def opt_step_kernel_init(_b_param, _opt_state, _key):
 
 
 @jax.jit
-def opt_step_kernel_fwd(_b_param, _opt_state, _f_param, _key):
+def optax_kernel_fwd(_b_param, _opt_state, _f_param, _key):
     _key, _subkey = jax.random.split(_key)
     _x0s = sample_x0s(_subkey)
     _, _subkey = jax.random.split(_key)
@@ -104,7 +104,7 @@ def opt_step_kernel_fwd(_b_param, _opt_state, _f_param, _key):
 
 
 @jax.jit
-def opt_step_kernel_bwd(_f_param, _opt_state, _b_param, _key):
+def optax_kernel_bwd(_f_param, _opt_state, _b_param, _key):
     _key, _subkey = jax.random.split(_key)
     _xTs = sample_xTs(_subkey)
     _, _subkey = jax.random.split(_key)
@@ -118,30 +118,30 @@ opt_state = optimiser.init(b_param)
 
 for i in range(niters):
     key, subkey = jax.random.split(key)
-    b_param, opt_state, loss = opt_step_kernel_init(b_param, opt_state, subkey)
+    b_param, opt_state, loss = optax_kernel_init(b_param, opt_state, subkey)
     print(f'i: {i}, loss: {loss}')
 
 opt_state = optimiser.init(f_param)
 
 for i in range(niters):
     key, subkey = jax.random.split(key)
-    f_param, opt_state, loss = opt_step_kernel_bwd(f_param, opt_state, b_param, subkey)
+    f_param, opt_state, loss = optax_kernel_bwd(f_param, opt_state, b_param, subkey)
     print(f'i: {i}, loss: {loss}')
 
 # IPF iterations
-for j in range(4):
+for j in range(1000):
     opt_state = optimiser.init(b_param)
 
     for i in range(niters):
         key, subkey = jax.random.split(key)
-        b_param, opt_state, loss = opt_step_kernel_fwd(b_param, opt_state, f_param, subkey)
+        b_param, opt_state, loss = optax_kernel_fwd(b_param, opt_state, f_param, subkey)
         print(f'j: {j}, i: {i}, forward loss: {loss}')
 
     opt_state = optimiser.init(f_param)
 
     for i in range(niters):
         key, subkey = jax.random.split(key)
-        f_param, opt_state, loss = opt_step_kernel_bwd(f_param, opt_state, b_param, subkey)
+        f_param, opt_state, loss = optax_kernel_bwd(f_param, opt_state, b_param, subkey)
         print(f'j: {j}, i: {i}, backward loss: {loss}')
 
 # Take a look
