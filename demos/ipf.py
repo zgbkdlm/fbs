@@ -13,13 +13,13 @@ jax.config.update("jax_enable_x64", True)
 
 # Config
 nsamples = 600
-niters = 1
+niters = 500
 key = jax.random.PRNGKey(666)
 nn_float = jnp.float64
 nn_param_init = nn.initializers.xavier_normal()
 
 dt = 0.01
-nsteps = 1000
+nsteps = 200
 T = nsteps * dt
 ts = jnp.linspace(0, T, nsteps + 1)
 
@@ -29,14 +29,14 @@ def sample_x0s(_key):
     _, _subkey = jax.random.split(_key)
     ss = jax.random.normal(_subkey, (nsamples, 2)) @ jnp.linalg.cholesky(jnp.array([[0.5, 0.2],
                                                                                     [0.2, 0.5]]))
-    return jnp.array([-2, 0.]) + ss
+    return jnp.array([0., 0.]) + ss
 
 
 def sample_xTs(_key):
     _key, _subkey = jax.random.split(_key)
-    _c1 = jnp.array([2., 2.]) + 0.5 * jax.random.normal(_subkey, (int(nsamples / 2), 2))
+    _c1 = jnp.array([0., 2.]) + 0.4 * jax.random.normal(_subkey, (int(nsamples / 2), 2))
     _key, _subkey = jax.random.split(_key)
-    _c2 = jnp.array([2, -2.]) + 0.5 * jax.random.normal(_subkey, (int(nsamples / 2), 2))
+    _c2 = jnp.array([0., -2.]) + 0.4 * jax.random.normal(_subkey, (int(nsamples / 2), 2))
     return jnp.concatenate([_c1, _c2], axis=0)
 
 
@@ -53,14 +53,16 @@ plt.show()
 def drift(x, _):
     return -0.5 * x
 
+sigma = 1.
+
 
 # Neural network construction
 class MLP(nn.Module):
     @nn.compact
     def __call__(self, x):
-        x = nn.Dense(features=10, param_dtype=nn_float, kernel_init=nn_param_init)(x)
+        x = nn.Dense(features=20, param_dtype=nn_float, kernel_init=nn_param_init)(x)
         x = nn.relu(x)
-        x = nn.Dense(features=5, param_dtype=nn_float, kernel_init=nn_param_init)(x)
+        x = nn.Dense(features=10, param_dtype=nn_float, kernel_init=nn_param_init)(x)
         x = nn.relu(x)
         x = nn.Dense(features=2, param_dtype=nn_float, kernel_init=nn_param_init)(x)
         return jnp.squeeze(x)
@@ -78,7 +80,7 @@ b_param = init_param_bwd
 
 
 # The first IPF iteration
-def init_f(x, t, _): return x + drift(x, t) * dt
+def init_f(x, t, _): return x
 
 
 @jax.jit
@@ -86,7 +88,7 @@ def optax_kernel_init(_b_param, _opt_state, _key):
     _key, _subkey = jax.random.split(_key)
     _x0s = sample_x0s(_subkey)
     _, _subkey = jax.random.split(_key)
-    _loss, grad = jax.value_and_grad(ipf_fwd_loss)(_b_param, _, init_f, nn_bwd, _x0s, ts, _subkey)
+    _loss, grad = jax.value_and_grad(ipf_fwd_loss)(_b_param, _, init_f, nn_bwd, _x0s, ts, sigma, _subkey)
     updates, _opt_state = optimiser.update(grad, _opt_state, _b_param)
     _b_param = optax.apply_updates(_b_param, updates)
     return _b_param, _opt_state, _loss
@@ -97,7 +99,7 @@ def optax_kernel_fwd(_b_param, _opt_state, _f_param, _key):
     _key, _subkey = jax.random.split(_key)
     _x0s = sample_x0s(_subkey)
     _, _subkey = jax.random.split(_key)
-    _loss, grad = jax.value_and_grad(ipf_fwd_loss)(_b_param, _f_param, nn_fwd, nn_bwd, _x0s, ts, _subkey)
+    _loss, grad = jax.value_and_grad(ipf_fwd_loss)(_b_param, _f_param, nn_fwd, nn_bwd, _x0s, ts, sigma, _subkey)
     updates, _opt_state = optimiser.update(grad, _opt_state, _b_param)
     _b_param = optax.apply_updates(_b_param, updates)
     return _b_param, _opt_state, _loss
@@ -108,7 +110,7 @@ def optax_kernel_bwd(_f_param, _opt_state, _b_param, _key):
     _key, _subkey = jax.random.split(_key)
     _xTs = sample_xTs(_subkey)
     _, _subkey = jax.random.split(_key)
-    _loss, grad = jax.value_and_grad(ipf_bwd_loss)(_f_param, _b_param, nn_fwd, nn_bwd, _xTs, T - ts, _subkey)
+    _loss, grad = jax.value_and_grad(ipf_bwd_loss)(_f_param, _b_param, nn_fwd, nn_bwd, _xTs, ts, sigma, _subkey)
     updates, _opt_state = optimiser.update(grad, _opt_state, _f_param)
     _f_param = optax.apply_updates(_f_param, updates)
     return _f_param, _opt_state, _loss
@@ -129,7 +131,7 @@ for i in range(niters):
     print(f'i: {i}, loss: {loss}')
 
 # IPF iterations
-for j in range(1000):
+for j in range(5):
     opt_state = optimiser.init(b_param)
 
     for i in range(niters):
@@ -146,10 +148,10 @@ for j in range(1000):
 
 # Take a look
 key, subkey = jax.random.split(key)
-approx_xTs = simulate_discrete_time(nn_fwd, x0s, ts, subkey, f_param)[:, -1, :]
+approx_xTs = simulate_discrete_time(nn_fwd, x0s, ts, sigma, subkey, f_param)[:, -1, :]
 
 key, subkey = jax.random.split(key)
-approx_x0s = simulate_discrete_time(nn_bwd, xTs, T - ts, subkey, b_param)[:, -1, :]
+approx_x0s = simulate_discrete_time(nn_bwd, xTs, ts, sigma, subkey, b_param)[:, -1, :]
 
 fig, axes = plt.subplots(ncols=2, figsize=(12, 5))
 axes[0].scatter(x0s[:, 0], x0s[:, 1], s=2)

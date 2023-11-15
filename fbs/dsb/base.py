@@ -10,6 +10,7 @@ def ipf_fwd_loss(b_param: JArray,
                  b: Callable[[JArray, FloatScalar, JArray], JArray],
                  x0s: JArray,
                  ts: JArray,
+                 sigma: FloatScalar,
                  key: JKey) -> JFloat:
     """Mean-matching iterative proportional fitting (the forward loss).
 
@@ -29,6 +30,8 @@ def ipf_fwd_loss(b_param: JArray,
         The samples at the initial side.
     ts : JArray (nsteps + 1, )
         Times, including t0 and tT.
+    sigma : float
+        The dispersion term of the process.
     key : JKey
         A JAX random key.
 
@@ -48,7 +51,7 @@ def ipf_fwd_loss(b_param: JArray,
         x, err = carry
         t, t_next, dw = elem
 
-        x_next = f(x, t, f_param) + dw
+        x_next = f(x, t, f_param) + sigma * dw
         err = err + jnp.sum((b(x_next, t_next, b_param) - (x_next + f(x, t, f_param) - f(x_next, t, f_param))) ** 2)
         return (x, err), None
 
@@ -65,47 +68,63 @@ def ipf_bwd_loss(f_param: JArray,
                  b: Callable[[JArray, FloatScalar, JArray], JArray],
                  xTs: JArray,
                  ts: JArray,
+                 sigma: FloatScalar,
                  key: JKey) -> JFloat:
     """Mean-matching iterative proportional fitting (the backward loss).
 
+    It's just the forward loss by swapping `f` and `b`.
+
     See the docstring of `ipf_fwd_loss`. Note that `ts = (t_T, t_{T-1}, ..., t_0) = T - ts = ts[::-1]`
     """
-    dts = jnp.abs(jnp.diff(ts))
-    n, d = xTs.shape
+    return ipf_fwd_loss(f_param, b_param, b, f, xTs, ts, sigma, key)
 
-    def init_scan(carry, elem):
-        x, err = carry
-        t, t_next, dw = elem
 
-        x_next = b(x, t, f_param) + dw
-        err = err + jnp.sum((f(x_next, t_next, f_param) - (x_next + b(x, t, b_param) - b(x_next, t, b_param))) ** 2)
-        return (x, err), None
+def ipf(f0, f, b, f_param, b_param, x0s, xTs, ts, sigma, key):
+    """
 
-    key, subkey = jax.random.split(key)
-    dwss = jnp.sqrt(dts)[None, :, None] * jax.random.normal(subkey, (n, dts.shape[0], d))
-    errs = jax.vmap(lambda xT, dws: jax.lax.scan(init_scan, (xT, 0.), (ts[:-1], ts[1:], dws))[0][1],
-                    in_axes=[0, 0])(xTs, dwss)
-    return jnp.mean(errs) / (ts.shape[0] - 1)
+    Parameters
+    ----------
+    f : Callable (..., d), (), (p, ) -> (..., d)
+        A parametric function for the forward process, taking three arguments: state, time, and parameters.
+    b
+    f_param
+    b_param
+    x0s
+    xTs
+    ts
+    sigma
+    key
+
+    Returns
+    -------
+
+    """
 
 
 def simulate_discrete_time(f: Callable[[JArray, FloatScalar, ...], JArray],
                            x0s: JArray,
                            ts: JArray,
+                           sigma: FloatScalar,
                            key: JKey,
                            *args, **kwargs) -> JArray:
     """Simulate a discrete-time process
 
     .. math::
 
-        X_k = f(X_{k-1}, t_{k-1}) + Q_{k},   Q_{k} ~ N(0, dt).
+        X_k = f(X_{k-1}, t_{k-1}) + sigma \, Q_{k},  Q_{k} ~ N(0, dt).
 
     Parameters
     ----------
     f : Callable (d, ), (), *args, **kwargs -> (d, )
+        The function `f` in the above equation. This function takes two arguments: state and time.
+        The function `f` can take additional arguments `*args` and `**kwargs`.
+        It models the drift of the process.
     x0s : JArray (n, d)
         The initial samples.
     ts : JArray (nsteps + 1, )
         The times `t_0, t_1, ..., t_T`.
+    sigma : FloatScalar
+        The dispersion term of the process.
     key : JKey
         A JAX random key.
 
@@ -119,12 +138,11 @@ def simulate_discrete_time(f: Callable[[JArray, FloatScalar, ...], JArray],
 
     def scan_body(carry, elem):
         x = carry
-        t, dw = elem
+        t, q = elem
 
-        x = f(x, t, *args, **kwargs) + dw
+        x = f(x, t, *args, **kwargs) + sigma * q
         return x, x
 
     _, subkey = jax.random.split(key)
     dwss = jnp.sqrt(dts)[None, :, None] * jax.random.normal(subkey, (n, dts.shape[0], d))
-    return jax.vmap(lambda x0, dws: jax.lax.scan(scan_body, x0, (ts[:-1], dws))[1],
-                    in_axes=[0, 0])(x0s, dwss)
+    return jax.vmap(lambda x0, dws: jax.lax.scan(scan_body, x0, (ts[:-1], dws))[1], in_axes=[0, 0])(x0s, dwss)
