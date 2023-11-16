@@ -43,7 +43,7 @@ class MLP(nn.Module):
 
 mlp = MLP()
 key, subkey = jax.random.split(key)
-init_param, _, nn_eval = make_nn_with_time(mlp, dim_in=2, batch_size=10, key=subkey)
+init_param, _, nn_eval = make_nn_with_time(mlp, dim_in=2, batch_size=10, time_scale=5, key=subkey)
 
 # Draw training samples
 key, subkey = jax.random.split(key)
