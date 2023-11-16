@@ -9,6 +9,7 @@ from typing import Tuple, Callable
 def make_nn_with_time(nn: linen.Module,
                       dim_in: int,
                       batch_size: int,
+                      time_scale: FloatScalar,
                       key: JKey) -> Tuple[JArray, Callable[[JArray], dict], Callable[[JArray, JArray], JArray]]:
     """Make a neural network with time embedding (the baby version).
 
@@ -20,6 +21,8 @@ def make_nn_with_time(nn: linen.Module,
         The input dimension.
     batch_size : int
         The data batch size.
+    time_scale : FloatScalar
+        Scale the time variable to keep consistent with the norm of the input.
     key : JKey
         A JAX random key.
 
@@ -38,6 +41,6 @@ def make_nn_with_time(nn: linen.Module,
         param : (p, )
         return : (d, )
         """
-        return nn.apply(array_to_dict(param), jnp.hstack([x, t]))
+        return nn.apply(array_to_dict(param), jnp.hstack([x, t * time_scale]))
 
     return array_param, array_to_dict, forward_pass
