@@ -2,8 +2,9 @@ import pytest
 import math
 import jax
 import jax.numpy as jnp
+import jaxopt
 import numpy.testing as npt
-from fbs.dsb import ipf_fwd_loss, ipf_bwd_loss, simulate_discrete_time
+from fbs.dsb import ipf_loss, simulate_discrete_time
 
 jax.config.update("jax_enable_x64", True)
 
@@ -34,7 +35,7 @@ def test_simulators():
     npt.assert_allclose(jnp.var(xTs, axis=0), true_var, atol=1e-2)
 
 
-def test_ipf_fwd_bwd():
+def test_ipf_loss():
     key = jax.random.PRNGKey(666)
 
     nsamples = 1000
@@ -43,7 +44,7 @@ def test_ipf_fwd_bwd():
     xTs = jax.random.normal(key, (nsamples, 1))
 
     dt = 0.01
-    nsteps = 100
+    nsteps = 500
     T = nsteps * dt
     ts = jnp.linspace(0, T, nsteps + 1)
     sigma = jnp.sqrt((1 - jnp.exp(-dt)) / dt)
@@ -55,6 +56,18 @@ def test_ipf_fwd_bwd():
         return f(x, t, _)
 
     key, _ = jax.random.split(key)
-    loss_fwd = ipf_fwd_loss(_, _, f, b, x0s, ts, sigma, key)
-    loss_bwd = ipf_bwd_loss(_, _, f, b, xTs, ts, sigma, key)
-    print(loss_fwd, loss_bwd)
+    loss1 = ipf_loss(_, b, f, _, x0s, ts, sigma, key)
+    loss2 = ipf_loss(_, f, b, _, xTs, ts, sigma, key)
+    npt.assert_allclose(loss1, loss2, rtol=1e-3)
+
+    def approx_b(x, t, param):
+        return jnp.exp(-param * dt) * x
+
+    def obj_func(param):
+        return ipf_loss(param, approx_b, f, _, x0s, ts, sigma, key)
+
+    init_param = jnp.array(2.)
+    opt_solver = jaxopt.ScipyMinimize(method='L-BFGS-B', jit=True, fun=obj_func)
+    opt_params, opt_state = opt_solver.run(init_param)
+
+    npt.assert_allclose(opt_params, 0.5, atol=1e-2)

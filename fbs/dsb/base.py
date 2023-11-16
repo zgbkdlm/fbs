@@ -79,6 +79,67 @@ def ipf_bwd_loss(f_param: JArray,
     return ipf_fwd_loss(f_param, b_param, b, f, xTs, ts, sigma, key)
 
 
+def ipf_loss(reverse_param: JArray,
+             reverse_fn: Callable[[JArray, FloatScalar, JArray], JArray],
+             forward_fn: Callable[[JArray, FloatScalar, JArray], JArray],
+             forward_param: JArray,
+             x0s: JArray,
+             ts: JArray,
+             sigma: FloatScalar,
+             key: JKey) -> JFloat:
+    """Mean-matching iterative proportional fitting. Algorithm 1. of de Bortoli et al., 2021.
+
+    Suppose that we have sample paths `{X_t}` from `X_0 ~ p0` and `X_T ~ pT`. We can simulate the paths by the function
+    `forward_fn`. This function aims to learn the parameter `reverse_param` of the function `reverse_fn` such that this
+    reverse function defines an SDE {Y_t} that `Y_0 ~ pT` and `Y_T ~ p0`.
+
+    Parameters
+    ----------
+    reverse_param : JArray (p, )
+        An array of parameters for the function `b`. This is the parameter to be learnt.
+    forward_param : JArray (p, )
+        An array of parameters for the function `f`.
+    forward_fn : Callable (..., d), (), (p, ) -> (..., d)
+        A parametric function for the forward process, taking three arguments: state, time, and parameters.
+    reverse_fn : Callable (..., d), (), (p, ) -> (..., d)
+        A parametric function for the backward process, taking three arguments: state, time, and parameters.
+    x0s : JArray (n, d)
+        The samples at the initial side.
+    ts : JArray (nsteps + 1, )
+        Times, including t0 and tT.
+    sigma : float
+        The dispersion term of the process.
+    key : JKey
+        A JAX random key.
+
+    Returns
+    -------
+    JFloat
+        The loss for the forward objective function.
+
+    Notes
+    -----
+    Double-check the annoying square two in the dispersion.
+    """
+    dts = jnp.abs(jnp.diff(ts))
+    n, d = x0s.shape
+
+    def init_scan(carry, elem):
+        x, err = carry
+        t, t_next, dw = elem
+
+        x_next = forward_fn(x, t, forward_param) + sigma * dw
+        err = err + jnp.sum((reverse_fn(x_next, t_next, reverse_param) - (
+                x_next + forward_fn(x, t, forward_param) - forward_fn(x_next, t, forward_param))) ** 2)
+        return (x, err), None
+
+    key, subkey = jax.random.split(key)
+    dwss = jnp.sqrt(dts)[None, :, None] * jax.random.normal(subkey, (n, dts.shape[0], d))
+    errs = jax.vmap(lambda x0, dws: jax.lax.scan(init_scan, (x0, 0.), (ts[:-1], ts[1:], dws))[0][1],
+                    in_axes=[0, 0])(x0s, dwss)
+    return jnp.mean(errs) / (ts.shape[0] - 1)
+
+
 def ipf(f0, f, b, f_param, b_param, x0s, xTs, ts, sigma, key):
     """
 
