@@ -71,3 +71,9 @@ def test_ipf_loss():
     opt_params, opt_state = opt_solver.run(init_param)
 
     npt.assert_allclose(opt_params, 0.5, atol=1e-2)
+
+
+def test_ipf_one_pass():
+    """Test one pass of IPF to see if the reverse can be learnt correctly.
+    """
+    # TODO
