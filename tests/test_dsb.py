@@ -1,10 +1,15 @@
+import matplotlib.pyplot as plt
 import pytest
 import math
+import scipy
 import jax
 import jax.numpy as jnp
 import jaxopt
+import optax
 import numpy.testing as npt
+import flax.linen as nn
 from fbs.dsb import ipf_loss, simulate_discrete_time
+from fbs.nn.utils import make_nn_with_time
 
 jax.config.update("jax_enable_x64", True)
 
@@ -76,4 +81,76 @@ def test_ipf_loss():
 def test_ipf_one_pass():
     """Test one pass of IPF to see if the reverse can be learnt correctly.
     """
-    # TODO
+    key = jax.random.PRNGKey(666)
+    nsamples_train = 100
+    nsamples_test = 1000
+
+    # x0s
+    def x0s_sampler(_key, n_samples):
+        _key, _subkey = jax.random.split(_key)
+        _g1 = -1.5 + 0.4 * jax.random.normal(_subkey, (n_samples * 2, 1))
+        _key, _subkey = jax.random.split(_key)
+        _g2 = 1.5 + 0.4 * jax.random.normal(_subkey, (n_samples, 1))
+        return jnp.concatenate([_g1, _g2], axis=0)
+
+    def f(x, t, *args, **kwargs):
+        return x
+
+    sigma = 1.
+    dt = 0.1
+    nsteps = 10
+    T = dt * nsteps
+    ts = jnp.linspace(0, T, nsteps + 1)
+    T = dt * nsteps
+    nn_float = jnp.float64
+    nn_param_init = nn.initializers.xavier_normal()
+
+    class MLP(nn.Module):
+        @nn.compact
+        def __call__(self, x):
+            x = nn.Dense(features=16, param_dtype=nn_float, kernel_init=nn_param_init)(x)
+            x = nn.relu(x)
+            x = nn.Dense(features=8, param_dtype=nn_float, kernel_init=nn_param_init)(x)
+            x = nn.relu(x)
+            x = nn.Dense(features=1, param_dtype=nn_float, kernel_init=nn_param_init)(x)
+            return jnp.squeeze(x)
+
+    mlp = MLP()
+    key, subkey = jax.random.split(key)
+    init_param_fwd, _, nn_fwd = make_nn_with_time(mlp, dim_in=1, batch_size=nsamples_train, time_scale=1, key=subkey)
+    key, subkey = jax.random.split(key)
+    init_param_bwd, _, nn_bwd = make_nn_with_time(mlp, dim_in=1, batch_size=nsamples_train, time_scale=1, key=subkey)
+
+    niters = 200
+    schedule = optax.cosine_decay_schedule(1e-2, 1, .95)
+    optimiser = optax.adam(learning_rate=schedule)
+    f_param = init_param_fwd
+    b_param = init_param_bwd
+
+    @jax.jit
+    def optax_kernel(_b_param, _opt_state, _key):
+        _key, _subkey = jax.random.split(_key)
+        _x0s = x0s_sampler(_subkey, nsamples_train)
+        _, _subkey = jax.random.split(_key)
+        _loss, grad = jax.value_and_grad(ipf_loss)(_b_param, nn_bwd, f, _, _x0s, ts, sigma, _subkey)
+        updates, _opt_state = optimiser.update(grad, _opt_state, _b_param)
+        _b_param = optax.apply_updates(_b_param, updates)
+        return _b_param, _opt_state, _loss
+
+    key, subkey = jax.random.split(key)
+    x0s = x0s_sampler(subkey, nsamples_test)
+
+    key, subkey = jax.random.split(key)
+    xTs = simulate_discrete_time(f, x0s, ts, sigma, subkey)[:, -1]
+
+    # Learning
+    opt_state = optimiser.init(b_param)
+
+    for i in range(niters):
+        key, subkey = jax.random.split(key)
+        b_param, opt_state, loss = optax_kernel(b_param, opt_state, subkey)
+
+    key, subkey = jax.random.split(key)
+    approx_x0s = simulate_discrete_time(nn_bwd, xTs, T - ts, sigma, subkey, b_param)[:, -1, :]
+
+    npt.assert_allclose(scipy.stats.wasserstein_distance(x0s[:, 0], approx_x0s[:, 0]), 0, atol=1e-1)
