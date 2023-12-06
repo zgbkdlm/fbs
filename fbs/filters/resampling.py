@@ -68,6 +68,11 @@ def multinomial(weights: JArray, key: JKey) -> JArray:
     return jnp.clip(idx, 0, n - 1)
 
 
+def killing():
+    # TODO: The killing resampling
+    pass
+
+
 def _avg_n_nplusone(x):
     hx = 0.5 * x
     y = jnp.pad(hx, [[0, 1]], constant_values=0.0, mode="constant")

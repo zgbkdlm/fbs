@@ -1,3 +1,4 @@
+import math
 import jax
 import jax.numpy as jnp
 from fbs.typings import JArray, JFloat, JKey
@@ -40,6 +41,10 @@ def bootstrap_filter(transition_sampler: Callable[[JArray, JArray, JKey], JArray
     -------
     JArray (K, n, du), JFloat
         The particle filtering samples, and the negative log likelihood.
+
+    Notes
+    -----
+    Lazy: using resampling at every step.
     """
 
     def scan_body(carry, elem):
@@ -49,25 +54,22 @@ def bootstrap_filter(transition_sampler: Callable[[JArray, JArray, JKey], JArray
         samples = transition_sampler(samples, v_prev, key_)
 
         if log:
-            log_weights = measurement_cond_pdf(v, samples, v_prev) - jnp.log(nsamples)
+            log_weights = measurement_cond_pdf(v, samples, v_prev)
             _c = jax.scipy.special.logsumexp(log_weights)
-            log_nell -= _c
+            log_nell -= _c - math.log(nsamples)
             log_weights = log_weights - _c
-
-            _, subkey_ = jax.random.split(key_)
-            samples = samples[resampling(jnp.exp(log_weights), subkey_), ...]
+            weights = jnp.exp(log_weights)
         else:
-            weights = measurement_cond_pdf(v, samples, v_prev) / nsamples
-            log_nell -= jnp.log(jnp.sum(weights))
+            weights = measurement_cond_pdf(v, samples, v_prev)
+            log_nell -= jnp.log(jnp.mean(weights))
             weights = weights / jnp.sum(weights)
 
-            _, subkey_ = jax.random.split(key_)
-            samples = samples[resampling(weights, subkey_), ...]
+        _, subkey_ = jax.random.split(key_)
+        samples = samples[resampling(weights, subkey_), ...]
 
         return (samples, log_nell), samples
 
     nsteps = vs.shape[0] - 1
-
     init_samples = init_sampler(key, vs[0], nsamples)
     keys = jax.random.split(key, num=nsteps)
 
