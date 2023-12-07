@@ -22,6 +22,7 @@ def test_particle_filter():
     m0, v0 = y0, 1.
     key = jax.random.PRNGKey(666)
     nsteps = 20
+    ts = jnp.linspace(0, 1, nsteps + 1)
 
     def scan_simulate(carry, elem):
         x, y = carry
@@ -60,13 +61,13 @@ def test_particle_filter():
                                              (m0, v0, 0.),
                                              (ys[1:], ys[:-1]))
 
-    def transition_sampler(x, y_prev, key_):
+    def transition_sampler(x, y_prev, t, key_):
         return F * x + y_prev + jnp.sqrt(trans_var) * jax.random.normal(key_, (x.shape[0],))
 
-    def measurement_cond_logpdf(y, x, y_prev):
+    def measurement_cond_logpdf(y, x, y_prev, t):
         return jax.scipy.stats.norm.logpdf(y, H * x + y_prev, jnp.sqrt(meas_var))
 
-    def measurement_cond_pdf(y, x, y_prev):
+    def measurement_cond_pdf(y, x, y_prev, t):
         return jax.scipy.stats.norm.pdf(y, H * x + y_prev, jnp.sqrt(meas_var))
 
     def init_sampler(key_, y, nsamples_):
@@ -76,14 +77,14 @@ def test_particle_filter():
     key, subkey = jax.random.split(key)
 
     pf_samples, pf_nell = bootstrap_filter(transition_sampler, measurement_cond_logpdf,
-                                           ys, init_sampler, subkey, nsamples, stratified, log=True)
+                                           ys, ts, init_sampler, subkey, nsamples, stratified, log=True)
 
     npt.assert_allclose(jnp.mean(pf_samples, axis=1), mfs, rtol=1e-2)
     npt.assert_allclose(jnp.var(pf_samples, axis=1), vfs, rtol=1e-1)
     npt.assert_allclose(pf_nell, kf_nell, rtol=1e-3)
 
     pf_samples, pf_nell = bootstrap_filter(transition_sampler, measurement_cond_pdf,
-                                           ys, init_sampler, subkey, nsamples, stratified, log=False)
+                                           ys, ts, init_sampler, subkey, nsamples, stratified, log=False)
 
     npt.assert_allclose(jnp.mean(pf_samples, axis=1), mfs, rtol=1e-2)
     npt.assert_allclose(jnp.var(pf_samples, axis=1), vfs, rtol=1e-1)

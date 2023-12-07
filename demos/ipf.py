@@ -5,8 +5,8 @@ import numpy as np
 import optax
 import matplotlib.pyplot as plt
 from flax import linen as nn
-from fbs.nn.utils import make_nn_with_time
-from fbs.dsb import ipf_loss, simulate_discrete_time
+from fbs_gauss.nn.utils import make_nn_with_time
+from fbs_gauss.dsb import ipf_loss, simulate_discrete_time
 
 jax.config.update("jax_enable_x64", True)
 

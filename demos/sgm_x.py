@@ -7,8 +7,8 @@ import jax.numpy as jnp
 import optax
 import matplotlib.pyplot as plt
 from flax import linen as nn
-from fbs.nn.utils import make_nn_with_time
-from fbs.utils import discretise_lti_sde
+from fbs_gauss.nn.utils import make_nn_with_time
+from fbs_gauss.utils import discretise_lti_sde
 
 # General configs
 nsamples = 10_00

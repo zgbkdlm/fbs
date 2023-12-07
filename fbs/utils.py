@@ -1,9 +1,10 @@
 import jax
 import jax.numpy as jnp
 from fbs.typings import JArray, FloatScalar
+from typing import Tuple
 
 
-def discretise_lti_sde(A: JArray, B: JArray, dt: FloatScalar):
+def discretise_lti_sde(A: JArray, B: JArray, dt: FloatScalar) -> Tuple[JArray, JArray]:
     d = A.shape[0]
 
     F = jax.scipy.linalg.expm(A * dt)

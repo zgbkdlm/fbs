@@ -9,7 +9,7 @@ import numpy as np
 import optax
 import matplotlib.pyplot as plt
 from flax import linen as nn
-from fbs.nn.utils import make_nn_with_time
+from fbs_gauss.nn.utils import make_nn_with_time
 
 parser = argparse.ArgumentParser(description='Test supervised DSB on Berzelius.')
 parser.add_argument('--train', action='store_true', help='Whether to train or test.')
