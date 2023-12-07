@@ -77,14 +77,16 @@ def test_particle_filter():
     key, subkey = jax.random.split(key)
 
     pf_samples, pf_nell = bootstrap_filter(transition_sampler, measurement_cond_logpdf,
-                                           ys, ts, init_sampler, subkey, nsamples, stratified, log=True)
+                                           ys, ts, init_sampler, subkey, nsamples, stratified,
+                                           log=True, return_last=False)
 
     npt.assert_allclose(jnp.mean(pf_samples, axis=1), mfs, rtol=1e-2)
     npt.assert_allclose(jnp.var(pf_samples, axis=1), vfs, rtol=1e-1)
     npt.assert_allclose(pf_nell, kf_nell, rtol=1e-3)
 
     pf_samples, pf_nell = bootstrap_filter(transition_sampler, measurement_cond_pdf,
-                                           ys, ts, init_sampler, subkey, nsamples, stratified, log=False)
+                                           ys, ts, init_sampler, subkey, nsamples, stratified,
+                                           log=True, return_last=False)
 
     npt.assert_allclose(jnp.mean(pf_samples, axis=1), mfs, rtol=1e-2)
     npt.assert_allclose(jnp.var(pf_samples, axis=1), vfs, rtol=1e-1)

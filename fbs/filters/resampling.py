@@ -68,9 +68,37 @@ def multinomial(weights: JArray, key: JKey) -> JArray:
     return jnp.clip(idx, 0, n - 1)
 
 
-def killing():
-    # TODO: The killing resampling
-    pass
+def killing(weights: JArray, key: JKey) -> JArray:
+    """
+    Killing resampling. The weights are assumed to be normalised already.
+    Compared to the multinomial resampling, this algorithm does not move the indices when the weights are uniform.
+
+    Parameters
+    ----------
+    key:
+        Random number generator key.
+    weights:
+        Weights of the particles.
+    i, j:
+        Conditional indices: the resampling is conditioned on the fact that the ancestor at index j is equal to i.
+    conditional:
+        If True, the resampling is conditional on the fact that the ancestor at index j is equal to i.
+        Otherwise, it's the standard resampling
+
+    Returns
+    -------
+    indices:
+        Indices of the resampled particles.
+    """
+    # unconditional killing
+    key_1, key_2, key_3 = jax.random.split(key, 3)
+    N = weights.shape[0]
+    w_max = weights.max()
+    killed = (jax.random.uniform(key_1, (N,)) * w_max >= weights)
+    idx = jnp.arange(N)
+    idx = jnp.where(~killed, idx,
+                    jax.random.choice(key_2, N, (N,), p=weights))
+    return idx
 
 
 def _avg_n_nplusone(x):

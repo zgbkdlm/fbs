@@ -1,2 +1,2 @@
 from .smc import bootstrap_filter
-from .resampling import multinomial, systematic, stratified
+from .resampling import multinomial, systematic, stratified, multinomial, killing

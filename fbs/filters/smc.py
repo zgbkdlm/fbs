@@ -13,7 +13,8 @@ def bootstrap_filter(transition_sampler: Callable[[JArray, JArray, FloatScalar, 
                      key: JKey,
                      nsamples: int,
                      resampling: Callable[[JArray, JArray], JArray],
-                     log: bool = True) -> Tuple[JArray, JFloat]:
+                     log: bool = True,
+                     return_last: bool = True) -> Tuple[JArray, JFloat]:
     r"""Bootstrap particle filter, using the notations in the paper.
 
     Parameters
@@ -39,6 +40,8 @@ def bootstrap_filter(transition_sampler: Callable[[JArray, JArray, FloatScalar, 
     log : bool, default=True
         Whether run the particle filter in the log domain. If True, then the function `measurement_cond_pdf` should
         provide the log pdf.
+    return_last : bool, default=True
+        Whether return the particle samples at the last time step only.
 
     Returns
     -------
@@ -70,11 +73,20 @@ def bootstrap_filter(transition_sampler: Callable[[JArray, JArray, FloatScalar, 
         _, subkey_ = jax.random.split(key_)
         samples = samples[resampling(weights, subkey_), ...]
 
-        return (samples, log_nell), samples
+        return (samples, log_nell), None if return_last else samples
 
     nsteps = vs.shape[0] - 1
     init_samples = init_sampler(key, vs[0], nsamples)
     keys = jax.random.split(key, num=nsteps)
 
-    (*_, nell_ys), filtering_samples = jax.lax.scan(scan_body, (init_samples, 0.), (vs[1:], vs[:-1], ts[:-1], keys))
+    (last_samples, nell_ys), filtering_samples = jax.lax.scan(scan_body,
+                                                              (init_samples, 0.),
+                                                              (vs[1:], vs[:-1], ts[:-1], keys))
+    if return_last:
+        return last_samples, nell_ys
     return filtering_samples, nell_ys
+
+
+def conditional_smc():
+    # TODO
+    pass
