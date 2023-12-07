@@ -24,7 +24,7 @@ m0 = jnp.array([1., -1.])
 cov0 = jnp.array([[2., 0.5],
                   [0.5, 1.2]])
 
-y0 = 0.
+y0 = 5
 true_cond_m = m0[0] + cov0[0, 1] / cov0[1, 1] * (y0 - m0[1])
 true_cond_var = cov0[0, 0] - cov0[0, 1] ** 2 / cov0[1, 1]
 
@@ -127,7 +127,14 @@ vs = xys[::-1, 1]
 
 key, subkey = jax.random.split(key)
 pf_samples, _ = bootstrap_filter(transition_sampler, measurement_cond_logpdf,
-                                 vs, ts, init_sampler, key, nsamples, resampling=stratified)
+                                 vs, ts, init_sampler, subkey, nsamples, resampling=stratified)
 approx_cond_x0s = pf_samples[-1]
 print(jnp.mean(approx_cond_x0s), true_cond_m)
 print(jnp.var(approx_cond_x0s), true_cond_var)
+
+key, subkey = jax.random.split(key)
+plt.hist(approx_cond_x0s, density=True, bins=50, alpha=0.5, label=f'Approx. target posterior p(x | y={y0})')
+plt.hist(true_cond_m + jnp.sqrt(true_cond_var) * jax.random.normal(subkey, (nsamples, )),
+         density=True, bins=50, alpha=0.5, label=f'True target posterior p(x | y={y0})')
+plt.legend()
+plt.show()
