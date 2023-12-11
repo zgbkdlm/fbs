@@ -1,4 +1,3 @@
-import math
 import jax.numpy as jnp
 from jax.flatten_util import ravel_pytree
 from flax import linen
@@ -45,39 +44,3 @@ def make_nn_with_time(nn: linen.Module,
         return nn.apply(array_to_dict(param), jnp.hstack([x, t * time_scale]))
 
     return array_param, array_to_dict, forward_pass
-
-
-def sinusoidal_embedding(t: FloatScalar, out_dim: int = 64, max_period: int = 10_000) -> JArray:
-    """The so-called sinusoidal positional embedding.
-
-    Parameters
-    ----------
-    t : FloatScalar
-        A time variable.
-    out_dim : int
-        The output dimension.
-    max_period : int
-        The maximum period.
-
-    Returns
-    -------
-    JArray (out_dim, )
-        An array.
-
-    Notes
-    -----
-    I have no idea what a sinusoidal positional embedding is. Perhaps, it means to find a function that maps a time
-    scalar to a sequence. The implementation is based on
-        - https://github.com/JTT94/diffusion_schrodinger_bridge/blob/1c82eba0a16aea3333ac738dde376b12a3f97f21/
-        bridge/models/basic/time_embedding.py#L6
-        - https://github.com/vdeborto/cdsb/blob/8fc9cc2a08daa083b84b5ddd38190bec931edeb0/
-        bridge/models/unet/layers.py#L95
-    """
-    half = out_dim // 2
-
-    fs = jnp.exp(-math.log(max_period) * jnp.arange(half) / (half - 1))
-    embs = t * fs
-    embs = jnp.concatenate([jnp.sin(embs), jnp.cos(embs)])
-    if out_dim % 2 == 1:
-        raise NotImplementedError(f'out_dim is implemented for even number only, while {out_dim} is given.')
-    return embs

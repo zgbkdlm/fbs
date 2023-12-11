@@ -1,1 +1,2 @@
-from .utils import sinusoidal_embedding, make_nn_with_time
+from .utils import make_nn_with_time
+from .base import sinusoidal_embedding, make_st_nn
