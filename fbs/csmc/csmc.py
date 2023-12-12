@@ -11,7 +11,7 @@ from jax import numpy as jnp
 from jax.scipy.special import logsumexp
 
 
-def kernel(key: PRNGKey, x_star: Array, b_star: Array, M_0: tuple[Callable, Callable], G_0: Callable,
+def kernel(key: PRNGKey, x_star: Array, b_star: Array, M_0: tuple[Callable, Callable],
            M_t: Union[tuple[Callable, Callable], tuple[Callable, Callable, Any]],
            G_t: Union[Callable, tuple[Callable, Any]],
            resampling_func: Callable, ancestor_move_func: Callable, N: int, backward: bool = False):
@@ -59,7 +59,7 @@ def kernel(key: PRNGKey, x_star: Array, b_star: Array, M_0: tuple[Callable, Call
 
     M_t_rvs, M_t_logpdf, M_params = M_t if len(M_t) == 3 else (*M_t, None)
 
-    As, Q_params, Q_t, key_backward, log_ws, xs = forward_pass(key, x_star, b_star, M_0, G_0, M_t, G_t,
+    As, Q_params, Q_t, key_backward, log_ws, xs = forward_pass(key, x_star, b_star, M_0, M_t, G_t,
                                                                resampling_func, N)
 
     #################################
@@ -72,7 +72,7 @@ def kernel(key: PRNGKey, x_star: Array, b_star: Array, M_0: tuple[Callable, Call
     return xs, Bs, log_ws
 
 
-def forward_pass(key: PRNGKey, x_star: Array, b_star: Array, M_0: tuple[Callable, Callable], G_0: Callable,
+def forward_pass(key: PRNGKey, x_star: Array, b_star: Array, M_0: tuple[Callable, Callable],
                  M_t: Union[tuple[Callable, Callable], tuple[Callable, Callable, Any]],
                  G_t: Union[Callable, tuple[Callable, Any]],
                  resampling_func: Callable, N: int):
@@ -115,6 +115,7 @@ def forward_pass(key: PRNGKey, x_star: Array, b_star: Array, M_0: tuple[Callable
     key_init, key_loop, key_backward = jax.random.split(key, 3)
     # Unpack Gamma_function
     G_t, G_params = G_t if isinstance(G_t, tuple) else (G_t, None)
+    G_0_params, G_params = jax.tree_map(lambda x: (x[0], x[1:]), G_params)
     M_t_rvs, M_t_logpdf, prop_params = M_t if len(M_t) == 3 else (*M_t, None)
     M_0_rvs, M_0_logpdf = M_0
     #################################
@@ -124,7 +125,7 @@ def forward_pass(key: PRNGKey, x_star: Array, b_star: Array, M_0: tuple[Callable
     x0 = x0.at[b_star[0]].set(x_star[0])
 
     # Compute initial weights and normalize
-    log_w0 = G_0(x0)
+    log_w0 = G_t(x0, G_0_params)
     log_w0 = normalize(log_w0, log_space=True)
     w0 = jnp.exp(log_w0)
 
