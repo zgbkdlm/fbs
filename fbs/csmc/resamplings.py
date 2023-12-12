@@ -125,33 +125,34 @@ def _standard_systematic(key: PRNGKey, weights: Array) -> Array:
 
 
 def _conditional_systematic(key: PRNGKey, weights: Array, i, j) -> Array:
+    raise NotImplementedError
     N = weights.shape[0]
 
     tmp = N * weights[i]
     tmp_floor = jnp.floor(tmp)
-
+    tmp_floor_int = jnp.astype(tmp_floor, int)
     U, V, W = jax.random.uniform(key, (3,))
 
     def _otherwise():
         rem = tmp - tmp_floor
         p_cond = rem * (tmp_floor + 1) / tmp
-        return jax.lax.select(V < p_cond,
-                              rem * U,
-                              rem + (1. - rem) * U)
+        return jax.lax.cond(V < p_cond,
+                            lambda: (tmp_floor_int + 1, rem * U),
+                            lambda: (tmp_floor_int, rem + (1. - rem) * U)
+                            )
 
-    uniform = jax.lax.cond(tmp <= 1,
-                           lambda: tmp * U,
-                           _otherwise)
+    n_i, uniform = jax.lax.cond(tmp < 1,
+                                lambda: (0, tmp * U),
+                                _otherwise)
 
     linspace = (jnp.arange(N, dtype=weights.dtype) + uniform) / N
     idx = jnp.searchsorted(jnp.cumsum(weights), linspace)
 
-    n_i = jnp.sum(idx == i)
     zero_loc = jnp.flatnonzero(idx == i, size=N, fill_value=-1)
     roll_idx = jnp.floor(n_i * W).astype(int)
+    idx = idx.at[0].set(i)
 
-    idx = jnp.roll(idx, j - zero_loc[roll_idx])
+    idx = jax.lax.select(n_i == 0,
+                         jnp.roll(idx, j),
+                         jnp.roll(idx, j - zero_loc[roll_idx]))
     return jnp.clip(idx, 0, N - 1)
-
-
-
