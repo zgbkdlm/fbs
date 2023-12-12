@@ -9,20 +9,20 @@ import optax
 import numpy.testing as npt
 import flax.linen as nn
 from fbs.dsb import ipf_loss, simulate_discrete_time
-from fbs.nn.utils import make_nn_with_time
+from fbs.nn.models import make_simple_st_nn
 
 jax.config.update("jax_enable_x64", True)
 
 
 def test_simulators():
-    def f(x, t):
+    def f(x, t, *args, **kwargs):
         return jnp.exp(-theta * dt) * x
 
     key = jax.random.PRNGKey(666)
 
-    dt = 0.001
+    T = 2
     nsteps = 2000
-    T = nsteps * dt
+    dt = T / nsteps
     ts = jnp.linspace(0, T, nsteps + 1)
 
     theta = 1.
@@ -36,8 +36,8 @@ def test_simulators():
     key, _ = jax.random.split(key)
     xTs = simulate_discrete_time(f, x0s, ts, sigma, key)[:, -1]
 
-    npt.assert_allclose(jnp.mean(xTs, axis=0), true_m, atol=1e-2)
-    npt.assert_allclose(jnp.var(xTs, axis=0), true_var, atol=1e-2)
+    npt.assert_allclose(jnp.mean(xTs, axis=0), true_m, rtol=1e-1)
+    npt.assert_allclose(jnp.var(xTs, axis=0), true_var, rtol=1e-1)
 
 
 def test_ipf_loss():
@@ -97,32 +97,21 @@ def test_ipf_one_pass():
         return x
 
     sigma = 1.
-    dt = 0.1
-    nsteps = 10
-    T = dt * nsteps
-    ts = jnp.linspace(0, T, nsteps + 1)
-    T = dt * nsteps
-    nn_float = jnp.float64
-    nn_param_init = nn.initializers.xavier_normal()
+    T = 2
+    test_nsteps = 20
+    train_nsteps = 100
+    test_dt = T / test_nsteps
+    train_dt = T / train_nsteps
+    test_ts = jnp.linspace(0, T, test_nsteps + 1)
+    train_ts = jnp.linspace(0, T, train_nsteps + 1)
 
-    class MLP(nn.Module):
-        @nn.compact
-        def __call__(self, x):
-            x = nn.Dense(features=16, param_dtype=nn_float, kernel_init=nn_param_init)(x)
-            x = nn.relu(x)
-            x = nn.Dense(features=8, param_dtype=nn_float, kernel_init=nn_param_init)(x)
-            x = nn.relu(x)
-            x = nn.Dense(features=1, param_dtype=nn_float, kernel_init=nn_param_init)(x)
-            return jnp.squeeze(x)
-
-    mlp = MLP()
     key, subkey = jax.random.split(key)
-    init_param_fwd, _, nn_fwd = make_nn_with_time(mlp, dim_in=1, batch_size=nsamples_train, time_scale=1, key=subkey)
+    _, _, init_param_fwd, _, nn_fwd = make_simple_st_nn(subkey, dim_x=1, batch_size=nsamples_train, embed_dim=32)
     key, subkey = jax.random.split(key)
-    init_param_bwd, _, nn_bwd = make_nn_with_time(mlp, dim_in=1, batch_size=nsamples_train, time_scale=1, key=subkey)
+    _, _, init_param_bwd, _, nn_bwd = make_simple_st_nn(subkey, dim_x=1, batch_size=nsamples_train, embed_dim=32)
 
-    niters = 200
-    schedule = optax.cosine_decay_schedule(1e-2, 1, .95)
+    niters = 500
+    schedule = optax.cosine_decay_schedule(1e-2, 10, .95)
     optimiser = optax.adam(learning_rate=schedule)
     f_param = init_param_fwd
     b_param = init_param_bwd
@@ -131,8 +120,13 @@ def test_ipf_one_pass():
     def optax_kernel(_b_param, _opt_state, _key):
         _key, _subkey = jax.random.split(_key)
         _x0s = x0s_sampler(_subkey, nsamples_train)
+        _key, _subkey = jax.random.split(_key)
+        _ts = jnp.hstack([0.,
+                          jax.random.uniform(_subkey, (train_nsteps - 1,), minval=0. + train_dt, maxval=T - train_dt),
+                          T])
+        # _ts = train_ts
         _, _subkey = jax.random.split(_key)
-        _loss, grad = jax.value_and_grad(ipf_loss)(_b_param, nn_bwd, f, _, _x0s, ts, sigma, _subkey)
+        _loss, grad = jax.value_and_grad(ipf_loss)(_b_param, nn_bwd, f, _, _x0s, _ts, sigma, _subkey)
         updates, _opt_state = optimiser.update(grad, _opt_state, _b_param)
         _b_param = optax.apply_updates(_b_param, updates)
         return _b_param, _opt_state, _loss
@@ -141,7 +135,12 @@ def test_ipf_one_pass():
     x0s = x0s_sampler(subkey, nsamples_test)
 
     key, subkey = jax.random.split(key)
-    xTs = simulate_discrete_time(f, x0s, ts, sigma, subkey)[:, -1]
+    xTs = simulate_discrete_time(f, x0s, train_ts, sigma, subkey)[:, -1]
+
+    plt.hist(xTs[:, 0], density=True, bins=50, alpha=0.5)
+    xTs2 = simulate_discrete_time(f, x0s, test_ts, sigma, subkey)[:, -1]
+    plt.hist(xTs2[:, 0], density=True, bins=50, alpha=0.5)
+    plt.show()
 
     # Learning
     opt_state = optimiser.init(b_param)
@@ -151,6 +150,17 @@ def test_ipf_one_pass():
         b_param, opt_state, loss = optax_kernel(b_param, opt_state, subkey)
 
     key, subkey = jax.random.split(key)
-    approx_x0s = simulate_discrete_time(nn_bwd, xTs, T - ts, sigma, subkey, b_param)[:, -1, :]
+    approx_x0s = simulate_discrete_time(nn_bwd, xTs, T - test_ts, sigma, subkey, b_param)[:, -1, :]
 
-    npt.assert_allclose(scipy.stats.wasserstein_distance(x0s[:, 0], approx_x0s[:, 0]), 0, atol=1e-1)
+    plt.hist(x0s[:, 0], density=True, bins=50, alpha=0.5, label=f'True initial distribution')
+    plt.hist(approx_x0s[:, 0], density=True, bins=50, alpha=0.5, label=f'Approx. initial distribution')
+    plt.show()
+
+    npt.assert_allclose(scipy.stats.wasserstein_distance(x0s[:, 0], approx_x0s[:, 0]), 0, atol=1e-2)
+
+
+def test_ipf_score():
+    """Test the function learnt by IPF matches the true function of a Gaussian model.
+    TODO
+    """
+    pass

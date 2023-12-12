@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 from fbs.typings import JArray, JKey, JFloat, FloatScalar
-from typing import Callable, Tuple, Any
+from typing import Callable, Tuple, Any, Optional
 
 
 def ipf_fwd_loss(b_param: JArray,
@@ -162,7 +162,7 @@ def ipf(f0, f, b, f_param, b_param, x0s, xTs, ts, sigma, key):
     """
 
 
-def simulate_discrete_time(f: Callable[[JArray, FloatScalar, ...], JArray],
+def simulate_discrete_time(f: Callable,
                            x0s: JArray,
                            ts: JArray,
                            sigma: FloatScalar,
