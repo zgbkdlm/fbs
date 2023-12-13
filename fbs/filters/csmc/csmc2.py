@@ -3,6 +3,7 @@ Implements the random walk cSMC kernel from Finke and Thiery (2023).
 
 Due to Adrien Corenflos.
 """
+import math
 import jax
 from jax import numpy as jnp
 from jax.scipy.special import logsumexp
@@ -10,16 +11,17 @@ from typing import Callable, Union, Any, Tuple
 from fbs.typings import JArray, JKey, FloatScalar
 
 
-def csmc_kernel(key: JKey,
-                us_star: JArray, bs_star: JArray,
-                u0: JArray, vs: JArray, ts: JArray,
-                transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
-                transition_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
-                measurement_cond_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
-                cond_resampling: Callable,
-                ancestor_move_func: Callable,
-                nsamples: int,
-                backward: bool = False):
+def csmc(key,
+         us_star, bs_star,
+         vs, ts,
+         init_sampler: Callable[[JKey, int], JArray],
+         transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
+         transition_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
+         measurement_cond_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
+         cond_resampling: Callable,
+         nsamples,
+         niters: int,
+         backward: bool = False):
     """
     Generic cSMC kernel.
 
@@ -33,6 +35,71 @@ def csmc_kernel(key: JKey,
         Indices of the reference trajectory at times :math:`t_1, t_2, \ldots, t_K`.
     u0 : JArray (du, )
         The given initial value.
+    vs : JArray (K + 1, dv)
+        Measurements :math:`v_0, v_1, \ldots, v_K`.
+    ts : JArray (K + 1, )
+        The times :math:`t_0, t_1, \ldots, t_K`.
+    init_sampler: Callable[[JKey, int], JArray],
+    transition_sampler : (n, du), (dv, ), float, key -> (n, du)
+        Draw n new samples conditioned on the previous samples and :math:`v_{k-1}`.
+        That is, :math:`p(u_k | u_{k-1}, v_{k-1})`.
+    measurement_cond_logpdf : (dv, ), (n, du), (dv, ), float -> (n, )
+        The measurement conditional PDF :math:`p(v_k | u_{k-1}, v_{k-1})`.
+        The first function argument is for v. The second argument is for u, which accepts an array of samples
+        and output an array of evaluations. The third argument is for v_{k-1}. The fourth argument is for the time.
+    cond_resampling :
+        Resampling scheme to use.
+    key : JKey
+        Random number generator key.
+    nsamples : int
+        Number of particles to use (N+1, if we include the reference trajectory).
+
+    Returns
+    -------
+    xs : JArray (K + 1, d)
+        Particles.
+    bs : JArray (K + 1, )
+        Indices of the ancestors.
+    """
+    keys = jax.random.split(key, niters)
+
+    def scan_body(carry, elem):
+        us, bs = carry
+        key_ = elem
+
+        us, bs = csmc_kernel(key_,
+                             us, bs, vs, ts,
+                             init_sampler, transition_sampler, transition_logpdf,
+                             measurement_cond_logpdf,
+                             cond_resampling,
+                             nsamples,
+                             backward)
+        return (us, bs), (us, bs)
+
+    return jax.lax.scan(scan_body, (us_star, bs_star), keys)[1]
+
+
+def csmc_kernel(key: JKey,
+                us_star: JArray, bs_star: JArray,
+                vs: JArray, ts: JArray,
+                init_sampler: Callable[[JKey, int], JArray],
+                transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
+                transition_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
+                measurement_cond_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
+                cond_resampling: Callable,
+                nsamples: int,
+                backward: bool = False):
+    """
+    Generic cSMC kernel.
+
+    Parameters
+    ----------
+    key : JKey
+        A JAX random key.
+    us_star : JArray (K, du)
+        Reference trajectory :math:`u_1^*, u_2^*, \ldots, u_K^*` to update.
+    bs_star : JArray (K, )
+        Indices of the reference trajectory at times :math:`t_1, t_2, \ldots, t_K`.
     vs : JArray (K + 1, dv)
         Measurements :math:`v_0, v_1, \ldots, v_K`.
     ts : JArray (K + 1, )
@@ -65,22 +132,103 @@ def csmc_kernel(key: JKey,
 
     As, log_ws, xss = forward_pass(key_fwd,
                                    us_star, bs_star,
-                                   u0, vs, ts,
-                                   transition_sampler, measurement_cond_logpdf, cond_resampling, nsamples)
+                                   vs, ts,
+                                   init_sampler, transition_sampler, measurement_cond_logpdf, cond_resampling, nsamples)
     if backward:
-        xss, Bs = backward_sampling_pass(key_bwd, transition_logpdf, vs, ts, xss, log_ws)
+        xs_star, bs_star = backward_sampling_pass(key_bwd, transition_logpdf, vs, ts, xss, log_ws)
     else:
-        xss, Bs = backward_scanning_pass(key_bwd, As, bs_star[-1], xss, log_ws[-1], ancestor_move_func)
-    return xss, Bs, log_ws
+        xs_star, bs_star = backward_scanning_pass(key_bwd, As, xss, log_ws[-1])
+    return xs_star, bs_star
 
 
 def forward_pass(key: JKey,
                  us_star: JArray, bs_star: JArray,
-                 u0: JArray, vs: JArray, ts: JArray,
+                 vs: JArray, ts: JArray,
+                 init_sampler: Callable[[JKey, int], JArray],
                  transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
                  measurement_cond_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
                  cond_resampling: Callable,
                  nsamples: int) -> Tuple[JArray, JArray, JArray]:
+    r"""
+    Forward pass of the cSMC kernel.
+
+    u0, || u1, ..., uK,
+    v0, || v1, ..., vK,
+
+    u_{1:K}^*
+
+    note that u0 is given.
+
+    Parameters
+    ----------
+    us_star : JArray (K, du)
+        Reference trajectory :math:`u_1^*, u_2^*, \ldots, u_K^*` to update.
+    bs_star : JArray (K, )
+        Indices of the reference trajectory at times :math:`t_1, t_2, \ldots, t_K`.
+    u0 : JArray (du, )
+        The given initial value.
+    vs : JArray (K + 1, dv)
+        Measurements :math:`v_0, v_1, \ldots, v_K`.
+    ts : JArray (K + 1, )
+        The times :math:`t_0, t_1, \ldots, t_K`.
+    init_sampler : JKey, int -> (n, du)
+    transition_sampler : (n, du), (dv, ), float, key -> (n, du)
+        Draw n new samples conditioned on the previous samples and :math:`v_{k-1}`.
+        That is, :math:`p(u_k | u_{k-1}, v_{k-1})`.
+    measurement_cond_logpdf : (dv, ), (n, du), (dv, ), float -> (n, )
+        The measurement conditional PDF :math:`p(v_k | u_{k-1}, v_{k-1})`.
+        The first function argument is for v. The second argument is for u, which accepts an array of samples
+        and output an array of evaluations. The third argument is for v_{k-1}. The fourth argument is for the time.
+    cond_resampling :
+        Resampling scheme to use.
+    key : JKey
+        Random number generator key.
+    nsamples : int
+        Number of particles to use (N + 1, if we include the reference trajectory).
+
+    Returns
+    -------
+    JArray (K, n), JArray (K, n), JArray (K, n, du)
+        The collections of ancestors, log weights, and smoothing samples.
+    """
+    nsteps, d = us_star.shape
+
+    def scan_body(carry, inp):
+        log_ws, us = carry
+        v, v_prev, t_prev, b_star_prev, b_star, key_, u_star = inp
+
+        # Resampling
+        A = cond_resampling(key_, jnp.exp(log_ws), b_star_prev, b_star, True)
+        us = jnp.take(us, A, axis=0)
+
+        _, subkey = jax.random.split(key_)
+        us = transition_sampler(us, v_prev, t_prev, subkey)
+        us = us.at[b_star].set(u_star)
+
+        log_ws = measurement_cond_logpdf(v, us, v_prev, t_prev)
+        log_ws = normalise(log_ws, log_space=True)
+
+        return (log_ws, us), (log_ws, A, us)
+
+    key_init, key_scan = jax.random.split(key, num=2)
+    us0 = init_sampler(key_init, nsamples)
+    log_ws0 = -math.log(nsamples) * jnp.ones((nsamples,))
+
+    keys = jax.random.split(key_scan, nsteps)
+    inputs = (vs[1:], vs[:-1], ts[:-1], bs_star[:-1], bs_star[1:], keys, us_star[1:])
+    _, (log_wss, As, xss) = jax.lax.scan(scan_body, (log_ws0, us0), inputs)
+
+    return As, log_wss, xss
+
+
+def _forward_pass(key: JKey,
+                  us_star: JArray, bs_star: JArray,
+                  u0: JArray, vs: JArray, ts: JArray,
+                  init_sampler: Callable[[JArray, JArray, FloatScalar, JKey, int], JArray],
+                  transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
+                  measurement_cond_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
+                  cond_resampling: Callable,
+                  nsamples: int) -> Tuple[JArray, JArray, JArray]:
     r"""
     Forward pass of the cSMC kernel.
 
@@ -140,7 +288,11 @@ def forward_pass(key: JKey,
 
         return us, (log_ws, A, us)
 
-    us0 = jnp.ones((nsamples, d)) * u0
+    key_init, key_scan = jax.random.split(key, num=2)
+
+    us1 = init_sampler(key_init, u0, vs[0], ts[0], nsamples)
+    log_ws1 = measurement_cond_logpdf(vs[1], us, v_prev, t_prev)
+    log_ws1 = normalise(log_ws, log_space=True)
 
     keys = jax.random.split(key, nsteps)
     inputs = (vs[1:], vs[:-1], ts[:-1], bs_star[:-1], bs_star[1:], keys, us_star[1:])
@@ -198,7 +350,8 @@ def backward_sampling_pass(key, transition_logpdf, vs, ts, uss, log_ws):
 
     # Reverse arrays, ideally, should use jax.lax.scan(reverse=True) but it is simpler this way due to insertions.
     # xs[-2::-1] is the reversed list of xs[:-1], I know, not readable... Same for log_ws.
-    inps = keys[:-1], uss[-2::-1], log_ws[-2::-1], vs[::-1][:-1], ts[::-1][:-1]
+    # vs[-1:0:-1] means the reverse of vs[1:]
+    inps = keys[:-1], uss[-2::-1], log_ws[-2::-1], vs[-1:0:-1], ts[-1:0:-1]
 
     # Run backward pass
     _, (uss, Bs) = jax.lax.scan(body, x_T, inps)
@@ -210,7 +363,7 @@ def backward_sampling_pass(key, transition_logpdf, vs, ts, uss, log_ws):
     return uss[::-1], Bs[::-1]
 
 
-def backward_scanning_pass(key, As, b_star_T, xss, log_w_T, ancestor_move_func):
+def backward_scanning_pass(key, As, xss, log_w_T):
     """
     Backward scanning pass for the cSMC kernel.
 
@@ -226,8 +379,6 @@ def backward_scanning_pass(key, As, b_star_T, xss, log_w_T, ancestor_move_func):
         JArray of particles.
     log_w_T:
         Log-weight of the last ancestor.
-    ancestor_move_func:
-        Function to move the last ancestor indices.
 
     Returns
     -------
