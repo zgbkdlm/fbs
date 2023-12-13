@@ -5,7 +5,7 @@ import numpy as np
 import numpy.testing as npt
 import pytest
 
-from .resamplings import multinomial, systematic, killing
+from fbs.filters.csmc.resamplings import multinomial, systematic, killing
 
 RESAMPLINGS = {"multinomial": multinomial, "systematic": systematic, "killing": killing}
 
