@@ -11,13 +11,14 @@ from typing import Callable, Union, Any, Tuple
 from fbs.typings import JArray, JKey, FloatScalar
 
 
-def csmc(key,
-         us_star, bs_star,
-         vs, ts,
+def csmc(key: JKey,
+         us_star: JArray, bs_star: JArray,
+         vs: JArray, ts: JArray,
          init_sampler: Callable[[JKey, int], JArray],
+         init_likelihood_logpdf: Callable[[JArray, JArray], JArray],
          transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
          transition_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
-         measurement_cond_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
+         likelihood_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
          cond_resampling: Callable,
          nsamples,
          niters: int,
@@ -29,21 +30,21 @@ def csmc(key,
     ----------
     key : JKey
         A JAX random key.
-    us_star : JArray (K, du)
-        Reference trajectory :math:`u_1^*, u_2^*, \ldots, u_K^*` to update.
-    bs_star : JArray (K, )
+    us_star : JArray (K + 1, du)
+        Reference trajectory :math:`u_0^*, u_1^*, u_2^*, \ldots, u_K^*` to update.
+    bs_star : JArray (K + 1, )
         Indices of the reference trajectory at times :math:`t_1, t_2, \ldots, t_K`.
-    u0 : JArray (du, )
-        The given initial value.
     vs : JArray (K + 1, dv)
         Measurements :math:`v_0, v_1, \ldots, v_K`.
     ts : JArray (K + 1, )
         The times :math:`t_0, t_1, \ldots, t_K`.
-    init_sampler: Callable[[JKey, int], JArray],
+    init_sampler : JKey, int -> (n, du)
+    init_likelihood_logpdf : (dv, ), (n, du) -> (n, )
     transition_sampler : (n, du), (dv, ), float, key -> (n, du)
         Draw n new samples conditioned on the previous samples and :math:`v_{k-1}`.
         That is, :math:`p(u_k | u_{k-1}, v_{k-1})`.
-    measurement_cond_logpdf : (dv, ), (n, du), (dv, ), float -> (n, )
+    transition_logpdf : (du, ), (du, ), (dv, ), float -> (n, )
+    likelihood_logpdf : (dv, ), (n, du), (dv, ), float -> (n, )
         The measurement conditional PDF :math:`p(v_k | u_{k-1}, v_{k-1})`.
         The first function argument is for v. The second argument is for u, which accepts an array of samples
         and output an array of evaluations. The third argument is for v_{k-1}. The fourth argument is for the time.
@@ -56,10 +57,8 @@ def csmc(key,
 
     Returns
     -------
-    xs : JArray (K + 1, d)
+    xs : JArray (niters, K + 1, d)
         Particles.
-    bs : JArray (K + 1, )
-        Indices of the ancestors.
     """
     keys = jax.random.split(key, niters)
 
@@ -67,14 +66,16 @@ def csmc(key,
         us, bs = carry
         key_ = elem
 
-        us, bs = csmc_kernel(key_,
-                             us, bs, vs, ts,
-                             init_sampler, transition_sampler, transition_logpdf,
-                             measurement_cond_logpdf,
-                             cond_resampling,
-                             nsamples,
-                             backward)
-        return (us, bs), (us, bs)
+        us, bs_next = csmc_kernel(key_,
+                                  us, bs, vs, ts,
+                                  init_sampler, init_likelihood_logpdf,
+                                  transition_sampler, transition_logpdf,
+                                  likelihood_logpdf,
+                                  cond_resampling,
+                                  nsamples,
+                                  backward)
+        accepted = bs_next != bs
+        return (us, bs), (us, accepted)
 
     return jax.lax.scan(scan_body, (us_star, bs_star), keys)[1]
 
@@ -110,11 +111,11 @@ def csmc_kernel(key: JKey,
     transition_sampler : (n, du), (dv, ), float, key -> (n, du)
         Draw n new samples conditioned on the previous samples and :math:`v_{k-1}`.
         That is, :math:`p(u_k | u_{k-1}, v_{k-1})`.
+    transition_logpdf : (du, ), (du, ), (dv, ), float -> (n, )
     measurement_cond_logpdf : (dv, ), (n, du), (dv, ), float -> (n, )
         The measurement conditional PDF :math:`p(v_k | u_{k-1}, v_{k-1})`.
         The first function argument is for v. The second argument is for u, which accepts an array of samples
         and output an array of evaluations. The third argument is for v_{k-1}. The fourth argument is for the time.
-    transition_logpdf : (du, ), (du, ), (dv, ), float -> (n, )
     cond_resampling :
         Resampling scheme to use.
     nsamples : int
@@ -191,7 +192,7 @@ def forward_pass(key: JKey,
     JArray (K, n), JArray (K, n + 1), JArray (K, n + 1, du)
         The collections of ancestors, log weights, and smoothing samples.
     """
-    K_plus_one, d = us_star.shape
+    K_plus_one = us_star.shape[0]
     nsteps = K_plus_one - 1
 
     def scan_body(carry, inp):
@@ -237,7 +238,7 @@ def backward_sampling_pass(key, transition_logpdf, vs, ts, uss, log_ws):
     key:
         Random number generator key.
     transition_logpdf:
-        Weight increments function.
+        The transition logpdf. p(x_k | x_{k-1})
     uss:
         JArray of particles.
     log_ws:
@@ -267,7 +268,7 @@ def backward_sampling_pass(key, transition_logpdf, vs, ts, uss, log_ws):
 
     def body(x_t, inp):
         op_key, xs_t_m_1, log_w_t_m_1, v, t = inp
-        Gamma_log_w = transition_logpdf(xs_t_m_1, x_t, v, t)
+        Gamma_log_w = transition_logpdf(x_t, xs_t_m_1, v, t)  # I swapped the order
         Gamma_log_w -= jnp.max(Gamma_log_w)
         log_w = Gamma_log_w + log_w_t_m_1
         w = normalise(log_w)
@@ -300,8 +301,6 @@ def backward_scanning_pass(key, As, xss, log_w_T):
         Random number generator key.
     As:
         JArray of indices of the ancestors.
-    b_star_T:
-        Index of the last ancestor.
     xss:
         JArray of particles.
     log_w_T:
