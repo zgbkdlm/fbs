@@ -6,7 +6,7 @@ import jax
 import jax.numpy as jnp
 import numpy.testing as npt
 from fbs.filters.csmc.csmc import csmc, csmc_kernel
-from fbs.filters.csmc.resamplings import killing
+from fbs.filters.csmc.resamplings import killing, multinomial
 from fbs.utils import discretise_lti_sde
 from functools import partial
 
@@ -44,7 +44,7 @@ def test_csmc_gp_regression(backward):
     """
 
     T = 1
-    nsteps = 10
+    nsteps = 100
     dt = T / nsteps
     ts = jnp.linspace(0, T, nsteps + 1)
 
@@ -110,9 +110,8 @@ def test_csmc_gibbs():
     dt = T / nsteps
     ts = jnp.linspace(0, T, nsteps + 1)
 
-    nsamples = 100
-    niters = 2000
-    burn_in = 1000
+    nsamples = 7
+    niters = 5_000
 
     F, Q = discretise_lti_sde(a * jnp.eye(1), b ** 2 * jnp.eye(1), dt)
     F, Q = jnp.squeeze(F), jnp.squeeze(Q)
@@ -127,7 +126,7 @@ def test_csmc_gibbs():
         return emission(xs_) + math.sqrt(R) * jax.random.normal(key_, xs_.shape)
 
     def init_sampler(key_, nsamples_):
-        return stat_m + math.sqrt(stat_var) * jax.random.normal(key_, (nsamples_,))
+        return 0 + math.sqrt(stat_var) * jax.random.normal(key_, (nsamples_,))
 
     def init_likelihood_logpdf(y0, x0):
         return jax.scipy.stats.norm.logpdf(y0, emission(x0), math.sqrt(R))
@@ -149,38 +148,73 @@ def test_csmc_gibbs():
                                        init_sampler, init_likelihood_logpdf,
                                        transition_sampler, transition_logpdf,
                                        likelihood_logpdf,
-                                       killing, nsamples,
-                                       backward=False)
+                                       multinomial, nsamples,
+                                       backward=True)
         return xs_star, bs_star
 
-    # Gibbs loop
+    bs = jnp.zeros((nsteps + 1), dtype=int)
+
+    @partial(jax.jit, static_argnums=(2,))
+    def few_iters(key_, xs_star_, n_iters):
+        keys_ = jax.random.split(key_, num=n_iters)
+
+        def body_fun(carry, key_):
+            key_, subkey = jax.random.split(key_)
+            xs_star, bs_star = carry
+            ys_ = sampler_ys_cond_xs(xs_star, subkey)
+            xs_star, bs_star = sampler_xs_cond_ys(ys_, key_, xs_star, bs_star)
+            return (xs_star, bs_star), None
+
+        (xs_star_, _), _ = jax.lax.scan(body_fun, (xs_star_, bs), keys_)
+        return xs_star_
+
     key = jax.random.PRNGKey(666)
-    gibbs_xss = np.zeros((niters, nsteps + 1))
+    key_prior, key_csmc = jax.random.split(key, 2)
+    keys_ = jax.random.split(key_prior, num=niters)
+    prior_samples = jax.vmap(gp_sampler, in_axes=[0, None])(keys_, ts)
 
-    key, subkey = jax.random.split(key)
-    xs = jnp.linalg.cholesky(gp_cov(ts, ts)) @ jax.random.normal(subkey, (nsteps + 1,))
-    bs = jnp.zeros_like(xs, dtype='int64')
-    for i in range(niters):
-        key, subkey = jax.random.split(key)
-        ys = sampler_ys_cond_xs(xs, subkey)
-        key, subkey = jax.random.split(key)
-        xs, bs = sampler_xs_cond_ys(ys, subkey, xs, bs)
-        gibbs_xss[i] = xs
+    keys_ = jax.random.split(key_csmc, num=niters)
+    one_iter_samples = jax.vmap(few_iters, in_axes=[0, 0, None])(keys_, prior_samples, 10)
 
-    gibbs_xss = gibbs_xss[burn_in:]
-
-    plt.plot(ts, gibbs_xss.T, c='black', alpha=0.1)
+    plt.plot(ts, prior_samples.T, c='black', alpha=0.05)
     plt.ylim(-3, 3)
     plt.show()
 
-    keys_ = jax.random.split(key, num=niters - burn_in)
-    plt.plot(ts, jax.vmap(gp_sampler, in_axes=[0, None])(keys_, ts).T, c='black', alpha=0.1)
+    plt.plot(ts, one_iter_samples.T, c='black', alpha=0.05)
     plt.ylim(-3, 3)
     plt.show()
 
-    npt.assert_allclose(jnp.mean(gibbs_xss, axis=0), np.zeros_like(ts), atol=1e-1)
-    npt.assert_allclose(jnp.cov(gibbs_xss, rowvar=False), gp_cov(ts, ts), atol=1e-2)
+    npt.assert_allclose(jnp.mean(one_iter_samples, axis=0), np.zeros_like(ts), atol=1e-1)
+    npt.assert_allclose(jnp.cov(one_iter_samples, rowvar=False), gp_cov(ts, ts), atol=1e-2)
 
-    print(jnp.mean(gibbs_xss, axis=0))
-    print(jnp.cov(gibbs_xss, rowvar=False))
-    print(gp_cov(ts, ts))
+    # Gibbs loop
+    # key = jax.random.PRNGKey(666)
+    # gibbs_xss = np.zeros((niters, nsteps + 1))
+    # accepted_samples = np.zeros((niters, nsteps + 1), dtype=bool)
+    # key, subkey = jax.random.split(key)
+    # xs = jnp.linalg.cholesky(gp_cov(ts, ts)) @ jax.random.normal(subkey, (nsteps + 1,))
+    # bs = jnp.zeros_like(xs, dtype='int64')
+    # for i in range(niters):
+    #     key, subkey = jax.random.split(key)
+    #     ys = sampler_ys_cond_xs(xs, subkey)
+    #     key, subkey = jax.random.split(key)
+    #     xs, bs_next = sampler_xs_cond_ys(ys, subkey, xs, bs)
+    #     gibbs_xss[i] = xs
+    #     accepted_samples[i] = bs_next != bs
+    #     bs = bs_next
+
+    # print(accepted_samples.mean(0))
+    #
+    # plt.plot(ts, gibbs_xss.T, c='black', alpha=0.05)
+    # plt.ylim(-3, 3)
+    # plt.show()
+    #
+    # plt.ylim(-3, 3)
+    # plt.show()
+    #
+    # npt.assert_allclose(jnp.mean(gibbs_xss, axis=0), np.zeros_like(ts), atol=1e-1)
+    # npt.assert_allclose(jnp.cov(gibbs_xss, rowvar=False), gp_cov(ts, ts), atol=1e-2)
+    #
+    # print(jnp.mean(gibbs_xss, axis=0))
+    # print(jnp.cov(gibbs_xss, rowvar=False))
+    # print(gp_cov(ts, ts))
