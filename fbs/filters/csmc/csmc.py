@@ -1,173 +1,234 @@
 """
 Implements the random walk cSMC kernel from Finke and Thiery (2023).
+
+Due to Adrien Corenflos.
 """
-from functools import partial
-from typing import Callable, Union, Any
-
+import math
 import jax
-from chex import Array, PRNGKey
 from jax import numpy as jnp
-
 from jax.scipy.special import logsumexp
+from typing import Callable, Union, Any, Tuple
+from fbs.typings import JArray, JKey, FloatScalar
 
 
-def kernel(key: PRNGKey, x_star: Array, b_star: Array, M_0: tuple[Callable, Callable],
-           M_t: Union[tuple[Callable, Callable], tuple[Callable, Callable, Any]],
-           G_t: Union[Callable, tuple[Callable, Any]],
-           resampling_func: Callable, ancestor_move_func: Callable, N: int, backward: bool = False):
+def csmc(key,
+         us_star, bs_star,
+         vs, ts,
+         init_sampler: Callable[[JKey, int], JArray],
+         transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
+         transition_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
+         measurement_cond_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
+         cond_resampling: Callable,
+         nsamples,
+         niters: int,
+         backward: bool = False):
     """
     Generic cSMC kernel.
 
     Parameters
     ----------
-    key:
-        Random number generator key.
-    x_star:
-        Reference trajectory to update.
-    b_star:
-        Indices of the reference trajectory.
-    M_0:
-        Sampler for the initial distribution.
-        The first element is the sampling function, taking two arguments (key and number of particle)
-        and the second element is the logpdf taking a single particle as argument.
-    G_0:
-        Initial weight function.
-    M_t:
-        Sampler for the proposal distribution at time t.
-        The first element is the sampling function, taking three arguments (key, particles at time t-1, and parameters)
-        and the second element is the logpdf taking the particles at time t-1, at time t, and the parameters as arguments.
-    G_t:
-        If a tuple, the first element is the function and the second element is the parameters.
-    resampling_func:
+    key : JKey
+        A JAX random key.
+    us_star : JArray (K, du)
+        Reference trajectory :math:`u_1^*, u_2^*, \ldots, u_K^*` to update.
+    bs_star : JArray (K, )
+        Indices of the reference trajectory at times :math:`t_1, t_2, \ldots, t_K`.
+    u0 : JArray (du, )
+        The given initial value.
+    vs : JArray (K + 1, dv)
+        Measurements :math:`v_0, v_1, \ldots, v_K`.
+    ts : JArray (K + 1, )
+        The times :math:`t_0, t_1, \ldots, t_K`.
+    init_sampler: Callable[[JKey, int], JArray],
+    transition_sampler : (n, du), (dv, ), float, key -> (n, du)
+        Draw n new samples conditioned on the previous samples and :math:`v_{k-1}`.
+        That is, :math:`p(u_k | u_{k-1}, v_{k-1})`.
+    measurement_cond_logpdf : (dv, ), (n, du), (dv, ), float -> (n, )
+        The measurement conditional PDF :math:`p(v_k | u_{k-1}, v_{k-1})`.
+        The first function argument is for v. The second argument is for u, which accepts an array of samples
+        and output an array of evaluations. The third argument is for v_{k-1}. The fourth argument is for the time.
+    cond_resampling :
         Resampling scheme to use.
-    ancestor_move_func:
-        Function to move the last ancestor indices.
-    N:
+    key : JKey
+        Random number generator key.
+    nsamples : int
         Number of particles to use (N+1, if we include the reference trajectory).
-    backward:
-        Whether to run the backward sampling kernel.
-
 
     Returns
     -------
-
-    xs:
+    xs : JArray (K + 1, d)
         Particles.
-    bs:
+    bs : JArray (K + 1, )
         Indices of the ancestors.
     """
+    keys = jax.random.split(key, niters)
 
-    M_t_rvs, M_t_logpdf, M_params = M_t if len(M_t) == 3 else (*M_t, None)
+    def scan_body(carry, elem):
+        us, bs = carry
+        key_ = elem
 
-    As, Q_params, Q_t, key_backward, log_ws, xs = forward_pass(key, x_star, b_star, M_0, M_t, G_t,
-                                                               resampling_func, N)
+        us, bs = csmc_kernel(key_,
+                             us, bs, vs, ts,
+                             init_sampler, transition_sampler, transition_logpdf,
+                             measurement_cond_logpdf,
+                             cond_resampling,
+                             nsamples,
+                             backward)
+        return (us, bs), (us, bs)
 
-    #################################
-    #        Backward pass          #
-    #################################
-    if backward:
-        xs, Bs = backward_sampling_pass(key_backward, M_t_logpdf, M_params, xs, log_ws)
-    else:
-        xs, Bs = backward_scanning_pass(key_backward, As, b_star[-1], xs, log_ws[-1], ancestor_move_func)
-    return xs, Bs, log_ws
+    return jax.lax.scan(scan_body, (us_star, bs_star), keys)[1]
 
 
-def forward_pass(key: PRNGKey, x_star: Array, b_star: Array, M_0: tuple[Callable, Callable],
-                 M_t: Union[tuple[Callable, Callable], tuple[Callable, Callable, Any]],
-                 G_t: Union[Callable, tuple[Callable, Any]],
-                 resampling_func: Callable, N: int):
+def csmc_kernel(key: JKey,
+                us_star: JArray, bs_star: JArray,
+                vs: JArray, ts: JArray,
+                init_sampler: Callable[[JKey, int], JArray],
+                init_likelihood_logpdf: Callable[[JArray, JArray], JArray],
+                transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
+                transition_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
+                measurement_cond_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
+                cond_resampling: Callable,
+                nsamples: int,
+                backward: bool = False):
     """
-        Forward pass of the cSMC kernel.
+    Generic cSMC kernel.
 
-        Parameters
-        ----------
-        key:
-            Random number generator key.
-        x_star:
-            Reference trajectory to update.
-        b_star:
-            Indices of the reference trajectory.
-        M_0:
-            Sampler for the initial distribution.
-            The first element is the sampling function, taking two arguments (key and number of particle)
-            and the second element is the logpdf taking a single particle as argument.
-        G_0:
-            Initial weight function.
-        M_t:
-            Sampler for the proposal distribution at time t.
-            The first element is the sampling function, taking three arguments (key, particles at time t-1, and parameters)
-            and the second element is the logpdf taking the particles at time t-1, at time t, and the parameters as arguments.
-        G_t:
-            If a tuple, the first element is the function and the second element is the parameters.
-        resampling_func:
-            Resampling scheme to use.
-        N:
-            Number of particles to use (N+1, if we include the reference trajectory).
+    Parameters
+    ----------
+    key : JKey
+        A JAX random key.
+    us_star : JArray (K + 1, du)
+        Reference trajectory :math:`u_0^*, u_1^*, u_2^*, \ldots, u_K^*` to update.
+    bs_star : JArray (K + 1, )
+        Indices of the reference trajectory at times :math:`t_1, t_2, \ldots, t_K`.
+    vs : JArray (K + 1, dv)
+        Measurements :math:`v_0, v_1, \ldots, v_K`.
+    ts : JArray (K + 1, )
+        The times :math:`t_0, t_1, \ldots, t_K`.
+    init_sampler : JKey, int -> (n, du)
+    init_likelihood_logpdf : (dv, ), (n, du) -> (n, )
+    transition_sampler : (n, du), (dv, ), float, key -> (n, du)
+        Draw n new samples conditioned on the previous samples and :math:`v_{k-1}`.
+        That is, :math:`p(u_k | u_{k-1}, v_{k-1})`.
+    measurement_cond_logpdf : (dv, ), (n, du), (dv, ), float -> (n, )
+        The measurement conditional PDF :math:`p(v_k | u_{k-1}, v_{k-1})`.
+        The first function argument is for v. The second argument is for u, which accepts an array of samples
+        and output an array of evaluations. The third argument is for v_{k-1}. The fourth argument is for the time.
+    transition_logpdf : (du, ), (du, ), (dv, ), float -> (n, )
+    cond_resampling :
+        Resampling scheme to use.
+    nsamples : int
+        Number of particles to use (N+1, if we include the reference trajectory).
+    backward : bool, default=False
+        Whether to run the backward sampling kernel.
 
-        Returns
-        -------
+    Returns
+    -------
+    xs_star : JArray (K + 1, du)
+        Particles.
+    bs_star : JArray (K + 1, )
+        Indices of the ancestors.
+    """
+    key_fwd, key_bwd = jax.random.split(key, 2)
 
-        """
-    ###############################
-    #        HOUSEKEEPING         #
-    ###############################
-    T, _d_x = x_star.shape
-    key_init, key_loop, key_backward = jax.random.split(key, 3)
-    # Unpack Gamma_function
-    G_t, G_params = G_t if isinstance(G_t, tuple) else (G_t, None)
-    G_0_params, G_params = jax.tree_map(lambda x: (x[0], x[1:]), G_params)
-    M_t_rvs, M_t_logpdf, prop_params = M_t if len(M_t) == 3 else (*M_t, None)
-    M_0_rvs, M_0_logpdf = M_0
-    #################################
-    #        Initialisation         #
-    #################################
-    x0 = M_0_rvs(key_init, N + 1)
-    x0 = x0.at[b_star[0]].set(x_star[0])
+    As, log_ws, xss = forward_pass(key_fwd,
+                                   us_star, bs_star,
+                                   vs, ts,
+                                   init_sampler, init_likelihood_logpdf,
+                                   transition_sampler, measurement_cond_logpdf, cond_resampling, nsamples)
+    if backward:
+        xs_star, bs_star = backward_sampling_pass(key_bwd, transition_logpdf, vs, ts, xss, log_ws)
+    else:
+        xs_star, bs_star = backward_scanning_pass(key_bwd, As, xss, log_ws[-1])
+    return xs_star, bs_star
 
-    # Compute initial weights and normalize
-    log_w0 = G_t(x0, G_0_params)
-    log_w0 = normalize(log_w0, log_space=True)
-    w0 = jnp.exp(log_w0)
 
-    #################################
-    #        Forward pass           #
-    #################################
-    def body(carry, inp):
-        w_t_m_1, x_t_m_1 = carry
-        M_t_params, Gamma_params_t, b_star_t_m_1, b_star_t, key_t, x_star_t = inp
+def forward_pass(key: JKey,
+                 us_star: JArray, bs_star: JArray,
+                 vs: JArray, ts: JArray,
+                 init_sampler: Callable[[JKey, int], JArray],
+                 init_likelihood_logpdf: Callable[[JArray, JArray], JArray],
+                 transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
+                 likelihood_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
+                 cond_resampling: Callable,
+                 nsamples: int) -> Tuple[JArray, JArray, JArray]:
+    r"""
+    Forward pass of the cSMC kernel.
 
-        key_proposal_t, key_resampling_t = jax.random.split(key_t, 2)
+    u0, u1, ..., uK,
+    v0, v1, ..., vK,
+
+    u_{0:K}^*
+
+    Parameters
+    ----------
+    us_star : JArray (K + 1, du)
+        Reference trajectory :math:`u_0^*, u_1^*, u_2^*, \ldots, u_K^*` to update.
+    bs_star : JArray (K + 1, )
+        Indices of the reference trajectory at times :math:`t_1, t_2, \ldots, t_K`.
+    vs : JArray (K + 1, dv)
+        Measurements :math:`v_0, v_1, \ldots, v_K`.
+    ts : JArray (K + 1, )
+        The times :math:`t_0, t_1, \ldots, t_K`.
+    init_sampler : JKey, int -> (n, du)
+    init_likelihood_logpdf : (dv, ), (n, du) -> (n, )
+    transition_sampler : (n, du), (dv, ), float, key -> (n, du)
+        Draw n new samples conditioned on the previous samples and :math:`v_{k-1}`.
+        That is, :math:`p(u_k | u_{k-1}, v_{k-1})`.
+    likelihood_logpdf : (dv, ), (n, du), (dv, ), float -> (n, )
+        The measurement conditional PDF :math:`p(v_k | u_{k-1}, v_{k-1})`.
+        The first function argument is for v. The second argument is for u, which accepts an array of samples
+        and output an array of evaluations. The third argument is for v_{k-1}. The fourth argument is for the time.
+    cond_resampling :
+        Resampling scheme to use.
+    key : JKey
+        Random number generator key.
+    nsamples : int
+        Number of particles to use (N + 1, if we include the reference trajectory).
+
+    Returns
+    -------
+    JArray (K, n), JArray (K, n + 1), JArray (K, n + 1, du)
+        The collections of ancestors, log weights, and smoothing samples.
+    """
+    K_plus_one, d = us_star.shape
+    nsteps = K_plus_one - 1
+
+    def scan_body(carry, inp):
+        log_ws, us = carry
+        v, v_prev, t_prev, b_star_prev, b_star, key_, u_star = inp
+        key_resampling, key_transition = jax.random.split(key_, num=2)
+
         # Conditional resampling
-        A_t = resampling_func(key_resampling_t, w_t_m_1, b_star_t_m_1, b_star_t, True)
-        x_t_m_1 = jnp.take(x_t_m_1, A_t, axis=0)
+        A = cond_resampling(key_resampling, jnp.exp(log_ws), b_star_prev, b_star, True)
+        us = jnp.take(us, A, axis=0)
 
-        # Sample proposal
-        x_t = M_t_rvs(key_proposal_t, x_t_m_1, M_t_params)
-        x_t = x_t.at[b_star_t].set(x_star_t)
+        us = transition_sampler(us, v_prev, t_prev, key_transition)
+        us = us.at[b_star].set(u_star)
 
-        log_w_t = G_t(x_t, Gamma_params_t)
-        log_w_t = normalize(log_w_t, log_space=True)
-        w_t = jnp.exp(log_w_t)
+        log_ws = likelihood_logpdf(v, us, v_prev, t_prev)
+        log_ws = normalise(log_ws, log_space=True)
 
-        # Return next step
-        next_carry = w_t, x_t
-        save = log_w_t, A_t, x_t
+        return (log_ws, us), (log_ws, A, us)
 
-        return next_carry, save
+    key_init, key_scan = jax.random.split(key, num=2)
+    us0 = init_sampler(key_init, nsamples + 1)
+    us0 = us0.at[bs_star[0]].set(us_star[0])
 
-    keys_loop = jax.random.split(key_loop, T - 1)
-    # Run forward cSMC
-    inputs = prop_params, G_params, b_star[:-1], b_star[1:], keys_loop, x_star[1:]
-    _, (log_ws, As, xs) = jax.lax.scan(body,
-                                       (w0, x0),
-                                       inputs)
-    # Insert initial weight and particle
-    log_ws = jnp.insert(log_ws, 0, log_w0, axis=0)
-    xs = jnp.insert(xs, 0, x0, axis=0)
-    return As, G_params, G_t, key_backward, log_ws, xs
+    log_ws0 = init_likelihood_logpdf(vs[0], us0)
+    log_ws0 = normalise(log_ws0, log_space=True)
+
+    keys = jax.random.split(key_scan, nsteps)
+    inputs = (vs[1:], vs[:-1], ts[:-1], bs_star[:-1], bs_star[1:], keys, us_star[1:])
+    _, (log_wss, As, uss) = jax.lax.scan(scan_body, (log_ws0, us0), inputs)
+
+    log_wss = jnp.insert(log_wss, 0, log_ws0, axis=0)
+    uss = jnp.insert(uss, 0, us0, axis=0)
+
+    return As, log_wss, uss
 
 
-def backward_sampling_pass(key, M_t, M_params, xs, log_ws):
+def backward_sampling_pass(key, transition_logpdf, vs, ts, uss, log_ws):
     """
     Backward sampling pass for the cSMC kernel.
 
@@ -175,63 +236,61 @@ def backward_sampling_pass(key, M_t, M_params, xs, log_ws):
     ----------
     key:
         Random number generator key.
-    M_t:
+    transition_logpdf:
         Weight increments function.
-    M_params:
-        Parameters for the Gamma function.
-    xs:
-        Array of particles.
+    uss:
+        JArray of particles.
     log_ws:
-        Array of log-weights for the filtering solution.
+        JArray of log-weights for the filtering solution.
 
     Returns
     -------
     xs:
-        Array of particles.
+        JArray of particles.
     Bs:
-        Array of indices of the last ancestor.
+        JArray of indices of the last ancestor.
     """
     ###############################
     #        HOUSEKEEPING         #
     ###############################
 
-    T, N, *_ = xs.shape
-    keys = jax.random.split(key, T)
+    K_plus_one, n, *_ = uss.shape
+    keys = jax.random.split(key, K_plus_one)
 
     ###############################
     #        BACKWARD PASS        #
     ###############################
     # Select last ancestor
-    W_T = normalize(log_ws[-1],)
-    B_T = jax.random.choice(keys[-1], N, (), p=W_T)
-    x_T = xs[-1, B_T]
+    W_T = normalise(log_ws[-1], )
+    B_T = barker_move(keys[-1], W_T)
+    x_T = uss[-1, B_T]
 
     def body(x_t, inp):
-        op_key, xs_t_m_1, log_w_t_m_1, M_params_t = inp
-        Gamma_log_w = M_t(xs_t_m_1, x_t, M_params_t)
+        op_key, xs_t_m_1, log_w_t_m_1, v, t = inp
+        Gamma_log_w = transition_logpdf(xs_t_m_1, x_t, v, t)
         Gamma_log_w -= jnp.max(Gamma_log_w)
         log_w = Gamma_log_w + log_w_t_m_1
-        w = normalize(log_w)
+        w = normalise(log_w)
         B_t_m_1 = jax.random.choice(op_key, w.shape[0], p=w, shape=())
         x_t_m_1 = xs_t_m_1[B_t_m_1]
         return x_t_m_1, (x_t_m_1, B_t_m_1)
 
     # Reverse arrays, ideally, should use jax.lax.scan(reverse=True) but it is simpler this way due to insertions.
     # xs[-2::-1] is the reversed list of xs[:-1], I know, not readable... Same for log_ws.
-    M_params = jax.tree_map(lambda x: x[::-1], M_params)
-    inps = keys[:-1], xs[-2::-1], log_ws[-2::-1], M_params
+    # vs[-1:0:-1] means the reverse of vs[1:]
+    inps = keys[:-1], uss[-2::-1], log_ws[-2::-1], vs[-1:0:-1], ts[-1:0:-1]
 
     # Run backward pass
-    _, (xs, Bs) = jax.lax.scan(body, x_T, inps)
+    _, (uss, Bs) = jax.lax.scan(body, x_T, inps)
 
     # Insert last ancestor and particle
-    xs = jnp.insert(xs, 0, x_T, axis=0)
+    uss = jnp.insert(uss, 0, x_T, axis=0)
     Bs = jnp.insert(Bs, 0, B_T, axis=0)
 
-    return xs[::-1], Bs[::-1]
+    return uss[::-1], Bs[::-1]
 
 
-def backward_scanning_pass(key, As, b_star_T, xs, log_w_T, ancestor_move_func):
+def backward_scanning_pass(key, As, xss, log_w_T):
     """
     Backward scanning pass for the cSMC kernel.
 
@@ -240,30 +299,28 @@ def backward_scanning_pass(key, As, b_star_T, xs, log_w_T, ancestor_move_func):
     key:
         Random number generator key.
     As:
-        Array of indices of the ancestors.
+        JArray of indices of the ancestors.
     b_star_T:
         Index of the last ancestor.
-    xs:
-        Array of particles.
+    xss:
+        JArray of particles.
     log_w_T:
         Log-weight of the last ancestor.
-    ancestor_move_func:
-        Function to move the last ancestor indices.
 
     Returns
     -------
     xs:
-        Array of particles.
+        JArray of particles.
     Bs:
-        Array of indices of the star trajectory.
+        JArray of indices of the star trajectory.
     """
 
     ###############################
     #        BACKWARD PASS        #
     ###############################
     # Select last ancestor
-    B_T, _ = ancestor_move_func(key, normalize(log_w_T), b_star_T)
-    x_T = xs[-1, B_T]
+    B_T = barker_move(key, normalise(log_w_T))
+    x_T = xss[-1, B_T]
 
     def body(B_t, inp):
         xs_t_m_1, A_t = inp
@@ -272,16 +329,15 @@ def backward_scanning_pass(key, As, b_star_T, xs, log_w_T, ancestor_move_func):
         return B_t_m_1, (x_t_m_1, B_t_m_1)
 
     # xs[-2::-1] is the reversed list of xs[:-1], I know, not readable...
-    _, (xs, Bs) = jax.lax.scan(body, B_T, (xs[-2::-1], As[::-1]))
-    xs = jnp.insert(xs, 0, x_T, axis=0)
+    _, (xss, Bs) = jax.lax.scan(body, B_T, (xss[-2::-1], As[::-1]))
+    xss = jnp.insert(xss, 0, x_T, axis=0)
     Bs = jnp.insert(Bs, 0, B_T, axis=0)
-    return xs[::-1], Bs[::-1]
+    return xss[::-1], Bs[::-1]
 
 
-@partial(jax.jit, static_argnums=(1,))
-def normalize(log_weights: Array, log_space=False) -> Array:
+def normalise(log_weights: JArray, log_space=False) -> JArray:
     """
-    Normalize log weights to obtain unnormalized weights.
+    Normalize log weights to obtain unnormalised weights.
 
     Parameters
     ----------
@@ -293,9 +349,14 @@ def normalize(log_weights: Array, log_space=False) -> Array:
     Returns
     -------
     log_weights/weights:
-        Unnormalized weights.
+        Unnormalised weights.
     """
     log_weights -= logsumexp(log_weights)
     if log_space:
         return log_weights
     return jnp.exp(log_weights)
+
+
+def barker_move(key, ws):
+    n = ws.shape[0]
+    return jax.random.choice(key, n, (), p=ws)

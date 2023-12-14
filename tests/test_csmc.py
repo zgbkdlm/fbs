@@ -6,7 +6,7 @@ import jax
 import jax.numpy as jnp
 import jaxopt
 import numpy.testing as npt
-from fbs.filters.csmc.csmc2 import csmc
+from fbs.filters.csmc._csmc2 import csmc
 from fbs.filters.csmc.resamplings import killing
 from fbs.utils import discretise_lti_sde
 from functools import partial
