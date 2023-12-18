@@ -102,7 +102,8 @@ def test_csmc_gp_regression(backward):
     npt.assert_allclose(jnp.cov(x_stars, rowvar=False), posterior_cov, atol=3e-2)
 
 
-def test_csmc_gibbs():
+@pytest.mark.parametrize('backward', [False, True])
+def test_csmc_gibbs(backward):
     """Gibbs for p(x_{0:T} | y_{0:T}) and p(y_{0:T} | x_{0:T}) using CSMC.
     """
     T = 1
@@ -111,7 +112,7 @@ def test_csmc_gibbs():
     ts = jnp.linspace(0, T, nsteps + 1)
 
     nsamples = 7
-    niters = 5_000
+    niters = 1000
 
     F, Q = discretise_lti_sde(a * jnp.eye(1), b ** 2 * jnp.eye(1), dt)
     F, Q = jnp.squeeze(F), jnp.squeeze(Q)
@@ -148,24 +149,24 @@ def test_csmc_gibbs():
                                        init_sampler, init_likelihood_logpdf,
                                        transition_sampler, transition_logpdf,
                                        likelihood_logpdf,
-                                       multinomial, nsamples,
-                                       backward=True)
+                                       killing, nsamples,
+                                       backward=backward)
         return xs_star, bs_star
 
     bs = jnp.zeros((nsteps + 1), dtype=int)
 
     @partial(jax.jit, static_argnums=(2,))
     def few_iters(key_, xs_star_, n_iters):
-        keys_ = jax.random.split(key_, num=n_iters)
+        keys__ = jax.random.split(key_, num=n_iters)
 
-        def body_fun(carry, key_):
-            key_, subkey = jax.random.split(key_)
+        def body_fun(carry, key__):
+            key__, subkey = jax.random.split(key__)
             xs_star, bs_star = carry
             ys_ = sampler_ys_cond_xs(xs_star, subkey)
-            xs_star, bs_star = sampler_xs_cond_ys(ys_, key_, xs_star, bs_star)
+            xs_star, bs_star = sampler_xs_cond_ys(ys_, key__, xs_star, bs_star)
             return (xs_star, bs_star), None
 
-        (xs_star_, _), _ = jax.lax.scan(body_fun, (xs_star_, bs), keys_)
+        (xs_star_, _), _ = jax.lax.scan(body_fun, (xs_star_, bs), keys__)
         return xs_star_
 
     key = jax.random.PRNGKey(666)
@@ -174,47 +175,17 @@ def test_csmc_gibbs():
     prior_samples = jax.vmap(gp_sampler, in_axes=[0, None])(keys_, ts)
 
     keys_ = jax.random.split(key_csmc, num=niters)
-    one_iter_samples = jax.vmap(few_iters, in_axes=[0, 0, None])(keys_, prior_samples, 10)
+    gibbs_samples = jax.vmap(few_iters, in_axes=[0, 0, None])(keys_, prior_samples, 2)
 
-    plt.plot(ts, prior_samples.T, c='black', alpha=0.05)
-    plt.ylim(-3, 3)
-    plt.show()
+    plot = False
+    if plot:
+        plt.plot(ts, prior_samples.T, c='black', alpha=0.05)
+        plt.ylim(-3, 3)
+        plt.show()
 
-    plt.plot(ts, one_iter_samples.T, c='black', alpha=0.05)
-    plt.ylim(-3, 3)
-    plt.show()
+        plt.plot(ts, gibbs_samples.T, c='black', alpha=0.05)
+        plt.ylim(-3, 3)
+        plt.show()
 
-    npt.assert_allclose(jnp.mean(one_iter_samples, axis=0), np.zeros_like(ts), atol=1e-1)
-    npt.assert_allclose(jnp.cov(one_iter_samples, rowvar=False), gp_cov(ts, ts), atol=1e-2)
-
-    # Gibbs loop
-    # key = jax.random.PRNGKey(666)
-    # gibbs_xss = np.zeros((niters, nsteps + 1))
-    # accepted_samples = np.zeros((niters, nsteps + 1), dtype=bool)
-    # key, subkey = jax.random.split(key)
-    # xs = jnp.linalg.cholesky(gp_cov(ts, ts)) @ jax.random.normal(subkey, (nsteps + 1,))
-    # bs = jnp.zeros_like(xs, dtype='int64')
-    # for i in range(niters):
-    #     key, subkey = jax.random.split(key)
-    #     ys = sampler_ys_cond_xs(xs, subkey)
-    #     key, subkey = jax.random.split(key)
-    #     xs, bs_next = sampler_xs_cond_ys(ys, subkey, xs, bs)
-    #     gibbs_xss[i] = xs
-    #     accepted_samples[i] = bs_next != bs
-    #     bs = bs_next
-
-    # print(accepted_samples.mean(0))
-    #
-    # plt.plot(ts, gibbs_xss.T, c='black', alpha=0.05)
-    # plt.ylim(-3, 3)
-    # plt.show()
-    #
-    # plt.ylim(-3, 3)
-    # plt.show()
-    #
-    # npt.assert_allclose(jnp.mean(gibbs_xss, axis=0), np.zeros_like(ts), atol=1e-1)
-    # npt.assert_allclose(jnp.cov(gibbs_xss, rowvar=False), gp_cov(ts, ts), atol=1e-2)
-    #
-    # print(jnp.mean(gibbs_xss, axis=0))
-    # print(jnp.cov(gibbs_xss, rowvar=False))
-    # print(gp_cov(ts, ts))
+    npt.assert_allclose(jnp.mean(gibbs_samples, axis=0), np.zeros_like(ts), atol=1e-1)
+    npt.assert_allclose(jnp.cov(gibbs_samples, rowvar=False), gp_cov(ts, ts), atol=1e-1)
