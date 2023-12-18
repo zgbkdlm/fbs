@@ -204,7 +204,7 @@ def pmcmc_kernel(key: JKey,
     prop_uT = prop_uTs[which_u]
     prop_xT = u0s[which_u]
 
-    log_a1 = ref_logpdf(xT) - ref_logpdf(prop_xT)
+    log_a1 = ref_logpdf(prop_xT) - ref_logpdf(xT)
     log_a2 = prop_log_ell - log_ell
 
     log_acc_prob = jnp.minimum(0., log_a1 + log_a2)
