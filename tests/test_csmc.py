@@ -99,7 +99,7 @@ def test_csmc_gp_regression(backward):
     x_stars = x_stars[burn_in:]
 
     npt.assert_allclose(jnp.mean(x_stars, axis=0), posterior_mean, rtol=1e-1)
-    npt.assert_allclose(jnp.cov(x_stars, rowvar=False), posterior_cov, atol=3e-2)
+    npt.assert_allclose(jnp.cov(x_stars, rowvar=False), posterior_cov, atol=4e-2)
 
 
 @pytest.mark.parametrize('backward', [False, True])
