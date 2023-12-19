@@ -19,7 +19,7 @@ burn_in = 100
 jax.config.update("jax_enable_x64", True)
 key = jax.random.PRNGKey(666)
 
-T = 5
+T = 3
 nsteps = 200
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
@@ -29,13 +29,13 @@ m0 = jnp.array([1., -1.])
 cov0 = jnp.array([[2., 0.5],
                   [0.5, 1.2]])
 
-y0 = 5
+y0 = 5.
 true_cond_m = m0[0] + cov0[0, 1] / cov0[1, 1] * (y0 - m0[1])
 true_cond_var = cov0[0, 0] - cov0[0, 1] ** 2 / cov0[1, 1]
 
 A = -0.5 * jnp.eye(2)
-B = jnp.array([[0.1, 0.],
-               [0., 1.]])
+B = jnp.array([[1., 0.],
+               [0., 0.1]])
 gamma = B @ B.T
 
 
@@ -133,6 +133,10 @@ def likelihood_logpdf(v, u_prev, v_prev, t_prev):
 
 def init_sampler(key_, nsamples_, _):
     return (m_ref[0] + jnp.sqrt(cov_ref[0, 0]) * jax.random.normal(key_)) * jnp.ones((nsamples_,))
+
+
+# def init_sampler(key_, nsamples_, _):
+#     return m_ref[0] + jnp.sqrt(cov_ref[0, 0]) * jax.random.normal(key_, (nsamples_, ))
 
 
 def ref_logpdf(x):

@@ -177,7 +177,6 @@ def pmcmc_kernel(key: JKey,
     resampling
     nparticles
     which_u : int, default=0
-        Select the `which_u`-th particle as the sample uT.
 
     Returns
     -------
