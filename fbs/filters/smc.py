@@ -1,8 +1,9 @@
 import math
 import jax
 import jax.numpy as jnp
+from fbs.filters.common import MCMCState
 from fbs.typings import JArray, JFloat, JKey, FloatScalar
-from typing import Callable, Tuple
+from typing import Callable, Tuple, Optional
 
 
 def bootstrap_filter(transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
@@ -93,7 +94,7 @@ def pmcmc_step(key: JKey,
                transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
                likelihood_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
                resampling: Callable,
-               nsamples: int) -> Tuple[JArray, JFloat]:
+               nparticles: int) -> Tuple[JArray, JFloat]:
     """Particle MCMC sampling of p(x | y) for separable forward process.
 
     Parameters
@@ -105,7 +106,7 @@ def pmcmc_step(key: JKey,
     transition_sampler
     likelihood_logpdf
     resampling
-    nsamples
+    nparticles
 
     Returns
     -------
@@ -122,7 +123,7 @@ def pmcmc_step(key: JKey,
 
         log_ws = likelihood_logpdf(v, us, v_prev, t_prev)
         _c = jax.scipy.special.logsumexp(log_ws)
-        log_ell = log_ell - math.log(nsamples) + _c
+        log_ell = log_ell - math.log(nparticles) + _c
         log_ws = log_ws - _c
 
         us = us[resampling(jnp.exp(log_ws), key_resampling), ...]
@@ -141,13 +142,13 @@ def pmcmc_kernel(key: JKey,
                  ts: JArray,
                  y0: JArray,
                  fwd_ys_sampler: Callable[[JKey, JArray, JArray], JArray],
-                 ref_sampler: Callable[[JKey, int], JArray],
+                 ref_sampler: Callable[[JKey, int, Optional[JArray]], JArray],
                  ref_logpdf: Callable[[JArray], JArray],
                  transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
                  likelihood_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
                  resampling: Callable,
-                 nsamples: int,
-                 which_u: int = 0) -> Tuple[JArray, JFloat, JArray]:
+                 nparticles: int,
+                 which_u: int = 0) -> Tuple[JArray, JFloat, JArray, JArray, MCMCState]:
     r"""A particle MCMC kernel for variables (uT, log_ell, yT, xT) targeting at p(uT | vT = y0)
 
     Parameters
@@ -168,13 +169,13 @@ def pmcmc_kernel(key: JKey,
     fwd_ys_sampler : JKey, (dv, ), (K + 1, ) -> (K + 1, dv)
         A sampler for the forward process :math:`y_0, y_1, \ldots, y_K`.
     ref_sampler : JKey, int -> (n, du)
-        Sampling the reference distribution for xT (or u0).
+        Sampling the reference distribution for xT (or u0). This should return a Dirac.
     ref_logpdf : JArray (du, ) -> JFloat
         The log PDF of the reference measure.
     transition_sampler
     likelihood_logpdf
     resampling
-    nsamples
+    nparticles
     which_u : int, default=0
         Select the `which_u`-th particle as the sample uT.
 
@@ -193,23 +194,25 @@ def pmcmc_kernel(key: JKey,
     vs = ys[::-1]
     prop_yT = ys[-1]
 
-    u0s = ref_sampler(key_u0, nsamples)
+    u0s = ref_sampler(key_u0, nparticles, prop_yT)
     prop_uTs, prop_log_ell = pmcmc_step(key_pmcmc,
                                         vs, ts,
                                         u0s,
                                         transition_sampler,
                                         likelihood_logpdf,
                                         resampling,
-                                        nsamples)
+                                        nparticles)
     prop_uT = prop_uTs[which_u]
     prop_xT = u0s[which_u]
 
-    log_a1 = ref_logpdf(prop_xT) - ref_logpdf(xT)
-    log_a2 = prop_log_ell - log_ell
-
-    log_acc_prob = jnp.minimum(0., log_a1 + log_a2)
-
+    log_acc_prob = jnp.minimum(0.,
+                               ref_logpdf(prop_xT) - ref_logpdf(xT)
+                               + prop_log_ell - log_ell)
     z = jax.random.uniform(key_mh)
-    return jax.lax.cond(jnp.log(z) < log_acc_prob,
-                        lambda _: (prop_uT, prop_log_ell, prop_yT, prop_xT),
-                        lambda _: (uT, log_ell, yT, xT))
+    acc_flag = jnp.log(z) < log_acc_prob
+
+    mcmc_state = MCMCState(acceptance_prob=jnp.exp(log_acc_prob), is_accepted=acc_flag)
+    return jax.lax.cond(acc_flag,
+                        lambda _: (prop_uT, prop_log_ell, prop_yT, prop_xT, mcmc_state),
+                        lambda _: (uT, log_ell, yT, xT, mcmc_state),
+                        None)

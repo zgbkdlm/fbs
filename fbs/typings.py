@@ -9,6 +9,7 @@ from typing import Union
 JArray = jax.Array
 JInt = jax.Array
 JFloat = jax.Array
+JBool = jax.Array
 JKey = jax.Array
 
 # Arrays
@@ -18,3 +19,4 @@ Array = Union[JArray, np.ndarray]
 # The syntax float | DeviceFloat is not supported before Python 3.10
 FloatScalar = Union[float, JFloat]
 IntScalar = Union[int, JFloat]
+BoolScalar = Union[bool, JBool]
