@@ -143,7 +143,7 @@ def pmcmc_kernel(key: JKey,
                  y0: JArray,
                  fwd_ys_sampler: Callable[[JKey, JArray, JArray], JArray],
                  ref_sampler: Callable[[JKey, int, Optional[JArray]], JArray],
-                 ref_logpdf: Callable[[JArray], JArray],
+                 ref_logpdf: Callable[[JArray, Optional[JArray]], JArray],
                  transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
                  likelihood_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
                  resampling: Callable,
@@ -172,11 +172,18 @@ def pmcmc_kernel(key: JKey,
         Sampling the reference distribution for xT (or u0). This should return a Dirac.
     ref_logpdf : JArray (du, ) -> JFloat
         The log PDF of the reference measure.
-    transition_sampler
-    likelihood_logpdf
-    resampling
-    nparticles
+    transition_sampler : (n, du), (dv, ), float, key -> (n, du)
+        Draw n new samples conditioned on the previous samples and :math:`v_{k-1}`.
+    likelihood_logpdf : (dv, ), (n, du), (dv, ), float -> (n, )
+        The measurement conditional PDF :math:`p(v_k | u_{k-1}, v_{k-1})`.
+        The first function argument is for v. The second argument is for u, which accepts an array of samples
+        and output an array of evaluations. The third argument is for v_{k-1}. The fourth argument is for the time.
+    resampling : (n, ), key -> (n, )
+        Resample method.
+    nparticles : int
+        The number of particles.
     which_u : int, default=0
+        Which particle to choose.
 
     Returns
     -------
@@ -205,7 +212,7 @@ def pmcmc_kernel(key: JKey,
     prop_xT = u0s[which_u]
 
     log_acc_prob = jnp.minimum(0.,
-                               ref_logpdf(prop_xT) - ref_logpdf(xT)
+                               ref_logpdf(prop_xT, prop_yT) - ref_logpdf(xT, prop_yT)
                                + prop_log_ell - log_ell)
     z = jax.random.uniform(key_mh)
     acc_flag = jnp.log(z) < log_acc_prob
