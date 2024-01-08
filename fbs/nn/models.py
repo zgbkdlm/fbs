@@ -6,7 +6,7 @@ from fbs.nn import sinusoidal_embedding, make_st_nn
 nn_param_init = nn.initializers.xavier_normal()
 
 
-def make_simple_st_nn(key, dim_x, batch_size,
+def make_simple_st_nn(key, dim_x, batch_size, mlp: nn.Module = None,
                       embed_dim: int = 128):
     """Make a simple spatio-temporal neural network with sinusoidal embedding.
 
@@ -15,7 +15,7 @@ def make_simple_st_nn(key, dim_x, batch_size,
 
     """
 
-    class MLP(nn.Module):
+    class ClassicMLP(nn.Module):
         @nn.compact
         def __call__(self, x, t):
             d = x.shape[-1]
@@ -40,7 +40,8 @@ def make_simple_st_nn(key, dim_x, batch_size,
 
             return jnp.squeeze(z)
 
-    mlp = MLP()
+    if mlp is None:
+        mlp = ClassicMLP()
     dict_param = mlp.init(key, jnp.ones((batch_size, dim_x)), jnp.ones((batch_size, 1)))
     array_param, array_to_dict, forward_pass = make_st_nn(mlp, dim_x, batch_size, key)
     return mlp, dict_param, array_param, array_to_dict, forward_pass

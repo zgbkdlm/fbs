@@ -7,8 +7,8 @@ import math
 import matplotlib.pyplot as plt
 import numpy as np
 from fbs.utils import discretise_lti_sde
-from fbs.filters.csmc.csmc import csmc, csmc_kernel
-from fbs.filters.csmc.resamplings import killing, multinomial
+from fbs.filters.csmc.csmc import csmc_kernel
+from fbs.filters.csmc.resamplings import killing
 from functools import partial
 
 # General configs
@@ -59,7 +59,7 @@ def simulate_forward(xy0, key_):
 
     F_, Q_ = discretise_lti_sde(A, gamma, dt)
     chol = jnp.linalg.cholesky(Q_)
-    dws = jnp.sqrt(dt) * jax.random.normal(key_, (nsteps, 2))
+    dws = jax.random.normal(key_, (nsteps, 2))
     return jnp.concatenate([xy0[None, :], jax.lax.scan(scan_body, xy0, dws)[1]], axis=0)
 
 
