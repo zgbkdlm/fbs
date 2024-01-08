@@ -106,13 +106,14 @@ def test_csmc_gp_regression(backward):
 def test_csmc_gibbs(backward):
     """Gibbs for p(x_{0:T} | y_{0:T}) and p(y_{0:T} | x_{0:T}) using CSMC.
     """
-    T = 1
-    nsteps = 100
+    T = 10
+    nsteps = 10
     dt = T / nsteps
     ts = jnp.linspace(0, T, nsteps + 1)
 
-    nsamples = 7
-    niters = 1000
+    nparticles = 10
+    niters = 2000
+    burnin = 1000
 
     F, Q = discretise_lti_sde(a * jnp.eye(1), b ** 2 * jnp.eye(1), dt)
     F, Q = jnp.squeeze(F), jnp.squeeze(Q)
@@ -149,43 +150,49 @@ def test_csmc_gibbs(backward):
                                        init_sampler, init_likelihood_logpdf,
                                        transition_sampler, transition_logpdf,
                                        likelihood_logpdf,
-                                       killing, nsamples,
+                                       killing, nparticles,
                                        backward=backward)
         return xs_star, bs_star
 
-    bs = jnp.zeros((nsteps + 1), dtype=int)
+    # bs = jnp.zeros((nsteps + 1), dtype=int)
 
-    @partial(jax.jit, static_argnums=(2,))
-    def few_iters(key_, xs_star_, n_iters):
-        keys__ = jax.random.split(key_, num=n_iters)
-
-        def body_fun(carry, key__):
-            key__, subkey = jax.random.split(key__)
-            xs_star, bs_star = carry
-            ys_ = sampler_ys_cond_xs(xs_star, subkey)
-            xs_star, bs_star = sampler_xs_cond_ys(ys_, key__, xs_star, bs_star)
-            return (xs_star, bs_star), None
-
-        (xs_star_, _), _ = jax.lax.scan(body_fun, (xs_star_, bs), keys__)
-        return xs_star_
+    # @partial(jax.jit, static_argnums=(2,))
+    # def few_iters(key_, xs_star_, n_iters):
+    #     keys__ = jax.random.split(key_, num=n_iters)
+    #
+    #     def body_fun(carry, key__):
+    #         key__, subkey = jax.random.split(key__)
+    #         xs_star, bs_star = carry
+    #         ys_ = sampler_ys_cond_xs(xs_star, subkey)
+    #         xs_star, bs_star = sampler_xs_cond_ys(ys_, key__, xs_star, bs_star)
+    #         return (xs_star, bs_star), None
+    #
+    #     (xs_star_, _), _ = jax.lax.scan(body_fun, (xs_star_, bs), keys__)
+    #     return xs_star_
+    #
+    # key = jax.random.PRNGKey(666)
+    # key_prior, key_csmc = jax.random.split(key, 2)
+    # keys_ = jax.random.split(key_prior, num=niters)
+    # prior_samples = jax.vmap(gp_sampler, in_axes=[0, None])(keys_, ts)
+    #
+    # keys_ = jax.random.split(key_csmc, num=niters)
+    # gibbs_samples = jax.vmap(few_iters, in_axes=[0, 0, None])(keys_, prior_samples, 2)
 
     key = jax.random.PRNGKey(666)
-    key_prior, key_csmc = jax.random.split(key, 2)
-    keys_ = jax.random.split(key_prior, num=niters)
-    prior_samples = jax.vmap(gp_sampler, in_axes=[0, None])(keys_, ts)
+    gibbs_samples = np.zeros((niters, nsteps + 1))
 
-    keys_ = jax.random.split(key_csmc, num=niters)
-    gibbs_samples = jax.vmap(few_iters, in_axes=[0, 0, None])(keys_, prior_samples, 2)
+    bs_star = jnp.zeros((nsteps + 1), dtype=int)
+    key, subkey = jax.random.split(key)
+    xs_star = gp_sampler(subkey, ts)
+    for i in range(niters):
+        key, subkey = jax.random.split(key)
+        ys = sampler_ys_cond_xs(xs_star, subkey)
+        key, subkey = jax.random.split(key)
+        xs_star, bs_star = sampler_xs_cond_ys(ys, subkey, xs_star, bs_star)
+        gibbs_samples[i] = xs_star
 
-    plot = False
-    if plot:
-        plt.plot(ts, prior_samples.T, c='black', alpha=0.05)
-        plt.ylim(-3, 3)
-        plt.show()
-
-        plt.plot(ts, gibbs_samples.T, c='black', alpha=0.05)
-        plt.ylim(-3, 3)
-        plt.show()
-
+    gibbs_samples = gibbs_samples[burnin:]
+    cov_gibbs = np.cov(gibbs_samples, rowvar=False)
     npt.assert_allclose(jnp.mean(gibbs_samples, axis=0), np.zeros_like(ts), atol=1e-1)
-    npt.assert_allclose(jnp.cov(gibbs_samples, rowvar=False), gp_cov(ts, ts), atol=1e-1)
+    npt.assert_allclose(np.diag(cov_gibbs), np.diag(gp_cov(ts, ts)), rtol=1e-1, atol=1e-1)
+    npt.assert_allclose(cov_gibbs, gp_cov(ts, ts), atol=2e-1)

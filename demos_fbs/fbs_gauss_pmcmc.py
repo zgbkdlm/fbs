@@ -13,13 +13,13 @@ from fbs.filters import stratified
 from functools import partial
 
 # General configs
-nparticles = 100
+nparticles = 10
 nsamples = 1000
 burn_in = 100
 jax.config.update("jax_enable_x64", True)
 key = jax.random.PRNGKey(666)
 
-T = 3
+T = 1
 nsteps = 1000
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
@@ -34,8 +34,8 @@ true_cond_m = m0[0] + cov0[0, 1] / cov0[1, 1] * (y0 - m0[1])
 true_cond_var = cov0[0, 0] - cov0[0, 1] ** 2 / cov0[1, 1]
 
 A = -0.5 * jnp.eye(2)
-B = jnp.array([[2., 0.],
-               [0., 0.1]])
+B = jnp.array([[1., 0.],
+               [0., 1.]])
 gamma = B @ B.T
 
 
@@ -119,10 +119,10 @@ def likelihood_logpdf(v, u_prev, v_prev, t_prev):
     return jax.scipy.stats.norm.logpdf(v, cond_m, math.sqrt(dt) * B[1, 1])
 
 
-# def init_sampler(key_, nsamples_, v0):
-#     cond_m = m_ref[0] + cov_ref[0, 1] / cov_ref[1, 1] * (v0 - m_ref[1])
-#     cond_var = cov_ref[0, 0] - cov_ref[0, 1] ** 2 / cov_ref[1, 1]
-#     return (cond_m + jnp.sqrt(cond_var) * jax.random.normal(key_)) * jnp.ones((nsamples_,))
+def init_sampler(key_, nsamples_, v0):
+    cond_m = m_ref[0] + cov_ref[0, 1] / cov_ref[1, 1] * (v0 - m_ref[1])
+    cond_var = cov_ref[0, 0] - cov_ref[0, 1] ** 2 / cov_ref[1, 1]
+    return (cond_m + jnp.sqrt(cond_var) * jax.random.normal(key_)) * jnp.ones((nsamples_,))
 #
 #
 # def ref_logpdf(x, v0):
@@ -131,8 +131,8 @@ def likelihood_logpdf(v, u_prev, v_prev, t_prev):
 #     return jax.scipy.stats.norm.logpdf(x, cond_m, jnp.sqrt(cond_var))
 
 
-def init_sampler(key_, nsamples_, _):
-    return (m_ref[0] + jnp.sqrt(cov_ref[0, 0]) * jax.random.normal(key_)) * jnp.ones((nsamples_,))
+# def init_sampler(key_, nsamples_, _):
+#     return (m_ref[0] + jnp.sqrt(cov_ref[0, 0]) * jax.random.normal(key_)) * jnp.ones((nsamples_,))
 
 
 # def init_sampler(key_, nsamples_, _):
