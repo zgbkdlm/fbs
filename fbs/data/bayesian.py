@@ -12,7 +12,7 @@ class Crescent(DataSet):
     Y | X ~ N(X_1 / \psi + 0.5 \, (X_0 ** 2 + \psi_0 ** 2), 1.)
     """
 
-    def __init__(self, n: int, psi: float = 1.):
+    def __init__(self, n: int = 10, psi: float = 1.):
         self.n = n
         self.psi = psi
         self.m = jnp.array([0., 0.])
@@ -20,7 +20,7 @@ class Crescent(DataSet):
                               [0., 1.]])
         self.cov_is_diag = True
 
-    def generate(self, key: JKey, batch_size: int) -> Tuple[JArray, JArray]:
+    def sampler(self, key: JKey, batch_size: int) -> Tuple[JArray, JArray]:
         key, subkey = jax.random.split(key)
         xs = self.m + jax.random.normal(subkey, (batch_size, 2)) @ jnp.linalg.cholesky(self.cov)
 
