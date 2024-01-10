@@ -29,6 +29,8 @@ class DataSet(metaclass=ABCMeta):
 
     @staticmethod
     def standardise(array: Array) -> JArray:
+        """Standardise for array of shape (n, d).
+        """
         return (array - jnp.mean(array, axis=0)) / jnp.std(array, axis=0)
 
     def draw_subset(self, key: JKey, batch_size: int) -> Tuple[JArray, JArray]:
@@ -51,5 +53,5 @@ class DataSet(metaclass=ABCMeta):
         inds = self.rnd_inds[i]
         return self.reshape(self.xs[inds, :]), self.reshape(self.ys[inds, :])
 
-    def sampler(self, key: JKey, batch_size: int) -> Tuple[JArray, JArray]:
+    def sampler(self, key: JKey) -> Tuple[JArray, JArray]:
         raise NotImplementedError('Not implemented.')

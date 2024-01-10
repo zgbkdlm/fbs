@@ -25,10 +25,10 @@ nsamples = 1000
 burn_in = 100
 jax.config.update("jax_enable_x64", True)
 key = jax.random.PRNGKey(666)
-y0 = 7.
-use_pretrained = False
+y0 = 0.
+use_pretrained = True
 
-T = 2
+T = 3
 nsteps = 100
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
@@ -83,13 +83,13 @@ def simulate_forward(key_, ts_):
 key, subkey = jax.random.split(key)
 keys = jax.random.split(subkey, num=nsamples)
 fwd_trajs = jax.vmap(simulate_forward, in_axes=[0, None])(keys, ts)
-plt.scatter(fwd_trajs[:, -1, 0], fwd_trajs[:, -1, 1], s=1, alpha=0.5)
+plt.scatter(fwd_trajs[:, -1, 0], fwd_trajs[:, -1, 2], s=1, alpha=0.5)
 plt.show()
 
 # Score matching training
 batch_nsamples = 200
 batch_nsteps = 100
-ntrains = 2000
+ntrains = 1000
 nn_param_init = nn.initializers.xavier_normal()
 
 

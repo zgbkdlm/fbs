@@ -4,7 +4,52 @@ import flax.linen as nn
 from fbs.nn import sinusoidal_embedding, make_st_nn
 
 nn_param_init = nn.initializers.xavier_normal()
+nn_param_dtype = jnp.float64
 
+
+class MNISTAutoEncoder(nn.Module):
+    @nn.compact
+    def __call__(self, xy, t):
+        xy = nn.Dense(features=128, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(xy)
+        xy = nn.relu(xy)
+        xy = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(xy)
+
+        t = sinusoidal_embedding(t, out_dim=128)
+        t = nn.Dense(features=64, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
+        t = nn.relu(t)
+        t = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
+
+        z = jnp.concatenate([xy, t], axis=-1)
+        z = nn.Dense(features=128, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(z)
+        z = nn.relu(z)
+        z = nn.Dense(features=256, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(z)
+        z = nn.relu(z)
+        z = nn.Dense(features=784 * 2, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(z)
+        return jnp.squeeze(z)
+
+
+class MNISTConv(nn.Module):
+    @nn.compact
+    def __call__(self, xy, t):
+        xy = xy.reshape(-1, 28, 28, 2)  # TODO
+        xy = nn.Conv(features=32, kernel_size=(3, 3))(xy)
+        xy = nn.relu(xy)
+        xy = nn.avg_pool(xy, window_shape=(2, 2), strides=(2, 2))  # (batch_size, 14, 14, 32)
+        xy = nn.Conv(features=64, kernel_size=(3, 3))(xy)
+        xy = nn.relu(xy)
+        xy = nn.avg_pool(xy, window_shape=(2, 2), strides=(2, 2))
+        xy = xy.reshape((xy.shape[0], -1))
+        xy = nn.Dense(features=256)(xy)
+        xy = nn.relu(xy)
+        xy = nn.Dense(features=128)(xy)
+
+        t = sinusoidal_embedding(t, out_dim=128)
+        t = nn.Dense(features=64, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
+        t = nn.relu(t)
+        t = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
+
+        z = nn.Dense(features=784 * 2, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(z)
+        return jnp.squeeze(z)
 
 def make_simple_st_nn(key, dim_x, batch_size, mlp: nn.Module = None,
                       embed_dim: int = 128):
@@ -21,23 +66,22 @@ def make_simple_st_nn(key, dim_x, batch_size, mlp: nn.Module = None,
             d = x.shape[-1]
 
             # Spatial part
-            x = nn.Dense(features=16, param_dtype=jnp.float64, kernel_init=nn_param_init)(x)
+            x = nn.Dense(features=16, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
             x = nn.relu(x)
-            x = nn.Dense(features=8, param_dtype=jnp.float64, kernel_init=nn_param_init)(x)
+            x = nn.Dense(features=8, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
 
             # Temporal part
             t = sinusoidal_embedding(t, out_dim=embed_dim)
-            t = nn.Dense(features=16, param_dtype=jnp.float64, kernel_init=nn_param_init)(t)
+            t = nn.Dense(features=16, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
             t = nn.relu(t)
-            t = nn.Dense(features=8, param_dtype=jnp.float64, kernel_init=nn_param_init)(t)
+            t = nn.Dense(features=8, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
 
             z = jnp.concatenate([x, t], axis=-1)
-            z = nn.Dense(features=32, param_dtype=jnp.float64, kernel_init=nn_param_init)(z)
+            z = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(z)
             z = nn.relu(z)
-            z = nn.Dense(features=8, param_dtype=jnp.float64, kernel_init=nn_param_init)(z)
+            z = nn.Dense(features=8, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(z)
             z = nn.relu(z)
-            z = nn.Dense(features=d, param_dtype=jnp.float64, kernel_init=nn_param_init)(z)
-
+            z = nn.Dense(features=d, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(z)
             return jnp.squeeze(z)
 
     if mlp is None:
