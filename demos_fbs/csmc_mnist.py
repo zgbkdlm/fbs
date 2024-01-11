@@ -20,7 +20,7 @@ parser = argparse.ArgumentParser(description='MNIST restoration.')
 parser.add_argument('--train', action='store_true', help='Whether train or not.')
 parser.add_argument('--nn', type=str, help='What NN structure to use.')
 args = parser.parse_args()
-use_pretrained = args.train
+use_pretrained = ~args.train
 
 # General configs
 nparticles = 100
@@ -50,12 +50,13 @@ key, subkey = jax.random.split(key)
 keys = jax.random.split(subkey, 4)
 xys = jax.vmap(sampler_xy, in_axes=[0])(keys)
 
-fig, axes = plt.subplots(nrows=2, ncols=4)
-for col in range(4):
-    axes[0, col].imshow(xys[col, :784].reshape(28, 28), cmap='gray')
-    axes[1, col].imshow(xys[col, 784:].reshape(28, 28), cmap='gray')
-plt.tight_layout(pad=0.1)
-plt.show()
+if ~use_pretrained:
+    fig, axes = plt.subplots(nrows=2, ncols=4)
+    for col in range(4):
+        axes[0, col].imshow(xys[col, :784].reshape(28, 28), cmap='gray')
+        axes[1, col].imshow(xys[col, 784:].reshape(28, 28), cmap='gray')
+    plt.tight_layout(pad=0.1)
+    plt.show()
 
 # Define the forward noising process which are independent OU processes
 a = -0.5
