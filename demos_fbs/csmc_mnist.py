@@ -101,7 +101,7 @@ def simulate_forward(key_, ts_):
 # Score matching
 train_nsamples = 500
 train_nsteps = 100
-nepochs = 20
+nepochs = 50
 data_size = dataset.n
 
 if args.nn == 'conv':
@@ -141,8 +141,8 @@ def optax_kernel(param_, opt_state_, key_, xy0s_):
     return param_, opt_state_, loss_
 
 
-schedule = optax.cosine_decay_schedule(1e-3, 20, .95)
-# schedule = optax.constant_schedule(1e-3)
+schedule = optax.cosine_decay_schedule(1e-4, 20, .95)
+# schedule = optax.constant_schedule(1e-4)
 optimiser = optax.adam(learning_rate=schedule)
 param = array_param
 opt_state = optimiser.init(param)
@@ -220,15 +220,15 @@ def transition_sampler(us, v, t, key_):
 
 @partial(jax.vmap, in_axes=[None, 0, None, None])
 def transition_logpdf(u, u_prev, v, t):
-    return jax.scipy.stats.multivariate_normal.logpdf(u,
-                                                      u_prev + reverse_drift_u(u_prev, v, t) * dt,
-                                                      math.sqrt(dt) * b)
+    return jnp.sum(jax.scipy.stats.norm.logpdf(u,
+                                               u_prev + reverse_drift_u(u_prev, v, t) * dt,
+                                               math.sqrt(dt) * b))
 
 
 @partial(jax.vmap, in_axes=[None, 0, None, None])
 def likelihood_logpdf(v, u_prev, v_prev, t_prev):
     cond_m = v_prev + reverse_drift_v(v_prev, u_prev, t_prev) * dt
-    return jax.scipy.stats.norm.logpdf(v, cond_m, math.sqrt(dt) * b)
+    return jnp.sum(jax.scipy.stats.norm.logpdf(v, cond_m, math.sqrt(dt) * b))
 
 
 def fwd_sampler(key_, x0):

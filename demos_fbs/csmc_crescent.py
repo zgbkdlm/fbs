@@ -237,7 +237,7 @@ def transition_sampler(us, v, t, key_):
 def transition_logpdf(u, u_prev, v, t):
     return jax.scipy.stats.multivariate_normal.logpdf(u,
                                                       u_prev + reverse_drift_u(u_prev, v, t) * dt,
-                                                      math.sqrt(dt) * B[:2, :2])
+                                                      dt * B[:2, :2] ** 2)
 
 
 @partial(jax.vmap, in_axes=[None, 0, None, None])
