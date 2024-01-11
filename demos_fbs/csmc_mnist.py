@@ -154,7 +154,7 @@ param = array_param
 opt_state = optimiser.init(param)
 
 if use_pretrained:
-    param = np.load('./mnist.npy')
+    param = np.load(f'./mnist_{args.nn}.npy')
 else:
     for i in range(nepochs):
         data_key, subkey = jax.random.split(data_key)
@@ -165,7 +165,7 @@ else:
             xy0s = jnp.concatenate([x0s, y0s], axis=-1)
             param, opt_state, loss = optax_kernel(param, opt_state, subkey2, xy0s)
             print(f'Epoch: {i} / {nepochs}, iter: {j} / {data_size // train_nsamples}, loss: {loss}')
-    np.save('./mnist.npy', param)
+    np.save(f'./mnist_{args.nn}.npy', param)
 
 
 # Verify if the score function is learnt properly
