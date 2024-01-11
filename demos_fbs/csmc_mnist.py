@@ -8,7 +8,6 @@ import math
 import matplotlib.pyplot as plt
 import numpy as np
 import optax
-import flax.linen as nn
 from fbs.data import MNIST
 from fbs.nn.models import make_simple_st_nn, MNISTConv, MNISTAutoEncoder
 from fbs.filters.csmc.csmc import csmc_kernel
@@ -18,7 +17,7 @@ from functools import partial
 # Parse arguments
 parser = argparse.ArgumentParser(description='MNIST restoration.')
 parser.add_argument('--train', action='store_true', default=False, help='Whether train or not.')
-parser.add_argument('--nn', type=str, help='What NN structure to use.')
+parser.add_argument('--nn', type=str, default='mlp', help='What NN structure to use.')
 args = parser.parse_args()
 train = args.train
 
@@ -29,7 +28,7 @@ nparticles = 100
 nsamples = 1000
 burn_in = 100
 jax.config.update("jax_enable_x64", True)
-key = jax.random.PRNGKey(666)
+key = jax.random.PRNGKey(999)
 key, data_key = jax.random.split(key)
 
 T = 2
@@ -99,19 +98,11 @@ def simulate_forward(key_, ts_):
     return simulate_cond_forward(jax.random.split(key_)[1], xy0, ts_)
 
 
-# Visualise the terminal distribution
-# key, subkey = jax.random.split(key)
-# keys = jax.random.split(subkey, num=nsamples)
-# fwd_trajs = jax.vmap(simulate_forward, in_axes=[0, None])(keys, ts)
-# plt.scatter(fwd_trajs[:, -1, 0], fwd_trajs[:, -1, 1], s=1, alpha=0.5)
-# plt.show()
-
 # Score matching
-train_nsamples = 100
+train_nsamples = 500
 train_nsteps = 100
-nepochs = 10
+nepochs = 20
 data_size = dataset.n
-nn_param_init = nn.initializers.xavier_normal()
 
 if args.nn == 'conv':
     mnist_nn = MNISTConv()
@@ -150,8 +141,8 @@ def optax_kernel(param_, opt_state_, key_, xy0s_):
     return param_, opt_state_, loss_
 
 
-# schedule = optax.cosine_decay_schedule(1e-4, 20, .95)
-schedule = optax.constant_schedule(1e-3)
+schedule = optax.cosine_decay_schedule(1e-3, 20, .95)
+# schedule = optax.constant_schedule(1e-3)
 optimiser = optax.adam(learning_rate=schedule)
 param = array_param
 opt_state = optimiser.init(param)
@@ -208,11 +199,13 @@ terminal_val = simulate_cond_forward(subkey, test_xy0, ts)[-1]
 key, subkey = jax.random.split(key)
 approx_init_sample = backward_euler(subkey, terminal_val)
 
-fig, axes = plt.subplots(nrows=2, ncols=2, sharey='row')
-axes[0, 0].imshow(test_xy0[:784].reshape(28, 28))
-axes[1, 0].imshow(test_xy0[784:].reshape(28, 28))
-axes[0, 1].imshow(approx_init_sample[:784].reshape(28, 28))
-axes[1, 1].imshow(approx_init_sample[784:].reshape(28, 28))
+fig, axes = plt.subplots(nrows=2, ncols=3, sharey='row')
+axes[0, 0].imshow(test_xy0[:784].reshape(28, 28), cmap='gray')
+axes[1, 0].imshow(test_xy0[784:].reshape(28, 28), cmap='gray')
+axes[0, 1].imshow(terminal_val[:784].reshape(28, 28), cmap='gray')
+axes[1, 1].imshow(terminal_val[784:].reshape(28, 28), cmap='gray')
+axes[0, 2].imshow(approx_init_sample[:784].reshape(28, 28), cmap='gray')
+axes[1, 2].imshow(approx_init_sample[784:].reshape(28, 28), cmap='gray')
 plt.tight_layout(pad=0.1)
 plt.show()
 
