@@ -16,7 +16,7 @@ class TestDatasetClass:
         key, _ = jax.random.split(key)
         dummyclass.init_enumeration(key, batch_size)
 
-        npt.assert_array_equal(jnp.sort(jnp.concatenate(dummyclass.rnd_inds)), jnp.arange(data_size))
+        npt.assert_array_equal(jnp.sort(jnp.concatenate(dummyclass.perm_inds)), jnp.arange(data_size))
 
         xss = []
         yss = []

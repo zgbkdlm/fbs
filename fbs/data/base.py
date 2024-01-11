@@ -16,7 +16,7 @@ class DataSet(metaclass=ABCMeta):
     n: int
     xs: Array
     ys: Array
-    rnd_inds: List
+    perm_inds: List[JArray]
 
     @staticmethod
     def reshape(x: Array) -> JArray:
@@ -37,20 +37,22 @@ class DataSet(metaclass=ABCMeta):
         inds = jax.random.choice(key, jnp.arange(self.n), (batch_size,), replace=False)
         return self.reshape(self.xs[inds, :]), self.reshape(self.ys[inds, :])
 
-    def init_enumeration(self, key: JKey, batch_size: int):
+    def init_enumeration(self, key: JKey, batch_size: int) -> List[JArray]:
         """Randomly split the data into `n / batch_size` chunks. If the divisor is not an integer, then use // which
         truncates the training data.
         """
         n_chunks = self.n // batch_size
-        self.rnd_inds = jnp.array_split(jax.random.choice(key,
-                                                          jnp.arange(batch_size * n_chunks), (batch_size * n_chunks,),
-                                                          replace=False),
-                                        n_chunks)
+        perm_inds = jnp.array_split(jax.random.choice(key,
+                                                      jnp.arange(batch_size * n_chunks), (batch_size * n_chunks,),
+                                                      replace=False),
+                                    n_chunks)
+        self.perm_inds = perm_inds
+        return perm_inds
 
-    def enumerate_subset(self, i: int) -> Tuple[JArray, JArray]:
+    def enumerate_subset(self, i: int, perm_inds=None, key=None) -> Tuple[JArray, JArray]:
         """Enumerate all the randomly split chunks of data for i = 0, 1, ...
         """
-        inds = self.rnd_inds[i]
+        inds = self.perm_inds[i]
         return self.reshape(self.xs[inds, :]), self.reshape(self.ys[inds, :])
 
     def sampler(self, key: JKey) -> Tuple[JArray, JArray]:

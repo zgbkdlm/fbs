@@ -25,7 +25,7 @@ nsamples = 1000
 burn_in = 100
 jax.config.update("jax_enable_x64", True)
 key = jax.random.PRNGKey(666)
-y0 = 0.
+y0 = 3.
 use_pretrained = True
 
 T = 3
@@ -39,6 +39,7 @@ crescent = Crescent()
 def sampler_xy(key_):
     x_, y_ = crescent.sampler(key_, 1)
     return jnp.hstack([x_[0], y_[0]])
+
 
 lines_ = jnp.linspace(-5, 5, 1000)
 mesh = jnp.dstack(jnp.meshgrid(lines_, lines_))
@@ -58,6 +59,11 @@ chol_gamma = jnp.linalg.cholesky(gamma)
 def cond_score_t_0(xy, t, xy0):
     F, Q = discretise_lti_sde(A, gamma, t)
     return jax.grad(jax.scipy.stats.multivariate_normal.logpdf)(xy, F @ xy0, Q)
+
+
+def score_scale(t):
+    variance = 1 ** 2 / (2 * -0.5) * (jnp.exp(2 * -0.5 * t) - 1)
+    return variance
 
 
 def simulate_cond_forward(key_, xy0, ts_):
@@ -118,16 +124,17 @@ class MLP(nn.Module):
 
 key, subkey = jax.random.split(key)
 _, _, array_param, _, nn_score = make_simple_st_nn(subkey,
-                                                   dim_x=3, batch_size=batch_nsamples,
+                                                   dim_in=3, batch_size=batch_nsamples,
                                                    mlp=MLP())
 
 
 def loss_fn(param_, key_):
     key_ts, key_fwd = jax.random.split(key_, num=2)
     batch_ts = jnp.hstack([0.,
-                           jnp.sort(jax.random.uniform(key_ts, (batch_nsteps - 2,), minval=0., maxval=T)),
+                           jnp.sort(jax.random.uniform(key_ts, (batch_nsteps - 1,), minval=0., maxval=T)),
                            T])
     # batch_ts = ts
+    batch_scale = score_scale(batch_ts[1:])
     fwd_paths = jax.vmap(simulate_forward, in_axes=[0, None])(jax.random.split(key_fwd, num=batch_nsamples),
                                                               batch_ts)
     nn_evals = jax.vmap(jax.vmap(nn_score,
@@ -139,7 +146,7 @@ def loss_fn(param_, key_):
     # cond_score_evals = jax.vmap(jax.vmap(cond_score_t_0,
     #                                      in_axes=[0, 0, 0]),
     #                             in_axes=[0, None, 0])(fwd_paths[:, 1:], jnp.diff(batch_ts), fwd_paths[:, :-1])
-    return jnp.mean(jnp.sum((nn_evals - cond_score_evals) ** 2, axis=-1))
+    return jnp.mean(jnp.sum((nn_evals - cond_score_evals) ** 2, axis=-1) * batch_scale[None, :])
 
 
 @jax.jit

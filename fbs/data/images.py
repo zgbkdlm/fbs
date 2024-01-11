@@ -1,9 +1,8 @@
-from typing import Tuple
-
 import jax
 import jax.numpy as jnp
 from .base import DataSet
 from fbs.typings import JKey, Array, JArray
+from typing import Tuple
 
 
 class MNIST(DataSet):
@@ -49,5 +48,17 @@ class MNIST(DataSet):
 
     def sampler(self, key: JKey) -> Tuple[JArray, JArray]:
         key_choice, key_corrupt = jax.random.split(key)
-        xs = jax.random.choice(key_choice, self.xs, replace=False)
-        return xs, self.corrupt(key_corrupt, xs)
+        x = self.xs[jax.random.choice(key_choice, self.n)]
+        y = self.corrupt(key_corrupt, x.reshape(28, 28)).reshape(784)
+        return x, y
+
+    def enumerate_subset(self, i: int, perm_inds=None, key=None) -> Tuple[JArray, JArray]:
+        if perm_inds is None:
+            perm_inds = self.perm_inds
+        inds = perm_inds[i]
+
+        xs = self.xs[inds, :]
+        keys = jax.random.split(key, num=inds.shape[0])
+        ys = jax.vmap(self.corrupt,
+                      in_axes=[0, 0])(keys, xs.reshape(inds.shape[0], 28, 28)).reshape(inds.shape[0], 784)
+        return xs, ys

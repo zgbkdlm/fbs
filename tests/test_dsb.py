@@ -106,9 +106,9 @@ def test_ipf_one_pass():
     train_ts = jnp.linspace(0, T, train_nsteps + 1)
 
     key, subkey = jax.random.split(key)
-    _, _, init_param_fwd, _, nn_fwd = make_simple_st_nn(subkey, dim_x=1, batch_size=nsamples_train, embed_dim=32)
+    _, _, init_param_fwd, _, nn_fwd = make_simple_st_nn(subkey, dim_in=1, batch_size=nsamples_train, embed_dim=32)
     key, subkey = jax.random.split(key)
-    _, _, init_param_bwd, _, nn_bwd = make_simple_st_nn(subkey, dim_x=1, batch_size=nsamples_train, embed_dim=32)
+    _, _, init_param_bwd, _, nn_bwd = make_simple_st_nn(subkey, dim_in=1, batch_size=nsamples_train, embed_dim=32)
 
     niters = 500
     schedule = optax.cosine_decay_schedule(1e-2, 10, .95)
