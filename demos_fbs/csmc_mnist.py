@@ -22,6 +22,8 @@ parser.add_argument('--nn', type=str, help='What NN structure to use.')
 args = parser.parse_args()
 train = args.train
 
+print(f'Run with {train} and {args.nn}')
+
 # General configs
 nparticles = 100
 nsamples = 1000
@@ -50,7 +52,7 @@ key, subkey = jax.random.split(key)
 keys = jax.random.split(subkey, 4)
 xys = jax.vmap(sampler_xy, in_axes=[0])(keys)
 
-if ~train:
+if not train:
     fig, axes = plt.subplots(nrows=2, ncols=4)
     for col in range(4):
         axes[0, col].imshow(xys[col, :784].reshape(28, 28), cmap='gray')
