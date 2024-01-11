@@ -17,10 +17,10 @@ from functools import partial
 
 # Parse arguments
 parser = argparse.ArgumentParser(description='MNIST restoration.')
-parser.add_argument('--train', action='store_true', help='Whether train or not.')
+parser.add_argument('--train', action='store_true', default=False, help='Whether train or not.')
 parser.add_argument('--nn', type=str, help='What NN structure to use.')
 args = parser.parse_args()
-use_pretrained = ~args.train
+train = args.train
 
 # General configs
 nparticles = 100
@@ -50,7 +50,7 @@ key, subkey = jax.random.split(key)
 keys = jax.random.split(subkey, 4)
 xys = jax.vmap(sampler_xy, in_axes=[0])(keys)
 
-if ~use_pretrained:
+if ~train:
     fig, axes = plt.subplots(nrows=2, ncols=4)
     for col in range(4):
         axes[0, col].imshow(xys[col, :784].reshape(28, 28), cmap='gray')
@@ -154,9 +154,7 @@ optimiser = optax.adam(learning_rate=schedule)
 param = array_param
 opt_state = optimiser.init(param)
 
-if use_pretrained:
-    param = np.load(f'./mnist_{args.nn}.npy')
-else:
+if train:
     for i in range(nepochs):
         data_key, subkey = jax.random.split(data_key)
         perm_inds = dataset.init_enumeration(subkey, train_nsamples)
@@ -167,6 +165,9 @@ else:
             param, opt_state, loss = optax_kernel(param, opt_state, subkey2, xy0s)
             print(f'Epoch: {i} / {nepochs}, iter: {j} / {data_size // train_nsamples}, loss: {loss}')
     np.save(f'./mnist_{args.nn}.npy', param)
+
+else:
+    param = np.load(f'./mnist_{args.nn}.npy')
 
 
 # Verify if the score function is learnt properly
