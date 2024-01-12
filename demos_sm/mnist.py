@@ -17,6 +17,7 @@ from fbs.nn import sinusoidal_embedding
 # Parse arguments
 parser = argparse.ArgumentParser(description='MNIST test.')
 parser.add_argument('--train', action='store_true', default=False, help='Whether train or not.')
+parser.add_argument('--lr', type=float, default=1e-3)
 args = parser.parse_args()
 train = args.train
 
@@ -118,9 +119,9 @@ def optax_kernel(param_, opt_state_, key_, xy0s_):
     return param_, opt_state_, loss_
 
 
-schedule = optax.cosine_decay_schedule(1e-3, data_size // train_nsamples, .91)
-# schedule = optax.constant_schedule(1e-4)
-# schedule = optax.exponential_decay(1e-3, data_size // train_nsamples, .91)
+# schedule = optax.cosine_decay_schedule(args.lr, data_size // train_nsamples, .91)
+schedule = optax.constant_schedule(args.lr)
+# schedule = optax.exponential_decay(args.lr, data_size // train_nsamples, .91)
 optimiser = optax.adam(learning_rate=schedule)
 param = array_param
 opt_state = optimiser.init(param)
