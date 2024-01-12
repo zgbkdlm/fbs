@@ -1,5 +1,5 @@
 r"""
-Restoration of MNIST images
+Standard score matching on MNIST
 """
 import argparse
 import jax
@@ -24,9 +24,7 @@ train = args.train
 print(f'Run with {train} and {args.nn}')
 
 # General configs
-nparticles = 100
 nsamples = 1000
-burn_in = 100
 jax.config.update("jax_enable_x64", True)
 key = jax.random.PRNGKey(999)
 key, data_key = jax.random.split(key)
@@ -37,25 +35,24 @@ dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
 
 # MNIST
-d = 784 * 2
+d = 784
 key, subkey = jax.random.split(key)
 dataset = MNIST(subkey, '../datasets/mnist.npz', task='deconv')
 
 
-def sampler_xy(key_):
-    x_, y_ = dataset.sampler(key_)
-    return jnp.concatenate([x_, y_], axis=-1)
+def sampler_x(key_):
+    return dataset.sampler(key_)[0]
 
 
 key, subkey = jax.random.split(key)
 keys = jax.random.split(subkey, 4)
-xys = jax.vmap(sampler_xy, in_axes=[0])(keys)
+xs = jax.vmap(sampler_x, in_axes=[0])(keys)
 
 if not train:
-    fig, axes = plt.subplots(nrows=2, ncols=4)
+    fig, axes = plt.subplots(ncols=4)
     for col in range(4):
-        axes[0, col].imshow(xys[col, :784].reshape(28, 28), cmap='gray')
-        axes[1, col].imshow(xys[col, 784:].reshape(28, 28), cmap='gray')
+        axes[col].imshow(xs[col, :784].reshape(28, 28), cmap='gray')
+        axes[col].imshow(xs[col, 784:].reshape(28, 28), cmap='gray')
     plt.tight_layout(pad=0.1)
     plt.show()
 
@@ -94,12 +91,12 @@ def simulate_cond_forward(key_, xy0, ts_):
 
 
 def simulate_forward(key_, ts_):
-    xy0 = sampler_xy(key_)
+    xy0 = sampler_x(key_)
     return simulate_cond_forward(jax.random.split(key_)[1], xy0, ts_)
 
 
 # Score matching
-train_nsamples = 500
+train_nsamples = 100
 train_nsteps = 100
 nepochs = 50
 data_size = dataset.n
@@ -141,8 +138,9 @@ def optax_kernel(param_, opt_state_, key_, xy0s_):
     return param_, opt_state_, loss_
 
 
-schedule = optax.cosine_decay_schedule(1e-4, 20, .95)
+# schedule = optax.cosine_decay_schedule(1e-4, 20, .95)
 # schedule = optax.constant_schedule(1e-4)
+schedule = optax.exponential_decay(1e-3, data_size // train_nsamples, .91)
 optimiser = optax.adam(learning_rate=schedule)
 param = array_param
 opt_state = optimiser.init(param)
@@ -193,7 +191,7 @@ def backward_euler(key_, uv0):
 
 # Simulate the backward and verify if it matches the target distribution
 key, subkey = jax.random.split(key)
-test_xy0 = sampler_xy(subkey)
+test_xy0 = sampler_x(subkey)
 key, subkey = jax.random.split(key)
 terminal_val = simulate_cond_forward(subkey, test_xy0, ts)[-1]
 key, subkey = jax.random.split(key)
@@ -209,73 +207,3 @@ axes[1, 2].imshow(approx_init_sample[784:].reshape(28, 28), cmap='gray')
 plt.tight_layout(pad=0.1)
 plt.show()
 
-# Now do cSMC conditional sampling
-true_x0, y0 = xys[0, :784], xys[0, 784:]
-
-
-def transition_sampler(us, v, t, key_):
-    return (us + jax.vmap(reverse_drift_u, in_axes=[0, None, None])(us, v, t) * dt
-            + math.sqrt(dt) * b * jax.random.normal(key_, us.shape))
-
-
-@partial(jax.vmap, in_axes=[None, 0, None, None])
-def transition_logpdf(u, u_prev, v, t):
-    return jnp.sum(jax.scipy.stats.norm.logpdf(u,
-                                               u_prev + reverse_drift_u(u_prev, v, t) * dt,
-                                               math.sqrt(dt) * b))
-
-
-@partial(jax.vmap, in_axes=[None, 0, None, None])
-def likelihood_logpdf(v, u_prev, v_prev, t_prev):
-    cond_m = v_prev + reverse_drift_v(v_prev, u_prev, t_prev) * dt
-    return jnp.sum(jax.scipy.stats.norm.logpdf(v, cond_m, math.sqrt(dt) * b))
-
-
-def fwd_sampler(key_, x0):
-    xy0 = jnp.hstack([x0, y0])
-    return simulate_cond_forward(key_, xy0, ts)
-
-
-@jax.jit
-def gibbs_kernel(key_, xs_, us_star_, bs_star_):
-    key_fwd, key_csmc = jax.random.split(key_)
-    path_xy = fwd_sampler(key_fwd, xs_[0])
-    us, vs = path_xy[::-1, :784], path_xy[::-1, 784:]
-
-    def init_sampler(*_):
-        return us[0] * jnp.ones((nparticles, us.shape[-1]))
-
-    def init_likelihood_logpdf(*_):
-        return -math.log(nparticles) * jnp.ones(nparticles)
-
-    us_star_next, bs_star_next = csmc_kernel(key_csmc,
-                                             us_star_, bs_star_,
-                                             vs, ts,
-                                             init_sampler, init_likelihood_logpdf,
-                                             transition_sampler, transition_logpdf,
-                                             likelihood_logpdf,
-                                             killing, nparticles,
-                                             backward=True)
-    xs_next = us_star_next[::-1]
-    return xs_next, us_star_next, bs_star_next, bs_star_next != bs_star_
-
-
-# Gibbs loop
-key, subkey = jax.random.split(key)
-xs = fwd_sampler(subkey, true_x0)[:, :784]
-us_star = xs[::-1]
-bs_star = jnp.zeros((nsteps + 1), dtype=int)
-
-uss = np.zeros((nsamples, nsteps + 1, 784))
-xss = np.zeros((nsamples, nsteps + 1, 784))
-for i in range(nsamples):
-    key, subkey = jax.random.split(key)
-    xs, us_star, bs_star, acc = gibbs_kernel(subkey, xs, us_star, bs_star)
-    xss[i], uss[i] = xs, us_star
-    print(f'Gibbs iter: {i}')
-
-# Plot
-fig, axes = plt.subplots(ncols=10, sharey='row')
-axes[0].imshow(true_x0.reshape(28, 28))
-for i in range(1, 10):
-    axes[i].imshow(uss[i * 10, -1].reshape(28, 28))

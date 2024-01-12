@@ -20,16 +20,16 @@ from fbs.filters.csmc.resamplings import killing
 from functools import partial
 
 # General configs
-nparticles = 100
+nparticles = 1000
 nsamples = 1000
 burn_in = 100
 jax.config.update("jax_enable_x64", True)
 key = jax.random.PRNGKey(666)
-y0 = 3.
+y0 = 6.
 use_pretrained = True
 
 T = 3
-nsteps = 100
+nsteps = 1000
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
 
@@ -95,7 +95,7 @@ plt.show()
 # Score matching training
 batch_nsamples = 200
 batch_nsteps = 100
-ntrains = 1000
+ntrains = 10000
 nn_param_init = nn.initializers.xavier_normal()
 
 
@@ -103,20 +103,20 @@ class MLP(nn.Module):
     @nn.compact
     def __call__(self, xy, t):
         # Spatial part
-        xy = nn.Dense(features=16, param_dtype=jnp.float64, kernel_init=nn_param_init)(xy)
+        xy = nn.Dense(features=64, param_dtype=jnp.float64, kernel_init=nn_param_init)(xy)
         xy = nn.relu(xy)
         xy = nn.Dense(features=8, param_dtype=jnp.float64, kernel_init=nn_param_init)(xy)
 
         # Temporal part
-        t = sinusoidal_embedding(t, out_dim=32)
+        t = sinusoidal_embedding(t, out_dim=64)
         t = nn.Dense(features=16, param_dtype=jnp.float64, kernel_init=nn_param_init)(t)
         t = nn.relu(t)
         t = nn.Dense(features=8, param_dtype=jnp.float64, kernel_init=nn_param_init)(t)
 
         z = jnp.concatenate([xy, t], axis=-1)
-        z = nn.Dense(features=16, param_dtype=jnp.float64, kernel_init=nn_param_init)(z)
+        z = nn.Dense(features=64, param_dtype=jnp.float64, kernel_init=nn_param_init)(z)
         z = nn.relu(z)
-        z = nn.Dense(features=8, param_dtype=jnp.float64, kernel_init=nn_param_init)(z)
+        z = nn.Dense(features=16, param_dtype=jnp.float64, kernel_init=nn_param_init)(z)
         z = nn.relu(z)
         z = nn.Dense(features=3, param_dtype=jnp.float64, kernel_init=nn_param_init)(z)
         return jnp.squeeze(z)
@@ -157,7 +157,8 @@ def optax_kernel(param_, opt_state_, key_):
     return param_, opt_state_, loss_
 
 
-schedule = optax.cosine_decay_schedule(1e-2, 10, .95)
+# schedule = optax.cosine_decay_schedule(1e-2, 10, .95)
+schedule = optax.exponential_decay(1e-2, 100, .92)
 # schedule = optax.constant_schedule(1e-2)
 optimiser = optax.adam(learning_rate=schedule)
 param = array_param

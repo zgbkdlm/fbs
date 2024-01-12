@@ -2,7 +2,7 @@
 #SBATCH -A Berzelius-2023-194
 #SBATCH --gpus=1
 #SBATCH -o mnist.log
-#SBATCH -t 01:00:00
+#SBATCH -t 00:30:00
 
 source ~/.bashrc
 export XLA_PYTHON_CLIENT_PREALLOCATE=true

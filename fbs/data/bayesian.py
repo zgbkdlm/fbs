@@ -25,7 +25,7 @@ class Crescent(DataSet):
         xs = self.m + jax.random.normal(subkey, (batch_size, 2)) @ jnp.linalg.cholesky(self.cov)
 
         key, subkey = jax.random.split(key)
-        ys = jax.vmap(self.emission, in_axes=[0, None])(xs, self.psi) + jax.random.normal(subkey, (batch_size,))
+        ys = jax.vmap(self.emission, in_axes=[0, None])(xs, self.psi) + 1. * jax.random.normal(subkey, (batch_size,))
         return xs, ys
 
     @staticmethod
