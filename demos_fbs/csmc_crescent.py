@@ -12,6 +12,7 @@ import numpy as np
 import optax
 import flax.linen as nn
 from fbs.data import Crescent
+from fbs.sdes import make_ou_sde
 from fbs.nn import sinusoidal_embedding
 from fbs.nn.models import make_simple_st_nn
 from fbs.utils import discretise_lti_sde
@@ -20,16 +21,16 @@ from fbs.filters.csmc.resamplings import killing
 from functools import partial
 
 # General configs
-nparticles = 1000
+nparticles = 100
 nsamples = 1000
 burn_in = 100
 jax.config.update("jax_enable_x64", True)
 key = jax.random.PRNGKey(666)
 y0 = 6.
-use_pretrained = True
+use_pretrained = False
 
 T = 3
-nsteps = 1000
+nsteps = 100
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
 
@@ -50,34 +51,15 @@ plt.legend()
 plt.show()
 
 # Define the forward noising process
-A = -0.5 * jnp.eye(3)
-B = jnp.eye(3)  # This code applies to diagonal B only
-gamma = B @ B.T
-chol_gamma = jnp.linalg.cholesky(gamma)
+a = -0.5
+b = 1.
+gamma = b ** 2
 
-
-def cond_score_t_0(xy, t, xy0):
-    F, Q = discretise_lti_sde(A, gamma, t)
-    return jax.grad(jax.scipy.stats.multivariate_normal.logpdf)(xy, F @ xy0, Q)
+discretise_ou_sde, cond_score_t_0, simulate_cond_forward = make_ou_sde(a, b)
 
 
 def score_scale(t):
-    variance = 1 ** 2 / (2 * -0.5) * (jnp.exp(2 * -0.5 * t) - 1)
-    return variance
-
-
-def simulate_cond_forward(key_, xy0, ts_):
-    def scan_body(carry, elem):
-        xy = carry
-        dt_, rnd = elem
-
-        F, Q = discretise_lti_sde(A, gamma, dt_)
-        xy = F @ xy + jnp.linalg.cholesky(Q) @ rnd
-        return xy, xy
-
-    dts = jnp.diff(ts_)
-    rnds = jax.random.normal(key_, (dts.shape[0], 3))
-    return jnp.concatenate([xy0[None, :], jax.lax.scan(scan_body, xy0, (dts, rnds))[1]], axis=0)
+    return discretise_ou_sde(t)[1]
 
 
 def simulate_forward(key_, ts_):
@@ -95,7 +77,7 @@ plt.show()
 # Score matching training
 batch_nsamples = 200
 batch_nsteps = 100
-ntrains = 10000
+ntrains = 1000
 nn_param_init = nn.initializers.xavier_normal()
 
 
