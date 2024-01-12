@@ -17,6 +17,7 @@ from fbs.nn import sinusoidal_embedding
 # Parse arguments
 parser = argparse.ArgumentParser(description='MNIST test.')
 parser.add_argument('--train', action='store_true', default=False, help='Whether train or not.')
+parser.add_argument('--nn', type=str, default='mlp')
 parser.add_argument('--lr', type=float, default=1e-3)
 args = parser.parse_args()
 train = args.train
@@ -103,10 +104,39 @@ class MNISTAutoEncoder(nn.Module):
         return jnp.squeeze(z)
 
 
+class MNISTConv(nn.Module):
+    @nn.compact
+    def __call__(self, x, t):
+        x = x.reshape(-1, 28, 28, 1)
+        batch_size = x.shape[0]
+        x = nn.Conv(features=32, kernel_size=(3, 3))(x)
+        x = nn.relu(x)
+        x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
+        x = nn.Conv(features=64, kernel_size=(3, 3))(x)
+        x = nn.relu(x)
+        x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
+        x = x.reshape((x.shape[0], -1))
+        x = nn.Dense(features=256)(x)
+        x = nn.relu(x)
+        x = nn.Dense(features=32)(x)
+
+        t = sinusoidal_embedding(t, out_dim=128)
+        t = nn.Dense(features=64, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
+        t = nn.relu(t)
+        t = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
+        t = t.reshape(batch_size, -1)
+
+        z = jnp.concatenate([x, t], axis=-1)
+        z = nn.Dense(features=128, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(z)
+        z = nn.relu(z)
+        z = nn.Dense(features=784, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(z)
+        return jnp.squeeze(z)
+
+
 key, subkey = jax.random.split(key)
 _, _, array_param, _, nn_score = make_simple_st_nn(subkey,
                                                    dim_in=d, batch_size=train_nsamples,
-                                                   mlp=MNISTAutoEncoder())
+                                                   mlp=MNISTAutoEncoder() if args.nn == 'mlp' else MNISTConv())
 
 loss_fn = make_ou_score_matching_loss(a, b, nn_score, t0=0., T=T, nsteps=train_nsteps, random_times=True)
 
