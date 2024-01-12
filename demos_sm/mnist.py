@@ -19,13 +19,14 @@ parser = argparse.ArgumentParser(description='MNIST test.')
 parser.add_argument('--train', action='store_true', default=False, help='Whether train or not.')
 parser.add_argument('--nn', type=str, default='mlp')
 parser.add_argument('--lr', type=float, default=1e-3)
+parser.add_argument('--schedule', type=str, default='cos')
+parser.add_argument('--nepochs', type=int, default=30)
 args = parser.parse_args()
 train = args.train
 
 print(f'Run with {train}')
 
 # General configs
-nsamples = 1000
 jax.config.update("jax_enable_x64", True)
 key = jax.random.PRNGKey(666)
 key, data_key = jax.random.split(key)
@@ -149,9 +150,12 @@ def optax_kernel(param_, opt_state_, key_, xy0s_):
     return param_, opt_state_, loss_
 
 
-# schedule = optax.cosine_decay_schedule(args.lr, data_size // train_nsamples, .91)
-schedule = optax.constant_schedule(args.lr)
-# schedule = optax.exponential_decay(args.lr, data_size // train_nsamples, .91)
+if args.schedule == 'cos':
+    schedule = optax.cosine_decay_schedule(args.lr, data_size // train_nsamples, .91)
+elif args.schedule == 'exp':
+    schedule = optax.exponential_decay(args.lr, data_size // train_nsamples, .91)
+else:
+    schedule = optax.constant_schedule(args.lr)
 optimiser = optax.adam(learning_rate=schedule)
 param = array_param
 opt_state = optimiser.init(param)
@@ -165,9 +169,9 @@ if train:
             x0s, _ = dataset.enumerate_subset(j, perm_inds, subkey)
             param, opt_state, loss = optax_kernel(param, opt_state, subkey2, x0s)
             print(f'Epoch: {i} / {nepochs}, iter: {j} / {data_size // train_nsamples}, loss: {loss}')
-    np.save(f'./mnist_{args.nn}.npy', param)
+    np.save(f'./mnist_{args.nn}_{args.schedule}_{args.lr}.npy', param)
 else:
-    param = np.load(f'./mnist_{args.nn}.npy')
+    param = np.load(f'./mnist_{args.nn}_{args.schedule}_{args.lr}.npy')
 
 
 # Verify if the score function is learnt properly
