@@ -31,7 +31,7 @@ jax.config.update("jax_enable_x64", True)
 key = jax.random.PRNGKey(666)
 key, data_key = jax.random.split(key)
 
-T = 2
+T = 1
 nsteps = 100
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
@@ -77,6 +77,7 @@ def simulate_forward(key_, ts_):
 # Score matching
 train_nsamples = 256
 train_nsteps = 100
+train_dt = T / train_nsteps
 nepochs = 50
 data_size = dataset.n
 nn_param_init = nn.initializers.xavier_normal()
@@ -88,14 +89,14 @@ class MNISTAutoEncoder(nn.Module):
     def __call__(self, x, t):
         x = nn.Dense(features=256, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
         x = nn.relu(x)
-        x = nn.Dense(features=64, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
+        x = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
 
         # t = sinusoidal_embedding(t, out_dim=128)
         # t = nn.Dense(features=64, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
         # t = nn.relu(t)
         # t = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
 
-        t = sinusoidal_embedding(t, out_dim=784)
+        t = sinusoidal_embedding(t, out_dim=32)
 
         z = jnp.concatenate([x, t], axis=-1)
         z = nn.Dense(features=128, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(z)
