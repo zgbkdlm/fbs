@@ -19,7 +19,7 @@ class MNIST(DataSet):
 
     @staticmethod
     def standardise(array: Array) -> JArray:
-        return (array - 0.5) * 2.
+        return array
 
     @staticmethod
     def paint(key, img: Array, paint_val: float = 0.) -> JArray:

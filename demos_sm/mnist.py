@@ -53,14 +53,13 @@ xs = jax.vmap(sampler_x, in_axes=[0])(keys)
 if not train:
     fig, axes = plt.subplots(ncols=4)
     for col in range(4):
-        axes[col].imshow(xs[col, :784].reshape(28, 28), cmap='gray')
-        axes[col].imshow(xs[col, 784:].reshape(28, 28), cmap='gray')
+        axes[col].imshow(xs[col].reshape(28, 28), cmap='gray')
     plt.tight_layout(pad=0.1)
     plt.show()
 
 # Define the forward noising process which are independent OU processes
-a = -0.5
-b = 1.
+a = -1
+b = jnp.sqrt(2.)
 gamma = b ** 2
 
 discretise_ou_sde, cond_score_t_0, simulate_cond_forward = make_ou_sde(a, b)
@@ -76,7 +75,7 @@ def simulate_forward(key_, ts_):
 
 
 # Score matching
-train_nsamples = 100
+train_nsamples = 256
 train_nsteps = 100
 nepochs = 50
 data_size = dataset.n
@@ -87,14 +86,16 @@ nn_param_dtype = jnp.float64
 class MNISTAutoEncoder(nn.Module):
     @nn.compact
     def __call__(self, x, t):
-        x = nn.Dense(features=128, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
+        x = nn.Dense(features=256, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
         x = nn.relu(x)
-        x = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
+        x = nn.Dense(features=64, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
 
-        t = sinusoidal_embedding(t, out_dim=128)
-        t = nn.Dense(features=64, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
-        t = nn.relu(t)
-        t = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
+        # t = sinusoidal_embedding(t, out_dim=128)
+        # t = nn.Dense(features=64, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
+        # t = nn.relu(t)
+        # t = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
+
+        t = sinusoidal_embedding(t, out_dim=784)
 
         z = jnp.concatenate([x, t], axis=-1)
         z = nn.Dense(features=128, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(z)
@@ -169,7 +170,7 @@ if train:
             x0s, _ = dataset.enumerate_subset(j, perm_inds, subkey)
             param, opt_state, loss = optax_kernel(param, opt_state, subkey2, x0s)
             print(f'Epoch: {i} / {nepochs}, iter: {j} / {data_size // train_nsamples}, loss: {loss}')
-    np.save(f'./mnist_{args.nn}_{args.schedule}_{args.lr}.npy', param)
+        np.save(f'./mnist_{args.nn}_{args.schedule}_{args.lr}.npy', param)
 else:
     param = np.load(f'./mnist_{args.nn}_{args.schedule}_{args.lr}.npy')
 
@@ -200,8 +201,8 @@ key, subkey = jax.random.split(key)
 approx_init_sample = backward_euler(subkey, terminal_val)
 
 fig, axes = plt.subplots(ncols=3, sharey='row')
-axes[0, 0].imshow(test_x0.reshape(28, 28), cmap='gray')
-axes[0, 1].imshow(terminal_val.reshape(28, 28), cmap='gray')
-axes[0, 2].imshow(approx_init_sample.reshape(28, 28), cmap='gray')
+axes[0].imshow(test_x0.reshape(28, 28), cmap='gray')
+axes[1].imshow(terminal_val.reshape(28, 28), cmap='gray')
+axes[2].imshow(approx_init_sample.reshape(28, 28), cmap='gray')
 plt.tight_layout(pad=0.1)
 plt.show()
