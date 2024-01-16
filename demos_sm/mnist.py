@@ -13,7 +13,6 @@ from fbs.sdes import make_ou_sde, make_ou_score_matching_loss
 from fbs.nn.models import make_simple_st_nn
 from fbs.nn import sinusoidal_embedding
 
-
 # Parse arguments
 parser = argparse.ArgumentParser(description='MNIST test.')
 parser.add_argument('--train', action='store_true', default=False, help='Whether train or not.')
@@ -53,8 +52,8 @@ xs = jax.vmap(sampler_x, in_axes=[0])(keys)
 if not train:
     fig, axes = plt.subplots(ncols=4)
     for col in range(4):
-        axes[col].imshow(xs[col, :784].reshape(28, 28), cmap='gray')
-        axes[col].imshow(xs[col, 784:].reshape(28, 28), cmap='gray')
+        axes[col].imshow(xs[col].reshape(28, 28), cmap='gray')
+        axes[col].imshow(xs[col].reshape(28, 28), cmap='gray')
     plt.tight_layout(pad=0.1)
     plt.show()
 
@@ -178,6 +177,7 @@ else:
 def reverse_drift(u, t):
     return -a * u + gamma * nn_score(u, T - t, param)
 
+
 def backward_euler(key_, u0):
     def scan_body(carry, elem):
         u = carry
@@ -195,13 +195,21 @@ def backward_euler(key_, u0):
 key, subkey = jax.random.split(key)
 test_x0 = sampler_x(subkey)
 key, subkey = jax.random.split(key)
-terminal_val = simulate_cond_forward(subkey, test_x0, ts)[-1]
+traj = simulate_cond_forward(subkey, test_x0, ts)
+terminal_val = traj[-1]
+
+fig, axes = plt.subplots(ncols=10, sharey='row')
+for col in range(10):
+    axes[col].imshow(traj[col * 10].reshape(28, 28), cmap='gray')
+plt.tight_layout(pad=0.1)
+plt.show()
+
 key, subkey = jax.random.split(key)
 approx_init_sample = backward_euler(subkey, terminal_val)
 
 fig, axes = plt.subplots(ncols=3, sharey='row')
-axes[0, 0].imshow(test_x0.reshape(28, 28), cmap='gray')
-axes[0, 1].imshow(terminal_val.reshape(28, 28), cmap='gray')
-axes[0, 2].imshow(approx_init_sample.reshape(28, 28), cmap='gray')
+axes[0].imshow(test_x0.reshape(28, 28), cmap='gray')
+axes[1].imshow(terminal_val.reshape(28, 28), cmap='gray')
+axes[2].imshow(approx_init_sample.reshape(28, 28), cmap='gray')
 plt.tight_layout(pad=0.1)
 plt.show()
