@@ -26,7 +26,7 @@ train = args.train
 print(f'Run with {train}')
 
 # General configs
-jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_enable_x64", False)
 key = jax.random.PRNGKey(666)
 key, data_key = jax.random.split(key)
 
@@ -76,19 +76,17 @@ train_dt = T / train_nsteps
 nepochs = 20
 data_size = dataset.n
 nn_param_init = nn.initializers.xavier_normal()
-nn_param_dtype = jnp.float64
+nn_param_dtype = jnp.float32
 
 
 class MNISTAutoEncoder(nn.Module):
     @nn.compact
     def __call__(self, x, t):
-        x = nn.Dense(features=256, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
+        x = nn.Dense(features=128, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
         x = nn.gelu(x)
         x = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
 
-        t = sinusoidal_embedding(t, out_dim=128)
-        t = nn.Dense(features=64, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
-        t = nn.gelu(t)
+        t = sinusoidal_embedding(t / train_dt, out_dim=128, max_period=train_nsteps)
         t = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
 
         # t = sinusoidal_embedding(t, out_dim=32)
@@ -96,11 +94,29 @@ class MNISTAutoEncoder(nn.Module):
         z = jnp.concatenate([x, t], axis=-1)
         z = nn.Dense(features=128, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(z)
         z = nn.gelu(z)
-        z = nn.Dense(features=256, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(z)
-        z = nn.gelu(z)
         z = nn.Dense(features=784, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(z)
         return jnp.squeeze(z)
 
+# class MNISTAutoEncoder(nn.Module):
+#     @nn.compact
+#     def __call__(self, x, t):
+#         t = sinusoidal_embedding(t / train_dt, out_dim=16, max_period=train_nsteps)
+#         t = nn.Dense(features=128, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
+#         t = nn.relu(t)
+#         t = nn.Dense(features=256, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
+#
+#         x = jnp.concatenate([x, t], axis=-1)
+#         x = nn.Dense(features=256, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
+#         x = nn.relu(x)
+#         x_ = x
+#         x = nn.Dense(features=128, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
+#         x = nn.relu(x)
+#
+#         x = nn.Dense(features=256, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
+#         x = nn.relu(x) + x_
+#
+#         x = nn.Dense(features=784, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
+#         return jnp.squeeze(x)
 
 class MNISTConv(nn.Module):
     @nn.compact
@@ -109,26 +125,32 @@ class MNISTConv(nn.Module):
         batch_size = x.shape[0]
         x = nn.Conv(features=32, kernel_size=(3, 3))(x)
         x = nn.relu(x)
+        x1 = x
         x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
         x = nn.Conv(features=64, kernel_size=(3, 3))(x)
         x = nn.relu(x)
+        x2 = x
         x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
-        x = x.reshape((x.shape[0], -1))
-        x = nn.Dense(features=256)(x)
+
+        t = sinusoidal_embedding(t, out_dim=32)
+        t = nn.Dense(features=128, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
+        t = t.reshape(batch_size, 1, 1, -1)
+
+        t1, t2 = t[:, :, :, :64], t[:, :, :, 64:]
+
+        x = x * t1 + t2
+        x = jax.vmap(jax.vmap(jax.image.resize, in_axes=[0, None, None]), in_axes=[-1, None, None], out_axes=-1)(x, (14, 14), 'nearest')
+        x = nn.Conv(features=64, kernel_size=(3, 3))(x)
         x = nn.relu(x)
-        x = nn.Dense(features=32)(x)
+        x = x + x2
+        x = jax.vmap(jax.vmap(jax.image.resize, in_axes=[0, None, None]), in_axes=[-1, None, None], out_axes=-1)(x, (28, 28), 'nearest')
+        x = nn.Conv(features=32, kernel_size=(3, 3))(x)
+        x = nn.relu(x)
+        x = x + x1
+        x = nn.Conv(features=1, kernel_size=(3, 3))(x)
 
-        t = sinusoidal_embedding(t, out_dim=128)
-        t = nn.Dense(features=64, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
-        t = nn.relu(t)
-        t = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
-        t = t.reshape(batch_size, -1)
-
-        z = jnp.concatenate([x, t], axis=-1)
-        z = nn.Dense(features=128, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(z)
-        z = nn.relu(z)
-        z = nn.Dense(features=784, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(z)
-        return jnp.squeeze(z)
+        x = x.reshape((x.shape[0], -1))
+        return jnp.squeeze(x)
 
 
 key, subkey = jax.random.split(key)
