@@ -13,6 +13,7 @@ from fbs.sdes import make_ou_sde, make_ou_score_matching_loss
 from fbs.nn.models import make_simple_st_nn
 from fbs.nn import sinusoidal_embedding
 
+
 # Parse arguments
 parser = argparse.ArgumentParser(description='MNIST test.')
 parser.add_argument('--train', action='store_true', default=False, help='Whether train or not.')
@@ -53,7 +54,6 @@ if not train:
     fig, axes = plt.subplots(ncols=4)
     for col in range(4):
         axes[col].imshow(xs[col].reshape(28, 28), cmap='gray')
-        axes[col].imshow(xs[col].reshape(28, 28), cmap='gray')
     plt.tight_layout(pad=0.1)
     plt.show()
 
@@ -77,6 +77,7 @@ def simulate_forward(key_, ts_):
 # Score matching
 train_nsamples = 100
 train_nsteps = 100
+train_dt = T / train_nsteps
 nepochs = 50
 data_size = dataset.n
 nn_param_init = nn.initializers.xavier_normal()
@@ -86,14 +87,16 @@ nn_param_dtype = jnp.float64
 class MNISTAutoEncoder(nn.Module):
     @nn.compact
     def __call__(self, x, t):
-        x = nn.Dense(features=128, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
+        x = nn.Dense(features=256, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
         x = nn.relu(x)
         x = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
 
-        t = sinusoidal_embedding(t, out_dim=128)
-        t = nn.Dense(features=64, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
-        t = nn.relu(t)
-        t = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
+        # t = sinusoidal_embedding(t, out_dim=128)
+        # t = nn.Dense(features=64, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
+        # t = nn.relu(t)
+        # t = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
+
+        t = sinusoidal_embedding(t, out_dim=32)
 
         z = jnp.concatenate([x, t], axis=-1)
         z = nn.Dense(features=128, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(z)
@@ -168,7 +171,7 @@ if train:
             x0s, _ = dataset.enumerate_subset(j, perm_inds, subkey)
             param, opt_state, loss = optax_kernel(param, opt_state, subkey2, x0s)
             print(f'Epoch: {i} / {nepochs}, iter: {j} / {data_size // train_nsamples}, loss: {loss}')
-    np.save(f'./mnist_{args.nn}_{args.schedule}_{args.lr}.npy', param)
+        np.save(f'./mnist_{args.nn}_{args.schedule}_{args.lr}.npy', param)
 else:
     param = np.load(f'./mnist_{args.nn}_{args.schedule}_{args.lr}.npy')
 
@@ -176,7 +179,6 @@ else:
 # Verify if the score function is learnt properly
 def reverse_drift(u, t):
     return -a * u + gamma * nn_score(u, T - t, param)
-
 
 def backward_euler(key_, u0):
     def scan_body(carry, elem):

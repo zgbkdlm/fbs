@@ -41,6 +41,10 @@ def make_ou_sde(a, b):
         dts = jnp.diff(ts)
         rnds = jax.random.normal(key, (dts.shape[0], x0.shape[0]))
         return jnp.concatenate([x0[None, :], jax.lax.scan(scan_body, x0, (dts, rnds))[1]], axis=0)
+        # Fs, _ = discretise_ou_sde(ts)
+        # dts = jnp.diff(ts, prepend=ts[None, 0])
+        # _, Qs = discretise_ou_sde(dts)
+        # return Fs * x0 + jnp.cumsum(jnp.sqrt(Qs) * jax.random.normal(key, Qs.shape))
 
     return discretise_ou_sde, cond_score_t_0, simulate_cond_forward
 
