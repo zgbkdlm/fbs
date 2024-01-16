@@ -14,7 +14,7 @@ def make_ou_sde(a, b):
         F, Q = discretise_ou_sde(t)
         return -(x - F * x0) / Q
 
-    def simulate_cond_forward(key: JKey, x0: JArray, ts: JArray) -> JArray:
+    def simulate_cond_forward(key: JKey, x0: JArray, ts: JArray, keep_path: bool = True) -> JArray:
         """Simulate a path of the OU process at ts starting from x0.
 
         Parameters
@@ -23,6 +23,9 @@ def make_ou_sde(a, b):
         x0 : JArray (d, )
         ts : JArray (nsteps + 1, )
             t_0, t_1, ..., t_nsteps.
+        keep_path : bool, default=True
+            Let it be true will make the returned sample a valid sample path from the SDE. Othwerwise, the return are
+            independent samples at each time point marginally.
 
         Returns
         -------
@@ -38,13 +41,14 @@ def make_ou_sde(a, b):
             x = F * x + jnp.sqrt(Q) * rnd
             return x, x
 
-        dts = jnp.diff(ts)
-        rnds = jax.random.normal(key, (dts.shape[0], x0.shape[0]))
-        return jnp.concatenate([x0[None, :], jax.lax.scan(scan_body, x0, (dts, rnds))[1]], axis=0)
-        # Fs, _ = discretise_ou_sde(ts)
-        # dts = jnp.diff(ts, prepend=ts[None, 0])
-        # _, Qs = discretise_ou_sde(dts)
-        # return Fs * x0 + jnp.cumsum(jnp.sqrt(Qs) * jax.random.normal(key, Qs.shape))
+        if keep_path:
+            dts = jnp.diff(ts)
+            rnds = jax.random.normal(key, (dts.shape[0], x0.shape[0]))
+            return jnp.concatenate([x0[None, :], jax.lax.scan(scan_body, x0, (dts, rnds))[1]], axis=0)
+        else:
+            Fs, Qs = discretise_ou_sde(ts)
+            rnds = jax.random.normal(key, (ts.shape[0], x0.shape[0]))
+            return Fs[:, None] * x0[None, :] + jnp.sqrt(Qs)[:, None] * rnds
 
     return discretise_ou_sde, cond_score_t_0, simulate_cond_forward
 
@@ -75,6 +79,6 @@ def make_ou_score_matching_loss(a, b, nn_score, t0=0., T=2., nsteps: int = 100, 
         cond_score_evals = jax.vmap(jax.vmap(cond_score_t_0,
                                              in_axes=[0, 0, None]),
                                     in_axes=[0, None, 0])(fwd_paths[:, 1:], ts[1:], fwd_paths[:, 0])
-        return jnp.mean(jnp.sum((nn_evals - cond_score_evals) ** 2, axis=-1) * scales[None, :])
+        return jnp.mean(jnp.mean((nn_evals - cond_score_evals) ** 2, axis=-1) * scales[None, :])
 
     return loss_fn

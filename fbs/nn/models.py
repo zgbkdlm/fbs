@@ -96,3 +96,6 @@ def make_simple_st_nn(key, dim_in, batch_size, mlp: nn.Module = None,
     dict_param = mlp.init(key, jnp.ones((batch_size, dim_in)), jnp.ones((batch_size, 1)))
     array_param, array_to_dict, forward_pass = make_st_nn(mlp, dim_in, batch_size, key)
     return mlp, dict_param, array_param, array_to_dict, forward_pass
+
+
+# TODO: MLP-mixer https://github.com/google-research/big_vision/blob/main/big_vision/models/mlp_mixer.py

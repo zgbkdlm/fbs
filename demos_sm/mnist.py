@@ -13,7 +13,6 @@ from fbs.sdes import make_ou_sde, make_ou_score_matching_loss
 from fbs.nn.models import make_simple_st_nn
 from fbs.nn import sinusoidal_embedding
 
-
 # Parse arguments
 parser = argparse.ArgumentParser(description='MNIST test.')
 parser.add_argument('--train', action='store_true', default=False, help='Whether train or not.')
@@ -65,20 +64,16 @@ gamma = b ** 2
 discretise_ou_sde, cond_score_t_0, simulate_cond_forward = make_ou_sde(a, b)
 
 
-def score_scale(t):
-    return discretise_ou_sde(t)[1]
-
-
 def simulate_forward(key_, ts_):
     x0 = sampler_x(key_)
     return simulate_cond_forward(jax.random.split(key_)[1], x0, ts_)
 
 
 # Score matching
-train_nsamples = 100
+train_nsamples = 32
 train_nsteps = 100
 train_dt = T / train_nsteps
-nepochs = 50
+nepochs = 20
 data_size = dataset.n
 nn_param_init = nn.initializers.xavier_normal()
 nn_param_dtype = jnp.float64
@@ -88,21 +83,21 @@ class MNISTAutoEncoder(nn.Module):
     @nn.compact
     def __call__(self, x, t):
         x = nn.Dense(features=256, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
-        x = nn.relu(x)
+        x = nn.gelu(x)
         x = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
 
-        # t = sinusoidal_embedding(t, out_dim=128)
-        # t = nn.Dense(features=64, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
-        # t = nn.relu(t)
-        # t = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
+        t = sinusoidal_embedding(t, out_dim=128)
+        t = nn.Dense(features=64, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
+        t = nn.gelu(t)
+        t = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
 
-        t = sinusoidal_embedding(t, out_dim=32)
+        # t = sinusoidal_embedding(t, out_dim=32)
 
         z = jnp.concatenate([x, t], axis=-1)
         z = nn.Dense(features=128, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(z)
-        z = nn.relu(z)
+        z = nn.gelu(z)
         z = nn.Dense(features=256, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(z)
-        z = nn.relu(z)
+        z = nn.gelu(z)
         z = nn.Dense(features=784, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(z)
         return jnp.squeeze(z)
 
@@ -179,6 +174,7 @@ else:
 # Verify if the score function is learnt properly
 def reverse_drift(u, t):
     return -a * u + gamma * nn_score(u, T - t, param)
+
 
 def backward_euler(key_, u0):
     def scan_body(carry, elem):
