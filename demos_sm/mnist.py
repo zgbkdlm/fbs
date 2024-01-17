@@ -73,7 +73,7 @@ def simulate_forward(key_, ts_):
 
 # Score matching
 train_nsamples = args.batch_size
-train_nsteps = 20
+train_nsteps = 10
 train_dt = T / train_nsteps
 nepochs = args.nepochs
 data_size = dataset.n
