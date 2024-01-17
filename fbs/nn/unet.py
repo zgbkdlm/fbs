@@ -4,11 +4,10 @@ Notice
 The implementation in this script is modified from
 https://www.kaggle.com/code/darshan1504/exploring-diffusion-models-with-jax under the Apache 2.0 license.
 """
-import jax
+import math
 import jax.numpy as jnp
 import flax.linen as nn
 from typing import Callable
-from fbs.nn.base import sinusoidal_embedding
 
 
 class Attention(nn.Module):
@@ -36,6 +35,36 @@ class Attention(nn.Module):
         x = (attention @ v).swapaxes(1, 2).reshape(batch, n, channels)
         x = nn.Dense(self.dim, kernel_init=nn.initializers.xavier_uniform())(x)
         x = jnp.reshape(x, (batch, int(x.shape[1] ** 0.5), int(x.shape[1] ** 0.5), -1))
+        return x
+
+
+class SinusoidalEmbedding(nn.Module):
+    dim: int = 32
+
+    @nn.compact
+    def __call__(self, inputs):
+        half_dim = self.dim // 2
+        emb = math.log(10000) / (half_dim - 1)
+        emb = jnp.exp(jnp.arange(half_dim) * -emb)
+        emb = inputs[:, None] * emb[None, :]
+        emb = jnp.concatenate([jnp.sin(emb), jnp.cos(emb)], -1)
+        return emb
+
+
+class TimeEmbedding(nn.Module):
+    dim: int = 32
+
+    @nn.compact
+    def __call__(self, t):
+        time_dim = self.dim * 4
+
+        se = SinusoidalEmbedding(self.dim)(t)
+
+        # Projecting the embedding into a 128 dimensional space
+        x = nn.Dense(time_dim)(se)
+        x = nn.gelu(x)
+        x = nn.Dense(time_dim)(x)
+
         return x
 
 
@@ -69,15 +98,17 @@ class ResnetBlock(nn.Module):
 
 class MNISTUNet(nn.Module):
     dim: int = 8
-    dim_scale_factor: tuple = (1, 2, 4, 8)
+    dim_scale_factor: tuple = (1, 2, 4)
     num_groups: int = 8
 
     @nn.compact
     def __call__(self, x, t):
         x = jnp.reshape(x, (-1, 28, 28, 1))
+        t = jnp.reshape(t, (-1,))
         channels = x.shape[-1]
         x = nn.Conv(self.dim // 3 * 2, (7, 7), padding=((3, 3), (3, 3)))(x)
-        time_emb = sinusoidal_embedding(t, out_dim=self.dim)
+        time_emb = TimeEmbedding(self.dim)(t)
+        print(x.shape, t.shape, time_emb.shape)
 
         dims = [self.dim * i for i in self.dim_scale_factor]
         pre_downsampling = []
@@ -103,6 +134,7 @@ class MNISTUNet(nn.Module):
 
         # Upsampling phase
         for index, dim in enumerate(reversed(dims)):
+            print(index, dim)
             x = jnp.concatenate([pre_downsampling.pop(), x], -1)
             x = ResnetBlock(dim, self.num_groups)(x, time_emb)
             x = ResnetBlock(dim, self.num_groups)(x, time_emb)
@@ -115,4 +147,4 @@ class MNISTUNet(nn.Module):
         # Final ResNet block and output convolutional layer
         x = ResnetBlock(dim, self.num_groups)(x, time_emb)
         x = nn.Conv(channels, (1, 1), padding='SAME')(x)
-        return jnp.reshape(x, (-1, ))
+        return jnp.reshape(x, (-1,))

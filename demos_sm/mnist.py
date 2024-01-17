@@ -189,9 +189,17 @@ class MNISTConv(nn.Module):
 
 
 key, subkey = jax.random.split(key)
+if args.nn == 'mlp':
+    my_nn = MNISTAutoEncoder()
+elif args.nn == 'unet':
+    my_nn = MNISTUNet(32)
+elif args.nn == 'conv':
+    my_nn = MNISTConv()
+else:
+    raise NotImplementedError('...')
 _, _, array_param, _, nn_score = make_simple_st_nn(subkey,
                                                    dim_in=d, batch_size=train_nsamples,
-                                                   mlp=MNISTAutoEncoder() if args.nn == 'mlp' else MNISTConv())
+                                                   mlp=my_nn)
 
 loss_fn = make_ou_score_matching_loss(a, b, nn_score, t0=0., T=T, nsteps=train_nsteps, random_times=True)
 
