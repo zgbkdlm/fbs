@@ -13,6 +13,6 @@ source ./venv/bin/activate
 cd demos_sm
 
 nvidia-smi
-python mnist.py --train --nn="conv" --schedule="cos"
-python mnist.py --train --nn="conv" --schedule="exp"
-python mnist.py --train --nn="conv" --schedule="const"
+python -u mnist.py --train --nn="conv" --schedule="cos"
+python -u mnist.py --train --nn="conv" --schedule="exp"
+python -u mnist.py --train --nn="conv" --schedule="const"
