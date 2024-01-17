@@ -11,6 +11,7 @@ import flax.linen as nn
 from fbs.data import MNIST
 from fbs.sdes import make_ou_sde, make_ou_score_matching_loss
 from fbs.nn.models import make_simple_st_nn
+from fbs.nn.unet import MNISTUNet
 from fbs.nn import sinusoidal_embedding
 
 # Parse arguments
@@ -159,7 +160,7 @@ class MNISTConv(nn.Module):
     def __call__(self, x, t):
         x = x.reshape(-1, 28, 28, 1)
 
-        t = sinusoidal_embedding(t / train_dt, out_dim=32, max_period=train_nsteps)
+        t = sinusoidal_embedding(t / train_dt, out_dim=32)
         t = nn.Dense(features=128, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
         t = nn.relu(t)
         t = t.reshape(x.shape[0], 1, 1, -1)
