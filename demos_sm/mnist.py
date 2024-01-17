@@ -18,6 +18,7 @@ parser = argparse.ArgumentParser(description='MNIST test.')
 parser.add_argument('--train', action='store_true', default=False, help='Whether train or not.')
 parser.add_argument('--nn', type=str, default='mlp')
 parser.add_argument('--lr', type=float, default=1e-3)
+parser.add_argument('--batch_size', type=int, default=64)
 parser.add_argument('--schedule', type=str, default='cos')
 parser.add_argument('--nepochs', type=int, default=20)
 args = parser.parse_args()
@@ -70,7 +71,7 @@ def simulate_forward(key_, ts_):
 
 
 # Score matching
-train_nsamples = 64
+train_nsamples = args.batch_size
 train_nsteps = 100
 train_dt = T / train_nsteps
 nepochs = args.nepochs
@@ -175,7 +176,7 @@ class MNISTConv(nn.Module):
         x = x * t1 + t2
 
         x = nn.ConvTranspose(features=64, kernel_size=(2, 2), strides=(2, 2))(x)
-        x = nn.Conv(features=32, kernel_size=(3, 3), strides=1)(x)
+        x = nn.Conv(features=32, kernel_size=(3, 3))(x)
         x = nn.relu(x)
 
         x = nn.ConvTranspose(features=16, kernel_size=(2, 2), strides=(2, 2))(x)
