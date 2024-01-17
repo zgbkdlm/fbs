@@ -142,14 +142,14 @@ class MNISTConv(nn.Module):
         # x = jax.vmap(jax.vmap(jax.image.resize,
         #                       in_axes=[0, None, None]),
         #              in_axes=[-1, None, None], out_axes=-1)(x, (14, 14), 'bilinear')
-        x = jax.image.resize(x, (train_nsamples, 14, 14, 64), 'bilinear')
+        x = jax.image.resize(x, (x.shape[0], 14, 14, 64), 'bilinear')
         x = nn.Conv(features=64, kernel_size=(3, 3))(x)
         x = nn.relu(x)
         x = x + x2
         # x = jax.vmap(jax.vmap(jax.image.resize,
         #                       in_axes=[0, None, None]),
         #              in_axes=[-1, None, None], out_axes=-1)(x, (28, 28), 'bilinear')
-        x = jax.image.resize(x, (train_nsamples, 28, 28, 64), 'bilinear')
+        x = jax.image.resize(x, (x.shape[0], 28, 28, 64), 'bilinear')
         x = nn.Conv(features=32, kernel_size=(3, 3))(x)
         x = nn.relu(x)
         x = x + x1
