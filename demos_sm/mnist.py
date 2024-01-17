@@ -99,26 +99,6 @@ class MNISTAutoEncoder(nn.Module):
         z = nn.Dense(features=784, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(z)
         return jnp.squeeze(z)
 
-# class MNISTAutoEncoder(nn.Module):
-#     @nn.compact
-#     def __call__(self, x, t):
-#         t = sinusoidal_embedding(t / train_dt, out_dim=16, max_period=train_nsteps)
-#         t = nn.Dense(features=128, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
-#         t = nn.relu(t)
-#         t = nn.Dense(features=256, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
-#
-#         x = jnp.concatenate([x, t], axis=-1)
-#         x = nn.Dense(features=256, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
-#         x = nn.relu(x)
-#         x_ = x
-#         x = nn.Dense(features=128, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
-#         x = nn.relu(x)
-#
-#         x = nn.Dense(features=256, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
-#         x = nn.relu(x) + x_
-#
-#         x = nn.Dense(features=784, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
-#         return jnp.squeeze(x)
 
 # class MNISTConv(nn.Module):
 #     @nn.compact
