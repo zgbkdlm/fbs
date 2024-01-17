@@ -192,7 +192,7 @@ key, subkey = jax.random.split(key)
 if args.nn == 'mlp':
     my_nn = MNISTAutoEncoder()
 elif args.nn == 'unet':
-    my_nn = MNISTUNet(32)
+    my_nn = MNISTUNet(8)
 elif args.nn == 'conv':
     my_nn = MNISTConv()
 else:
