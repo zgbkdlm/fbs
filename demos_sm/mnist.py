@@ -70,7 +70,7 @@ def simulate_forward(key_, ts_):
 
 
 # Score matching
-train_nsamples = 128
+train_nsamples = 64
 train_nsteps = 100
 train_dt = T / train_nsteps
 nepochs = args.nepochs
@@ -118,44 +118,71 @@ class MNISTAutoEncoder(nn.Module):
 #         x = nn.Dense(features=784, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
 #         return jnp.squeeze(x)
 
+# class MNISTConv(nn.Module):
+#     @nn.compact
+#     def __call__(self, x, t):
+#         x = x.reshape(-1, 28, 28, 1)
+#         batch_size = x.shape[0]
+#         x = nn.Conv(features=32, kernel_size=(3, 3))(x)
+#         x = nn.relu(x)
+#         x1 = x
+#         x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
+#         x = nn.Conv(features=64, kernel_size=(3, 3))(x)
+#         x = nn.relu(x)
+#         x2 = x
+#         x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
+#
+#         t = sinusoidal_embedding(t, out_dim=32)
+#         t = nn.Dense(features=128, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
+#         t = t.reshape(batch_size, 1, 1, -1)
+#
+#         t1, t2 = t[:, :, :, :64], t[:, :, :, 64:]
+#
+#         x = x * t1 + t2
+#         x = jax.image.resize(x, (x.shape[0], 14, 14, 64), 'bilinear')
+#         x = nn.Conv(features=64, kernel_size=(3, 3))(x)
+#         x = nn.relu(x)
+#         x = x + x2
+#         x = jax.image.resize(x, (x.shape[0], 28, 28, 64), 'bilinear')
+#         x = nn.Conv(features=32, kernel_size=(3, 3))(x)
+#         x = nn.relu(x)
+#         x = x + x1
+#         x = nn.Conv(features=1, kernel_size=(3, 3))(x)
+#
+#         x = x.reshape((x.shape[0], -1))
+#         return jnp.squeeze(x)
+
 class MNISTConv(nn.Module):
+
     @nn.compact
     def __call__(self, x, t):
         x = x.reshape(-1, 28, 28, 1)
-        batch_size = x.shape[0]
-        x = nn.Conv(features=32, kernel_size=(3, 3))(x)
-        x = nn.relu(x)
-        x1 = x
-        x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
-        x = nn.Conv(features=64, kernel_size=(3, 3))(x)
-        x = nn.relu(x)
-        x2 = x
-        x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
 
-        t = sinusoidal_embedding(t, out_dim=32)
+        t = sinusoidal_embedding(t / train_dt, out_dim=32, max_period=train_nsteps)
         t = nn.Dense(features=128, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
-        t = t.reshape(batch_size, 1, 1, -1)
-
+        t = nn.relu(t)
+        t = t.reshape(x.shape[0], 1, 1, -1)
         t1, t2 = t[:, :, :, :64], t[:, :, :, 64:]
 
-        x = x * t1 + t2
-        # x = jax.vmap(jax.vmap(jax.image.resize,
-        #                       in_axes=[0, None, None]),
-        #              in_axes=[-1, None, None], out_axes=-1)(x, (14, 14), 'bilinear')
-        x = jax.image.resize(x, (x.shape[0], 14, 14, 64), 'bilinear')
-        x = nn.Conv(features=64, kernel_size=(3, 3))(x)
-        x = nn.relu(x)
-        x = x + x2
-        # x = jax.vmap(jax.vmap(jax.image.resize,
-        #                       in_axes=[0, None, None]),
-        #              in_axes=[-1, None, None], out_axes=-1)(x, (28, 28), 'bilinear')
-        x = jax.image.resize(x, (x.shape[0], 28, 28, 64), 'bilinear')
         x = nn.Conv(features=32, kernel_size=(3, 3))(x)
         x = nn.relu(x)
-        x = x + x1
+        x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
+
+        x = nn.Conv(features=64, kernel_size=(3, 3))(x)
+        x = nn.relu(x)
+        x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
+
+        x = x * t1 + t2
+
+        x = nn.ConvTranspose(features=64, kernel_size=(2, 2), strides=(2, 2))(x)
+        x = nn.Conv(features=32, kernel_size=(3, 3), strides=1)(x)
+        x = nn.relu(x)
+
+        x = nn.ConvTranspose(features=16, kernel_size=(2, 2), strides=(2, 2))(x)
         x = nn.Conv(features=1, kernel_size=(3, 3))(x)
 
         x = x.reshape((x.shape[0], -1))
+
         return jnp.squeeze(x)
 
 
@@ -218,7 +245,8 @@ def backward_euler(key_, u0):
 
 
 # Simulate the backward and verify if it matches the target distribution
-key, subkey = jax.random.split(key)
+kkk = jax.random.PRNGKey(111)
+key, subkey = jax.random.split(kkk)
 test_x0 = sampler_x(subkey)
 key, subkey = jax.random.split(key)
 traj = simulate_cond_forward(subkey, test_x0, ts)

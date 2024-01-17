@@ -29,33 +29,29 @@ class MNISTAutoEncoder(nn.Module):
 
 
 class MNISTConv(nn.Module):
+    dim: int
+
     @nn.compact
-    def __call__(self, xy, t):
-        xy = jnp.concatenate([xy[..., :784].reshape(-1, 28, 28, 1),
-                              xy[..., 784:].reshape(-1, 28, 28, 1)], axis=-1)  # (n, 28, 28, 2)
-        batch_size = xy.shape[0]
-        xy = nn.Conv(features=32, kernel_size=(3, 3))(xy)
-        xy = nn.relu(xy)
-        xy = nn.avg_pool(xy, window_shape=(2, 2), strides=(2, 2))
-        xy = nn.Conv(features=64, kernel_size=(3, 3))(xy)
-        xy = nn.relu(xy)
-        xy = nn.avg_pool(xy, window_shape=(2, 2), strides=(2, 2))
-        xy = xy.reshape((xy.shape[0], -1))
-        xy = nn.Dense(features=256)(xy)
-        xy = nn.relu(xy)
-        xy = nn.Dense(features=64)(xy)
+    def __call__(self, x, t):
+        # https://www.kaggle.com/code/goktugguvercin/image-denoising-with-autoencoders-in-flax
+        x = nn.Conv(features=32, kernel_size=(3, 3))(x)  # 28x28x1 --> 28x28x32
+        x = nn.relu(x)
+        x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))  # 28x28x32 --> 14x14x32
 
-        t = sinusoidal_embedding(t, out_dim=128)
-        t = nn.Dense(features=64, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
-        t = nn.relu(t)
-        t = nn.Dense(features=64, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
-        t = t.reshape(batch_size, -1)
+        x = nn.Conv(features=64, kernel_size=(3, 3))(x)  # 14x14x32 --> 14x14x64
+        x = nn.relu(x)
+        x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))  # 14x14x64 --> 7x7x64
 
-        z = jnp.concatenate([xy, t], axis=-1)
-        z = nn.Dense(features=256, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(z)
-        z = nn.relu(z)
-        z = nn.Dense(features=784 * 2, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(z)
-        return jnp.squeeze(z)
+        x = nn.ConvTranspose(features=64, kernel_size=(2, 2), strides=(2, 2))(x)  # 7x7x64 --> 14x14x64
+        x = nn.Conv(features=32, kernel_size=(3, 3), strides=1)(x)  # 14x14x64 --> 14x14x32
+        x = nn.relu(x)
+
+        x = nn.ConvTranspose(features=16, kernel_size=(2, 2), strides=(2, 2))(x)  # 14x14x32 --> 28x28x16
+        x = nn.Conv(features=1, kernel_size=(3, 3))(x)  # 28x28x16 --> 28x28x1
+
+        x = x.reshape((x.shape[0], -1))
+
+        return jnp.squeeze(x)
 
 
 def make_simple_st_nn(key, dim_in, batch_size, mlp: nn.Module = None,
