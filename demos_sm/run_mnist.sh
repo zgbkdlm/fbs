@@ -14,5 +14,3 @@ cd demos_sm
 
 nvidia-smi
 python -u mnist.py --train --nn="unet" --schedule="cos" --batch_size=64
-python -u mnist.py --train --nn="conv" --schedule="exp" --batch_size=64
-python -u mnist.py --train --nn="conv" --schedule="const" --batch_size=64

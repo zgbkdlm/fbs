@@ -107,7 +107,7 @@ class MNISTUNet(nn.Module):
         t = jnp.reshape(t, (-1,))
         nchannels = x.shape[-1]
         x = nn.Conv(self.dim // 3 * 2, (7, 7), padding=((3, 3), (3, 3)))(x)
-        time_emb = TimeEmbedding(self.dim)(t / 0.2)
+        time_emb = TimeEmbedding(self.dim)(t / 0.1)
 
         dims = [self.dim * i for i in self.dim_scale_factor]
         pre_downsampling = []
