@@ -105,7 +105,7 @@ class MNISTUNet(nn.Module):
     def __call__(self, x, t):
         x = jnp.reshape(x, (-1, 28, 28, 1))
         t = jnp.reshape(t, (-1,))
-        channels = x.shape[-1]
+        nchannels = x.shape[-1]
         x = nn.Conv(self.dim // 3 * 2, (7, 7), padding=((3, 3), (3, 3)))(x)
         time_emb = TimeEmbedding(self.dim)(t)
 
@@ -142,5 +142,5 @@ class MNISTUNet(nn.Module):
 
         # Final ResNet block and output convolutional layer
         x = ResnetBlock(dim, self.num_groups)(x, time_emb)
-        x = nn.Conv(channels, (1, 1), padding='SAME')(x)
-        return jnp.reshape(x, (-1,))
+        x = nn.Conv(nchannels, (1, 1), padding='SAME')(x)
+        return jnp.reshape(x, (x.shape[0], -1))
