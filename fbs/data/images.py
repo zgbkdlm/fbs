@@ -46,10 +46,16 @@ class MNIST(DataSet):
         else:
             raise ValueError('Unknown task.')
 
-    def sampler(self, key: JKey) -> Tuple[JArray, JArray]:
+    def sampler(self, key: JKey, format: str = 'vector') -> Tuple[JArray, JArray]:
         key_choice, key_corrupt = jax.random.split(key)
-        x = self.xs[jax.random.choice(key_choice, self.n)]
-        y = self.corrupt(key_corrupt, x.reshape(28, 28)).reshape(784)
+        if format == 'vector':
+            x = self.xs[jax.random.choice(key_choice, self.n)]
+            y = self.corrupt(key_corrupt, x.reshape(28, 28)).reshape(784)
+        elif format == 'hwc':
+            x = self.xs[jax.random.choice(key_choice, self.n)].reshape(28, 28, 1)
+            y = self.corrupt(key_corrupt, x.reshape(28, 28)).reshape(28, 28, 1)
+        else:
+            raise ValueError('Unknown format.')
         return x, y
 
     def enumerate_subset(self, i: int, perm_inds=None, key=None) -> Tuple[JArray, JArray]:

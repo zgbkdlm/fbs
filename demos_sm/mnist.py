@@ -19,14 +19,14 @@ parser.add_argument('--train', action='store_true', default=False, help='Whether
 parser.add_argument('--nn', type=str, default='mlp')
 parser.add_argument('--lr', type=float, default=1e-3)
 parser.add_argument('--schedule', type=str, default='cos')
-parser.add_argument('--nepochs', type=int, default=30)
+parser.add_argument('--nepochs', type=int, default=20)
 args = parser.parse_args()
 train = args.train
 
 print(f'Run with {train}')
 
 # General configs
-jax.config.update("jax_enable_x64", False)
+jax.config.update("jax_enable_x64", True)
 key = jax.random.PRNGKey(666)
 key, data_key = jax.random.split(key)
 
@@ -70,13 +70,13 @@ def simulate_forward(key_, ts_):
 
 
 # Score matching
-train_nsamples = 32
+train_nsamples = 128
 train_nsteps = 100
 train_dt = T / train_nsteps
-nepochs = 20
+nepochs = args.nepochs
 data_size = dataset.n
 nn_param_init = nn.initializers.xavier_normal()
-nn_param_dtype = jnp.float32
+nn_param_dtype = jnp.float64
 
 
 class MNISTAutoEncoder(nn.Module):
@@ -139,11 +139,17 @@ class MNISTConv(nn.Module):
         t1, t2 = t[:, :, :, :64], t[:, :, :, 64:]
 
         x = x * t1 + t2
-        x = jax.vmap(jax.vmap(jax.image.resize, in_axes=[0, None, None]), in_axes=[-1, None, None], out_axes=-1)(x, (14, 14), 'nearest')
+        # x = jax.vmap(jax.vmap(jax.image.resize,
+        #                       in_axes=[0, None, None]),
+        #              in_axes=[-1, None, None], out_axes=-1)(x, (14, 14), 'bilinear')
+        x = jax.image.resize(x, (train_nsamples, 14, 14, 64), 'bilinear')
         x = nn.Conv(features=64, kernel_size=(3, 3))(x)
         x = nn.relu(x)
         x = x + x2
-        x = jax.vmap(jax.vmap(jax.image.resize, in_axes=[0, None, None]), in_axes=[-1, None, None], out_axes=-1)(x, (28, 28), 'nearest')
+        # x = jax.vmap(jax.vmap(jax.image.resize,
+        #                       in_axes=[0, None, None]),
+        #              in_axes=[-1, None, None], out_axes=-1)(x, (28, 28), 'bilinear')
+        x = jax.image.resize(x, (train_nsamples, 28, 28, 64), 'bilinear')
         x = nn.Conv(features=32, kernel_size=(3, 3))(x)
         x = nn.relu(x)
         x = x + x1

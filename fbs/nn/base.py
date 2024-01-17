@@ -50,7 +50,7 @@ def sinusoidal_embedding(t: Union[JArray, FloatScalar], out_dim: int = 64, max_p
     Parameters
     ----------
     t : FloatScalar or JArray (...)
-        A time variable or batched severals.
+        A time variable or batched severals. This might be the discrete time index not the real time.
     out_dim : int
         The output dimension.
     max_period : int
