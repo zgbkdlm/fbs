@@ -143,4 +143,4 @@ class MNISTUNet(nn.Module):
         # Final ResNet block and output convolutional layer
         x = ResnetBlock(dim, self.num_groups)(x, time_emb)
         x = nn.Conv(nchannels, (1, 1), padding='SAME')(x)
-        return jnp.reshape(x, (x.shape[0], -1))
+        return jnp.squeeze(jnp.reshape(x, (x.shape[0], -1)))
