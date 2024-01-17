@@ -99,7 +99,7 @@ class ResnetBlock(nn.Module):
 class MNISTUNet(nn.Module):
     dim: int = 8
     dim_scale_factor: tuple = (1, 2, 4)
-    num_groups: int = 8
+    num_groups: int = 4
 
     @nn.compact
     def __call__(self, x, t):
@@ -108,14 +108,12 @@ class MNISTUNet(nn.Module):
         channels = x.shape[-1]
         x = nn.Conv(self.dim // 3 * 2, (7, 7), padding=((3, 3), (3, 3)))(x)
         time_emb = TimeEmbedding(self.dim)(t)
-        print(x.shape, t.shape, time_emb.shape)
 
         dims = [self.dim * i for i in self.dim_scale_factor]
         pre_downsampling = []
 
         # Downsampling phase
         for index, dim in enumerate(dims):
-            x = ResnetBlock(dim, self.num_groups)(x, time_emb)
             x = ResnetBlock(dim, self.num_groups)(x, time_emb)
             att = Attention(dim)(x)
             norm = nn.GroupNorm(self.num_groups)(att)
@@ -134,9 +132,7 @@ class MNISTUNet(nn.Module):
 
         # Upsampling phase
         for index, dim in enumerate(reversed(dims)):
-            print(index, dim)
             x = jnp.concatenate([pre_downsampling.pop(), x], -1)
-            x = ResnetBlock(dim, self.num_groups)(x, time_emb)
             x = ResnetBlock(dim, self.num_groups)(x, time_emb)
             att = Attention(dim)(x)
             norm = nn.GroupNorm(self.num_groups)(att)

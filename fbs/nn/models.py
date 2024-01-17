@@ -38,7 +38,7 @@ class MNISTConv(nn.Module):
         x = nn.relu(x)
         x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))  # 28x28x32 --> 14x14x32
 
-        x = nn.Conv(features=64, kernel_size=(3, 3))(x)  # 14x14x32 --> 14x14x64
+        x = nn.Conv(features=64, kernel_size=(2, 2))(x)  # 14x14x32 --> 14x14x64
         x = nn.relu(x)
         x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))  # 14x14x64 --> 7x7x64
 
