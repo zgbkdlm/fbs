@@ -33,8 +33,6 @@ class MNISTAutoEncoder(nn.Module):
 class MNISTResConv(nn.Module):
     nn_param_dtype = jnp.float64
     nn_param_init = nn.initializers.xavier_normal()
-    batch_spatial: int
-    batch_temporal: int
     dt: float
     decoder: str = 'pixel_shuffle'
 
@@ -42,7 +40,11 @@ class MNISTResConv(nn.Module):
     def __call__(self, x, t):
         # x: (n, 784) or (n, 28, 28)
         # t: float
-        x = x.reshape(self.batch_spatial, 28, 28, 1)
+        if x.ndim <= 1:
+            batch_size = 1
+        else:
+            batch_size = x.shape[0]
+        x = x.reshape(batch_size, 28, 28, 1)
         x = nn.Conv(features=32, kernel_size=(3, 3))(x)  # (n, 28, 28, 32)
         x = nn.GroupNorm(num_groups=8)(x)
         x = nn.silu(x)
@@ -55,9 +57,9 @@ class MNISTResConv(nn.Module):
         x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))  # (n, 7, 7, 64)
 
         t = sinusoidal_embedding(t / self.dt, out_dim=32)
-        t = nn.Dense(features=128, param_dtype=self.nn_param_dtype, kernel_init=nn.initializers.xavier_normal())(t)
+        t = nn.Dense(features=64, param_dtype=self.nn_param_dtype, kernel_init=self.nn_param_init)(t)
         t = nn.gelu(t)
-        t = nn.Dense(features=128, param_dtype=self.nn_param_dtype, kernel_init=nn.initializers.xavier_normal())(t)
+        t = nn.Dense(features=128, param_dtype=self.nn_param_dtype, kernel_init=self.nn_param_init)(t)
         t = t.reshape(1, 1, 1, -1)
 
         t1, t2 = t[:, :, :, :64], t[:, :, :, 64:]
@@ -89,7 +91,7 @@ class MNISTResConv(nn.Module):
             x = x + x1
             x = nn.Conv(features=1, kernel_size=(2, 2))(x)
 
-        x = x.reshape((self.batch_spatial, -1))
+        x = x.reshape((batch_size, -1))
         return jnp.squeeze(x)
 
 

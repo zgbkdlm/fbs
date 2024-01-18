@@ -87,7 +87,7 @@ if args.nn == 'mlp':
 elif args.nn == 'unet':
     my_nn = MNISTUNet(8)
 elif args.nn == 'conv':
-    my_nn = MNISTResConv(batch_spatial=train_nsamples, batch_temporal=train_nsteps, dt=train_dt)
+    my_nn = MNISTResConv(dt=train_dt)
 else:
     raise NotImplementedError('...')
 _, _, array_param, _, nn_score = make_simple_st_nn(subkey,
