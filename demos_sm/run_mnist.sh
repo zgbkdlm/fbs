@@ -13,4 +13,4 @@ source ./venv/bin/activate
 cd demos_sm
 
 nvidia-smi
-python -u mnist.py --train --nn="unet" --schedule="cos" --batch_size=32
+python -u mnist.py --train --nn="conv" --schedule="cos" --batch_size=128 --nsteps=50
