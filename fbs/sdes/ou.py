@@ -74,9 +74,7 @@ def make_ou_score_matching_loss(a, b, nn_score, t0=0., T=2., nsteps: int = 100, 
 
         keys = jax.random.split(key_fwd, num=nsamples)
         fwd_paths = jax.vmap(simulate_cond_forward, in_axes=[0, 0, None])(keys, x0s, ts)
-        nn_evals = jax.vmap(jax.vmap(nn_score,
-                                     in_axes=[0, 0, None]),
-                            in_axes=[0, None, None])(fwd_paths[:, 1:], ts[1:], param)
+        nn_evals = jax.vmap(nn_score, in_axes=[1, 0, None], out_axes=1)(fwd_paths[:, 1:], ts[1:], param)
         cond_score_evals = jax.vmap(jax.vmap(cond_score_t_0,
                                              in_axes=[0, 0, None]),
                                     in_axes=[0, None, 0])(fwd_paths[:, 1:], ts[1:], fwd_paths[:, 0])

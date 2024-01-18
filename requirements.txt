@@ -5,3 +5,4 @@ flax
 optax
 jaxopt
 pytest
+einops

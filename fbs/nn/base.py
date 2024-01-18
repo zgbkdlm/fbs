@@ -29,7 +29,7 @@ def make_st_nn(nn: linen.Module,
     JArray, Callable[[JArray], dict], Callable (..., d), (p, ) -> (..., d)
         The initial parameter array, the array-to-dict ravel function, and the NN forward pass evaluation function.
     """
-    dict_param = nn.init(key, jnp.ones((batch_size, dim_x)), jnp.ones((batch_size, 1)))
+    dict_param = nn.init(key, jnp.ones((batch_size, dim_x)), jnp.array(1.))
     array_param, array_to_dict = ravel_pytree(dict_param)
 
     def forward_pass(x: JArray, t: FloatScalar, param: JArray) -> JArray:
@@ -49,8 +49,8 @@ def sinusoidal_embedding(t: Union[JArray, FloatScalar], out_dim: int = 64, max_p
 
     Parameters
     ----------
-    t : FloatScalar or JArray (...)
-        A time variable or batched severals. This might be the discrete time index not the real time.
+    t : FloatScalar
+        A time variable. Note that this is the discrete time.
     out_dim : int
         The output dimension.
     max_period : int

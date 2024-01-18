@@ -10,7 +10,7 @@ import optax
 import flax.linen as nn
 from fbs.data import MNIST
 from fbs.sdes import make_ou_sde, make_ou_score_matching_loss
-from fbs.nn.models import make_simple_st_nn
+from fbs.nn.models import make_simple_st_nn, MNISTResConv, MNISTAutoEncoder
 from fbs.nn.unet import MNISTUNet
 from fbs.nn import sinusoidal_embedding
 
@@ -20,6 +20,7 @@ parser.add_argument('--train', action='store_true', default=False, help='Whether
 parser.add_argument('--nn', type=str, default='mlp')
 parser.add_argument('--lr', type=float, default=1e-3)
 parser.add_argument('--batch_size', type=int, default=64)
+parser.add_argument('--nsteps', type=int, default=50)
 parser.add_argument('--schedule', type=str, default='cos')
 parser.add_argument('--nepochs', type=int, default=20)
 args = parser.parse_args()
@@ -73,113 +74,25 @@ def simulate_forward(key_, ts_):
 
 # Score matching
 train_nsamples = args.batch_size
-train_nsteps = 10
+train_nsteps = args.nsteps
 train_dt = T / train_nsteps
 nepochs = args.nepochs
 data_size = dataset.n
 nn_param_init = nn.initializers.xavier_normal()
 nn_param_dtype = jnp.float64
 
-
-class MNISTAutoEncoder(nn.Module):
-    @nn.compact
-    def __call__(self, x, t):
-        x = nn.Dense(features=128, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
-        x = nn.gelu(x)
-        x = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
-
-        t = sinusoidal_embedding(t / train_dt, out_dim=128, max_period=train_nsteps)
-        t = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
-
-        # t = sinusoidal_embedding(t, out_dim=32)
-
-        z = jnp.concatenate([x, t], axis=-1)
-        z = nn.Dense(features=128, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(z)
-        z = nn.gelu(z)
-        z = nn.Dense(features=784, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(z)
-        return jnp.squeeze(z)
-
-
-# class MNISTConv(nn.Module):
-#     @nn.compact
-#     def __call__(self, x, t):
-#         x = x.reshape(-1, 28, 28, 1)
-#         batch_size = x.shape[0]
-#         x = nn.Conv(features=32, kernel_size=(3, 3))(x)
-#         x = nn.relu(x)
-#         x1 = x
-#         x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
-#         x = nn.Conv(features=64, kernel_size=(3, 3))(x)
-#         x = nn.relu(x)
-#         x2 = x
-#         x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
-#
-#         t = sinusoidal_embedding(t, out_dim=32)
-#         t = nn.Dense(features=128, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
-#         t = t.reshape(batch_size, 1, 1, -1)
-#
-#         t1, t2 = t[:, :, :, :64], t[:, :, :, 64:]
-#
-#         x = x * t1 + t2
-#         x = jax.image.resize(x, (x.shape[0], 14, 14, 64), 'bilinear')
-#         x = nn.Conv(features=64, kernel_size=(3, 3))(x)
-#         x = nn.relu(x)
-#         x = x + x2
-#         x = jax.image.resize(x, (x.shape[0], 28, 28, 64), 'bilinear')
-#         x = nn.Conv(features=32, kernel_size=(3, 3))(x)
-#         x = nn.relu(x)
-#         x = x + x1
-#         x = nn.Conv(features=1, kernel_size=(3, 3))(x)
-#
-#         x = x.reshape((x.shape[0], -1))
-#         return jnp.squeeze(x)
-
-class MNISTConv(nn.Module):
-
-    @nn.compact
-    def __call__(self, x, t):
-        x = x.reshape(-1, 28, 28, 1)
-
-        t = sinusoidal_embedding(t / train_dt, out_dim=32)
-        t = nn.Dense(features=128, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
-        t = nn.relu(t)
-        t = t.reshape(x.shape[0], 1, 1, -1)
-        t1, t2 = t[:, :, :, :64], t[:, :, :, 64:]
-
-        x = nn.Conv(features=32, kernel_size=(3, 3))(x)
-        x = nn.relu(x)
-        x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
-
-        x = nn.Conv(features=64, kernel_size=(2, 2))(x)
-        x = nn.relu(x)
-        x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
-
-        x = x * t1 + t2
-
-        x = nn.ConvTranspose(features=64, kernel_size=(2, 2), strides=(2, 2))(x)
-        x = nn.Conv(features=32, kernel_size=(3, 3))(x)
-        x = nn.relu(x)
-
-        x = nn.ConvTranspose(features=16, kernel_size=(2, 2), strides=(2, 2))(x)
-        x = nn.Conv(features=1, kernel_size=(3, 3))(x)
-
-        x = x.reshape((x.shape[0], -1))
-
-        return jnp.squeeze(x)
-
-
 key, subkey = jax.random.split(key)
 if args.nn == 'mlp':
-    my_nn = MNISTAutoEncoder()
+    my_nn = MNISTAutoEncoder(nn_param_dtype=nn_param_dtype, nn_param_init=nn_param_init)
 elif args.nn == 'unet':
     my_nn = MNISTUNet(8)
 elif args.nn == 'conv':
-    my_nn = MNISTConv()
+    my_nn = MNISTResConv(batch_spatial=train_nsamples, batch_temporal=train_nsteps, dt=train_dt)
 else:
     raise NotImplementedError('...')
 _, _, array_param, _, nn_score = make_simple_st_nn(subkey,
                                                    dim_in=d, batch_size=train_nsamples,
-                                                   mlp=my_nn)
+                                                   nn_model=my_nn)
 
 loss_fn = make_ou_score_matching_loss(a, b, nn_score, t0=0., T=T, nsteps=train_nsteps, random_times=True)
 
@@ -211,9 +124,9 @@ if train:
             x0s, _ = dataset.enumerate_subset(j, perm_inds, subkey)
             param, opt_state, loss = optax_kernel(param, opt_state, subkey2, x0s)
             print(f'Epoch: {i} / {nepochs}, iter: {j} / {data_size // train_nsamples}, loss: {loss}')
-        np.save(f'./mnist_{args.nn}_{args.schedule}_{args.lr}.npy', param)
+        np.save(f'./mnist_{args.nn}.npy', param)
 else:
-    param = np.load(f'./mnist_{args.nn}_{args.schedule}_{args.lr}.npy')
+    param = np.load(f'./mnist_{args.nn}.npy')
 
 
 # Verify if the score function is learnt properly
@@ -235,7 +148,7 @@ def backward_euler(key_, u0):
 
 
 # Simulate the backward and verify if it matches the target distribution
-kkk = jax.random.PRNGKey(111)
+kkk = jax.random.PRNGKey(9999)
 key, subkey = jax.random.split(kkk)
 test_x0 = sampler_x(subkey)
 key, subkey = jax.random.split(key)

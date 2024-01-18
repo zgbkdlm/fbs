@@ -1,4 +1,5 @@
 import jax.numpy as jnp
+import einops
 from jax.flatten_util import ravel_pytree
 from flax import linen
 from fbs.typings import JArray, JKey, FloatScalar
@@ -44,3 +45,10 @@ def make_nn_with_time(nn: linen.Module,
         return nn.apply(array_to_dict(param), jnp.hstack([x, t * time_scale]))
 
     return array_param, array_to_dict, forward_pass
+
+
+class PixelShuffle(linen.Module):
+    scale: int
+
+    def __call__(self, x: JArray) -> JArray:
+        return einops.rearrange(x, 'b h w (h2 w2 c) -> b (h h2) (w w2) c', h2=self.scale, w2=self.scale)
