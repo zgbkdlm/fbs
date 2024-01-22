@@ -45,17 +45,18 @@ class MNISTResConv(nn.Module):
         else:
             batch_size = x.shape[0]
         x = x.reshape(batch_size, 28, 28, 1)
+        x0 = x
         x = nn.Conv(features=32, kernel_size=(3, 3))(x)  # (n, 28, 28, 32)
         x = nn.GroupNorm(num_groups=8)(x)
         x = nn.silu(x)
         # here add attention
         x1 = x
-        x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))  # (n, 14, 14, 32)
+        x = nn.max_pool(x, window_shape=(2, 2), strides=(2, 2))  # (n, 14, 14, 32)
         x = nn.Conv(features=64, kernel_size=(3, 3))(x)  # (n, 14, 14, 64)
         x = nn.GroupNorm(num_groups=8)(x)
         x = nn.silu(x)
         x2 = x
-        x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))  # (n, 7, 7, 64)
+        x = nn.max_pool(x, window_shape=(2, 2), strides=(2, 2))  # (n, 7, 7, 64)
 
         t = sinusoidal_embedding(t / self.dt, out_dim=32)
         t = nn.Dense(features=64, param_dtype=self.nn_param_dtype, kernel_init=nn.initializers.xavier_normal())(t)
@@ -95,6 +96,7 @@ class MNISTResConv(nn.Module):
             x = x + x1
             x = nn.Conv(features=1, kernel_size=(3, 3))(x)
 
+        x = x + x0
         x = x.reshape((batch_size, -1))
         return jnp.squeeze(x)
 
