@@ -9,7 +9,8 @@ import numpy as np
 import optax
 import flax.linen as nn
 from fbs.data import MNIST
-from fbs.sdes import make_ou_sde, make_ou_score_matching_loss
+from fbs.sdes import make_linear_sde, make_linear_sde_score_matching_loss, StationaryConstLinearSDE, \
+    StationaryLinLinearSDE, StationaryExpLinearSDE
 from fbs.nn.models import make_simple_st_nn, MNISTResConv, MNISTAutoEncoder
 from fbs.nn.unet import MNISTUNet
 from fbs.nn import sinusoidal_embedding
@@ -60,11 +61,8 @@ if not train:
     plt.show()
 
 # Define the forward noising process which are independent OU processes
-a = -0.5
-b = 1.
-gamma = b ** 2
-
-discretise_ou_sde, cond_score_t_0, simulate_cond_forward = make_ou_sde(a, b)
+sde = StationaryLinLinearSDE(a=-0.5, b=1.)
+discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(sde)
 
 
 def simulate_forward(key_, ts_):
@@ -94,7 +92,7 @@ _, _, array_param, _, nn_score = make_simple_st_nn(subkey,
                                                    dim_in=d, batch_size=train_nsamples,
                                                    nn_model=my_nn)
 
-loss_fn = make_ou_score_matching_loss(a, b, nn_score, t0=0., T=T, nsteps=train_nsteps, random_times=True)
+loss_fn = make_linear_sde_score_matching_loss(sde, nn_score, t0=0., T=T, nsteps=train_nsteps, random_times=True)
 
 
 @jax.jit
@@ -131,7 +129,11 @@ else:
 
 # Verify if the score function is learnt properly
 def reverse_drift(u, t):
-    return -a * u + gamma * nn_score(u, T - t, param)
+    return -sde.drift(u, T - t) + sde.dispersion(T - t) ** 2 * nn_score(u[None, :], T - t, param)
+
+
+def reverse_dispersion(t):
+    return sde.dispersion(T - t)
 
 
 def backward_euler(key_, u0):
@@ -139,7 +141,7 @@ def backward_euler(key_, u0):
         u = carry
         dw, t = elem
 
-        u = u + reverse_drift(u, t) * dt + b * dw
+        u = u + reverse_drift(u, t) * dt + reverse_dispersion(t) * dw
         return u, None
 
     _, subkey_ = jax.random.split(key_)

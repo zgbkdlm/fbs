@@ -9,7 +9,8 @@ import numpy as np
 import optax
 import flax.linen as nn
 from fbs.data import Crescent
-from fbs.sdes import make_ou_sde, make_ou_score_matching_loss
+from fbs.sdes import make_linear_sde, make_linear_sde_score_matching_loss, StationaryConstLinearSDE, \
+    StationaryLinLinearSDE, StationaryExpLinearSDE
 from fbs.nn.models import make_simple_st_nn
 from fbs.nn import sinusoidal_embedding
 
@@ -39,6 +40,7 @@ test_nsamples = 1000
 # Crescent
 crescent = Crescent()
 
+
 def sampler_x(key_):
     x_, y_ = crescent.sampler(key_, 1)
     return jnp.hstack([x_[0], y_[0]])
@@ -59,11 +61,9 @@ plt.tight_layout(pad=0.1)
 plt.show()
 
 # Define the forward noising process which are independent OU processes
-a = -0.5
-b = 1.
-gamma = b ** 2
-
-discretise_ou_sde, cond_score_t_0, simulate_cond_forward = make_ou_sde(a, b)
+# sde = StationaryExpLinearSDE(a=-0.5, b=1., c=1., z=1.)
+sde = StationaryLinLinearSDE(a=-0.5, b=1.)
+discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(sde)
 
 
 def simulate_forward(key_, ts_):
@@ -86,8 +86,9 @@ class MLP(nn.Module):
         x = nn.gelu(x)
         x = nn.Dense(features=8, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
 
-        t = sinusoidal_embedding(t / train_dt, out_dim=64, max_period=train_nsteps)
+        t = sinusoidal_embedding(t / train_dt, out_dim=64)
         t = nn.Dense(features=8, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
+        t = jnp.tile(t, (x.shape[0], 1))
 
         z = jnp.concatenate([x, t], axis=-1)
         z = nn.Dense(features=64, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(z)
@@ -100,10 +101,10 @@ class MLP(nn.Module):
 
 key, subkey = jax.random.split(key)
 _, _, array_param, _, nn_score = make_simple_st_nn(subkey,
-                                                   dim_in=3, batch_size=train_nsamples * train_nsteps,
+                                                   dim_in=3, batch_size=train_nsamples,
                                                    nn_model=MLP())
 
-loss_fn = make_ou_score_matching_loss(a, b, nn_score, t0=0., T=T, nsteps=train_nsteps, random_times=True)
+loss_fn = make_linear_sde_score_matching_loss(sde, nn_score, t0=0., T=T, nsteps=train_nsteps, random_times=True)
 
 
 @jax.jit
@@ -127,7 +128,7 @@ opt_state = optimiser.init(param)
 if not train:
     param = np.load('./crescent.npy')
 else:
-    for i in range(2000):
+    for i in range(1000):
         key, subkey = jax.random.split(key)
         keys = jax.random.split(subkey, train_nsamples)
         samples = jax.vmap(sampler_x, in_axes=[0])(keys)
@@ -139,7 +140,11 @@ else:
 
 # Verify if the score function is learnt properly
 def reverse_drift(u, t):
-    return -a * u + gamma * nn_score(u, T - t, param)
+    return -sde.drift(u, T - t) + sde.dispersion(T - t) ** 2 * nn_score(u[None, :], T - t, param)
+
+
+def reverse_dispersion(t):
+    return sde.dispersion(T - t)
 
 
 def backward_euler(key_, u0):
@@ -147,7 +152,7 @@ def backward_euler(key_, u0):
         u = carry
         dw, t = elem
 
-        u = u + reverse_drift(u, t) * dt + b * dw
+        u = u + reverse_drift(u, t) * dt + reverse_dispersion(t) * dw
         return u, None
 
     _, subkey_ = jax.random.split(key_)

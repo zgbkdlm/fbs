@@ -177,6 +177,40 @@ def make_linear_sde(sde: LinearSDE):
     return discretise_linear_sde, cond_score_t_0, simulate_cond_forward
 
 
+def make_linear_sde_score_matching_loss(sde: LinearSDE, nn_score,
+                                        t0=0., T=2., nsteps: int = 100,
+                                        random_times: bool = True,
+                                        keep_path: bool = True):
+    discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(sde)
+
+    def score_scale(t, s):
+        return discretise_linear_sde(t, s)[1]
+
+    def loss_fn(param, key, x0s):
+        nsamples = x0s.shape[0]
+        key_ts, key_fwd = jax.random.split(key, num=2)
+
+        if random_times:
+            ts = jnp.hstack([t0,
+                             jnp.sort(jax.random.uniform(key_ts, (nsteps - 1,), minval=t0, maxval=T)),
+                             T])
+        else:
+            ts = jnp.linspace(t0, T, nsteps + 1)
+        scales = jax.vmap(score_scale, in_axes=[0, 0])(ts[1:], ts[:-1])
+
+        keys = jax.random.split(key_fwd, num=nsamples)
+        fwd_paths = jax.vmap(simulate_cond_forward, in_axes=[0, 0, None])(keys, x0s, ts)  # (n, nsteps + 1, d)
+        nn_evals = jax.vmap(nn_score,
+                            in_axes=[1, 0, None],
+                            out_axes=1)(fwd_paths[:, 1:], ts[1:], param)  # (n, nsteps, d)
+        cond_score_evals = jax.vmap(cond_score_t_0,
+                                    in_axes=[1, 0, None, None],
+                                    out_axes=1)(fwd_paths[:, 1:], ts[1:], fwd_paths[:, 0], ts[0])  # (n, nsteps, d)
+        return jnp.mean(jnp.mean((nn_evals - cond_score_evals) ** 2, axis=-1) * scales[None, :])
+
+    return loss_fn
+
+
 def make_ou_score_matching_loss(a, b, nn_score, t0=0., T=2., nsteps: int = 100, random_times: bool = True):
     discretise_ou_sde, cond_score_t_0, simulate_cond_forward = make_ou_sde(a, b)
 
