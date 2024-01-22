@@ -18,6 +18,7 @@ from fbs.nn import sinusoidal_embedding
 # Parse arguments
 parser = argparse.ArgumentParser(description='MNIST test.')
 parser.add_argument('--train', action='store_true', default=False, help='Whether train or not.')
+parser.add_argument('--sde', type=str, default='const')
 parser.add_argument('--nn', type=str, default='mlp')
 parser.add_argument('--lr', type=float, default=1e-3)
 parser.add_argument('--batch_size', type=int, default=64)
@@ -61,7 +62,14 @@ if not train:
     plt.show()
 
 # Define the forward noising process which are independent OU processes
-sde = StationaryLinLinearSDE(a=-0.5, b=1.)
+if args.sde == 'const':
+    sde = StationaryConstLinearSDE(a=-0.5, b=1.)
+elif args.sde == 'lin':
+    sde = StationaryLinLinearSDE(a=-0.5, b=1.)
+elif args.sde == 'exp':
+    sde = StationaryExpLinearSDE(a=-0.5, b=1., c=1., z=1.)
+else:
+    raise NotImplementedError('...')
 discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(sde)
 
 
@@ -150,7 +158,7 @@ def backward_euler(key_, u0):
 
 
 # Simulate the backward and verify if it matches the target distribution
-kkk = jax.random.PRNGKey(1)
+kkk = jax.random.PRNGKey(3)
 key, subkey = jax.random.split(kkk)
 test_x0 = sampler_x(subkey)
 key, subkey = jax.random.split(key)
