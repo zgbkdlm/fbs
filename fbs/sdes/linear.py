@@ -196,7 +196,7 @@ def make_linear_sde_score_matching_loss(sde: LinearSDE, nn_score,
                              T])
         else:
             ts = jnp.linspace(t0, T, nsteps + 1)
-        scales = jax.vmap(score_scale, in_axes=[0, 0])(ts[1:], ts[:-1])
+        scales = score_scale(ts[1:], ts[0])
 
         keys = jax.random.split(key_fwd, num=nsamples)
         fwd_paths = jax.vmap(simulate_cond_forward, in_axes=[0, 0, None])(keys, x0s, ts)  # (n, nsteps + 1, d)
