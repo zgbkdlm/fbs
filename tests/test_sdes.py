@@ -1,7 +1,8 @@
 import jax
 import jax.numpy as jnp
 import numpy.testing as npt
-from fbs.sdes.linear import make_linear_sde, StationaryConstLinearSDE, StationaryLinLinearSDE, StationaryExpLinearSDE
+from fbs.sdes.linear import make_linear_sde, StationaryConstLinearSDE, StationaryLinLinearSDE, StationaryExpLinearSDE, \
+    make_linear_sde_score_matching_loss, make_ou_sde, make_ou_score_matching_loss
 
 jax.config.update("jax_enable_x64", True)
 
@@ -44,3 +45,40 @@ def test_linear_sdes():
         for m, v in zip(computed_mean, computed_variance):
             npt.assert_almost_equal(m, stationary_mean, decimal=2)
             npt.assert_allclose(v, stationary_var, rtol=3e-2)
+
+        # Test loss
+        nn_score = lambda u, t, param: cond_score_t_0(u, t, x0, 0.)
+        loss_fn = make_linear_sde_score_matching_loss(sde, nn_score, 0., T, 10)
+        loss = loss_fn(None, key, x0.reshape(1, 1))
+        npt.assert_almost_equal(loss, 0.)
+
+
+def test_cross_check():
+    # Check the implementation with a reference implementation.
+    key = jax.random.PRNGKey(666)
+    a, b = -1., 1.
+    score_fn = lambda u, t, param: u * t
+    ou_discretise_sde, ou_cond_score_t_0, ou_simulate_cond_forward = make_ou_sde(a, b)
+    ou_loss = make_ou_score_matching_loss(a, b, score_fn, t0=0., T=2., nsteps=100, random_times=True)
+
+    sde = StationaryConstLinearSDE(a=a, b=b)
+    linear_discretise_sde, linear_cond_score_t_0, linear_simulate_cond_forward = make_linear_sde(sde)
+    lin_loss = make_linear_sde_score_matching_loss(sde, score_fn, t0=0., T=2., nsteps=100, random_times=True)
+
+    F_ou, Q_ou = ou_discretise_sde(1.)
+    F_l, Q_l = linear_discretise_sde(1., 0.)
+    npt.assert_equal(F_ou, F_l)
+    npt.assert_equal(Q_ou, Q_l)
+
+    s_ou = ou_cond_score_t_0(2.2, 1.1, 1.5)
+    l_ou = linear_cond_score_t_0(2.2, 1.1, 1.5, 0.)
+    npt.assert_equal(s_ou, l_ou)
+
+    ts = jnp.linspace(0., 2., 20)
+    path_ou = ou_simulate_cond_forward(key, jnp.array([2.5]), ts)
+    path_lin = linear_simulate_cond_forward(key, jnp.array([2.5]), ts)
+    npt.assert_array_equal(path_ou, path_lin)
+
+    loss_ou = ou_loss(None, key, jnp.ones((3, 2)))
+    loss_lin = lin_loss(None, key, jnp.ones((3, 2)))
+    npt.assert_equal(loss_ou, loss_lin)

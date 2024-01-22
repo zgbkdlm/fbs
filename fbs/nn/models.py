@@ -48,6 +48,7 @@ class MNISTResConv(nn.Module):
         x = nn.Conv(features=32, kernel_size=(3, 3))(x)  # (n, 28, 28, 32)
         x = nn.GroupNorm(num_groups=8)(x)
         x = nn.silu(x)
+        # here add attention
         x1 = x
         x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))  # (n, 14, 14, 32)
         x = nn.Conv(features=64, kernel_size=(3, 3))(x)  # (n, 14, 14, 64)
@@ -67,20 +68,23 @@ class MNISTResConv(nn.Module):
         x = x * t1 + t2  # (n, 7, 7, 64)
 
         if self.decoder == 'pixel_shuffle':
-            x = PixelShuffle(scale=2)(x)  # (n, 14, 14, 16)
-            x = nn.Conv(features=64, kernel_size=(2, 2))(x)  # (n, 14, 14, 64)
+            x = nn.Conv(features=64 * 4, kernel_size=(3, 3))(x)  # (n, 7, 7, 64 * 4)
+            x = PixelShuffle(scale=2)(x)  # (n, 14, 14, 64)
+            x = nn.Conv(features=64, kernel_size=(3, 3))(x)  # (n, 14, 14, 64)
             x = nn.GroupNorm(num_groups=8)(x)
             x = nn.silu(x)
+            # Add attention
             x = x + x2
-            x = PixelShuffle(scale=2)(x)  # (n, 28, 28, 16)
+            x = nn.Conv(features=32 * 4, kernel_size=(3, 3))(x)  # (n, 14, 14, 32 * 4)
+            x = PixelShuffle(scale=2)(x)  # (n, 28, 28, 32)
             x = nn.Conv(features=32, kernel_size=(3, 3))(x)  # (n, 28, 28, 32)
             x = nn.GroupNorm(num_groups=8)(x)
             x = nn.silu(x)
             x = x + x1
-            x = nn.Conv(features=1, kernel_size=(2, 2))(x)  # (n, 28, 28, 1)
+            x = nn.Conv(features=1, kernel_size=(3, 3))(x)  # (n, 28, 28, 1)
         else:
             x = jax.image.resize(x, (self.batch_spatial, 14, 14, 64), 'nearest')
-            x = nn.Conv(features=64, kernel_size=(2, 2))(x)
+            x = nn.Conv(features=64, kernel_size=(3, 3))(x)
             x = nn.GroupNorm(num_groups=8)(x)
             x = nn.silu(x)
             x = x + x2
@@ -89,7 +93,7 @@ class MNISTResConv(nn.Module):
             x = nn.GroupNorm(num_groups=8)(x)
             x = nn.silu(x)
             x = x + x1
-            x = nn.Conv(features=1, kernel_size=(2, 2))(x)
+            x = nn.Conv(features=1, kernel_size=(3, 3))(x)
 
         x = x.reshape((batch_size, -1))
         return jnp.squeeze(x)

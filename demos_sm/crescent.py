@@ -62,7 +62,7 @@ plt.show()
 
 # Define the forward noising process which are independent OU processes
 # sde = StationaryExpLinearSDE(a=-0.5, b=1., c=1., z=1.)
-sde = StationaryLinLinearSDE(a=-0.5, b=1.)
+sde = StationaryConstLinearSDE(a=-0.5, b=1.)
 discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(sde)
 
 
