@@ -57,9 +57,9 @@ class MNISTResConv(nn.Module):
         x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))  # (n, 7, 7, 64)
 
         t = sinusoidal_embedding(t / self.dt, out_dim=32)
-        t = nn.Dense(features=64, param_dtype=self.nn_param_dtype, kernel_init=self.nn_param_init)(t)
+        t = nn.Dense(features=64, param_dtype=self.nn_param_dtype, kernel_init=nn.initializers.xavier_normal())(t)
         t = nn.gelu(t)
-        t = nn.Dense(features=128, param_dtype=self.nn_param_dtype, kernel_init=self.nn_param_init)(t)
+        t = nn.Dense(features=128, param_dtype=self.nn_param_dtype, kernel_init=nn.initializers.xavier_normal())(t)
         t = t.reshape(1, 1, 1, -1)
 
         t1, t2 = t[:, :, :, :64], t[:, :, :, 64:]
