@@ -172,7 +172,8 @@ class MNISTUNet(nn.Module):
         # Up pass
         down_features = (16,) + self.features[:-1]
         for i in reversed(range(len(self.features))):
-            x = jnp.concatenate([up_layers[i], x], -1)
+            # x = jnp.concatenate([up_layers[i], x], -1)
+            x = up_layers[i] + x
             x = ResBlock(down_features[i])(x, time_emb)
             x = Attention()(x)
             if i > 0:
@@ -180,6 +181,7 @@ class MNISTUNet(nn.Module):
                     x = nn.ConvTranspose(down_features[i], kernel_size=(3, 3), strides=(2, 2))(x)
                 elif self.upsampling_method == 'resize':
                     x = jax.image.resize(x, (batch_size, x.shape[1] * 2, x.shape[2] * 2, down_features[i]), 'nearest')
+                    x = nn.Conv(features=down_features[i], kernel_size=(3, 3))(x)
                 elif self.upsampling_method == 'pixel_shuffle':
                     x = nn.Conv(features=down_features[i] * 4, kernel_size=(3, 3))(x)
                     x = PixelShuffle(scale=2)(x)

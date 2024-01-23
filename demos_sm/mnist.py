@@ -162,7 +162,7 @@ def backward_euler(key_, u0):
 
 
 # Simulate the backward and verify if it matches the target distribution
-kkk = jax.random.PRNGKey(567)
+kkk = jax.random.PRNGKey(7788)
 key, subkey = jax.random.split(kkk)
 test_x0 = sampler_x(subkey)
 key, subkey = jax.random.split(key)
@@ -177,6 +177,8 @@ plt.show()
 
 key, subkey = jax.random.split(key)
 approx_init_sample = backward_euler(subkey, terminal_val)
+print(jnp.min(test_x0), jnp.max(test_x0))
+print(jnp.min(approx_init_sample), jnp.max(approx_init_sample))
 
 fig, axes = plt.subplots(ncols=3, sharey='row')
 axes[0].imshow(test_x0.reshape(28, 28), cmap='gray')
