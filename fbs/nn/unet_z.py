@@ -117,7 +117,7 @@ class MNISTUNet(nn.Module):
             x = x + n
             if i > 0:
                 # x = nn.ConvTranspose(feature, kernel_size=(4, 4), strides=(2, 2))(x)
-                x = jax.image.resize(x, (batch_size, x.shape[1], x.shape[2], feature), 'nearest')
+                x = jax.image.resize(x, (batch_size, x.shape[1] / 2, x.shape[2] / 2, feature), 'nearest')
 
         # End
         x = ResBlock(16)(x, time_emb)
