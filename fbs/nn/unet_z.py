@@ -12,32 +12,6 @@ from fbs.nn.base import sinusoidal_embedding
 from typing import List, Sequence
 
 
-# class Attention(nn.Module):
-#     dim: int
-#     num_heads: int = 8
-#     use_bias: bool = False
-#
-#     @nn.compact
-#     def __call__(self, img):
-#         batch, h, w, channels = img.shape
-#         img = img.reshape(batch, h * w, channels)
-#         batch, n, channels = img.shape
-#         scale = (self.dim // self.num_heads) ** -0.5
-#         qkv = nn.Dense(self.dim * 3, use_bias=self.use_bias, kernel_init=nn.initializers.xavier_uniform())(img)
-#         qkv = jnp.reshape(
-#             qkv, (batch, n, 3, self.num_heads, channels // self.num_heads)
-#         )
-#         qkv = jnp.transpose(qkv, (2, 0, 3, 1, 4))
-#         q, k, v = qkv[0], qkv[1], qkv[2]
-#
-#         attention = (q @ jnp.swapaxes(k, -2, -1)) * scale
-#         attention = nn.softmax(attention, axis=-1)
-#
-#         x = (attention @ v).swapaxes(1, 2).reshape(batch, n, channels)
-#         x = nn.Dense(self.dim, kernel_init=nn.initializers.xavier_uniform())(x)
-#         x = jnp.reshape(x, (batch, int(x.shape[1] ** 0.5), int(x.shape[1] ** 0.5), -1))
-#         return x
-
 def _einsum(a, b, c, x, y):
     einsum_str = '{},{}->{}'.format(''.join(a), ''.join(b), ''.join(c))
     return jnp.einsum(einsum_str, x, y)

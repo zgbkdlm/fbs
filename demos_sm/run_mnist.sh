@@ -3,6 +3,7 @@
 #SBATCH --gpus=1
 #SBATCH -o mnist.log
 #SBATCH -t 01:00:00
+#SBATCH -C "fat"
 
 nn=$1
 batch_size=$2
