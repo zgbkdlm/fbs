@@ -26,13 +26,14 @@ parser.add_argument('--batch_size', type=int, default=64)
 parser.add_argument('--nsteps', type=int, default=50)
 parser.add_argument('--schedule', type=str, default='cos')
 parser.add_argument('--nepochs', type=int, default=20)
+
 args = parser.parse_args()
 train = args.train
 
 print(f'Run with {train}')
 
 # General configs
-jax.config.update("jax_enable_x64", True)
+# jax.config.update("jax_enable_x64", True)
 key = jax.random.PRNGKey(666)
 key, data_key = jax.random.split(key)
 
