@@ -162,7 +162,7 @@ def backward_euler(key_, u0):
 
 
 # Simulate the backward and verify if it matches the target distribution
-kkk = jax.random.PRNGKey(33)
+kkk = jax.random.PRNGKey(567)
 key, subkey = jax.random.split(kkk)
 test_x0 = sampler_x(subkey)
 key, subkey = jax.random.split(key)
