@@ -37,7 +37,7 @@ print(f'Run with {train}')
 key = jax.random.PRNGKey(666)
 key, data_key = jax.random.split(key)
 
-T = 2
+T = 1
 nsteps = 100
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
