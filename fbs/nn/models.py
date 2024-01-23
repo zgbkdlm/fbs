@@ -95,7 +95,7 @@ class MNISTResConv(nn.Module):
             x = nn.GroupNorm(num_groups=8)(x)
             x = nn.silu(x)
             x = x + x1
-            x = nn.Conv(features=1, kernel_size=(3, 3))(x)
+            x = nn.Conv(features=1, kernel_size=(1, 1))(x)
 
         x = x.reshape((batch_size, -1))
         return jnp.squeeze(x)

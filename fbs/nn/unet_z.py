@@ -1,4 +1,5 @@
 import math
+import jax
 import jax.numpy as jnp
 import flax.linen as nn
 from fbs.nn.base import sinusoidal_embedding
@@ -34,7 +35,7 @@ class Attention(nn.Module):
 
 class TimeEmbedding(nn.Module):
     dt: float
-    dim: int = 32
+    dim: int = 16
 
     @nn.compact
     def __call__(self, t):
@@ -72,7 +73,7 @@ class ResBlock(nn.Module):
 
 class MNISTUNet(nn.Module):
     dt: float
-    features: Sequence[int] = (16, 32, 64,)
+    features: Sequence[int] = (16, 32, 64)
     nchannels = 1
 
     @nn.compact
@@ -115,7 +116,8 @@ class MNISTUNet(nn.Module):
             n = nn.GroupNorm(num_groups=4)(a)
             x = x + n
             if i > 0:
-                x = nn.ConvTranspose(feature, kernel_size=(4, 4), strides=(2, 2))(x)
+                # x = nn.ConvTranspose(feature, kernel_size=(4, 4), strides=(2, 2))(x)
+                x = jax.image.resize(x, (batch_size, x.shape[1], x.shape[2], feature), 'nearest')
 
         # End
         x = ResBlock(16)(x, time_emb)
