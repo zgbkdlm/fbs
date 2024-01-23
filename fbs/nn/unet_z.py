@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 import flax.linen as nn
 from fbs.nn.base import sinusoidal_embedding
-from typing import Callable, Sequence
+from typing import List, Sequence
 
 
 class Attention(nn.Module):
@@ -109,15 +109,16 @@ class MNISTUNet(nn.Module):
         x = ResBlock(self.features[-1])(x, time_emb)
 
         # Up pass
-        for i, feature in reversed(list(enumerate(self.features))):
+        down_features = (16, ) + self.features[:-1]
+        for i in reversed(range(len(self.features))):
             x = jnp.concatenate([up_layers[i], x], -1)
-            x = ResBlock(feature)(x, time_emb)
-            a = Attention(feature)(x)
+            x = ResBlock(down_features[i])(x, time_emb)
+            a = Attention(down_features[i])(x)
             n = nn.GroupNorm(num_groups=4)(a)
             x = x + n
             if i > 0:
                 # x = nn.ConvTranspose(feature, kernel_size=(3, 3), strides=(2, 2))(x)
-                x = jax.image.resize(x, (batch_size, x.shape[1] * 2, x.shape[2] * 2, feature), 'nearest')
+                x = jax.image.resize(x, (batch_size, x.shape[1] * 2, x.shape[2] * 2, down_features[i]), 'nearest')
 
         # End
         x = ResBlock(16)(x, time_emb)
