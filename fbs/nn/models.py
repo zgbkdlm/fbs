@@ -50,12 +50,14 @@ class MNISTResConv(nn.Module):
         x = nn.silu(x)
         # here add attention
         x1 = x
-        x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))  # (n, 14, 14, 32)
+        # x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))  # (n, 14, 14, 32)
+        x = nn.Conv(features=32, kernel_size=(3, 3), strides=(2, 2))(x)
         x = nn.Conv(features=64, kernel_size=(3, 3))(x)  # (n, 14, 14, 64)
         x = nn.GroupNorm(num_groups=8)(x)
         x = nn.silu(x)
         x2 = x
-        x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))  # (n, 7, 7, 64)
+        # x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))  # (n, 7, 7, 64)
+        x = nn.Conv(features=64, kernel_size=(3, 3), strides=(2, 2))(x)
 
         t = sinusoidal_embedding(t / self.dt, out_dim=32)
         t = nn.Dense(features=64, param_dtype=self.nn_param_dtype, kernel_init=nn.initializers.xavier_normal())(t)
