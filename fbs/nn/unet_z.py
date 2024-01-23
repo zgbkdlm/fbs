@@ -160,28 +160,21 @@ class MNISTUNet(nn.Module):
         up_layers = []
         for i, feature in enumerate(self.features):
             x = ResBlock(feature)(x, time_emb)
-            a = Attention()(x)
-            n = nn.GroupNorm(num_groups=4)(a)
-            x = x + n
+            x = Attention()(x)
             up_layers.append(x)
             if i < len(self.features) - 1:
                 x = nn.Conv(feature, kernel_size=(3, 3), strides=(2, 2))(x)
 
         # Middle
         x = ResBlock(self.features[-1])(x, time_emb)
-        a = Attention()(x)
-        n = nn.GroupNorm(num_groups=4)(a)
-        x = x + n
-        x = ResBlock(self.features[-1])(x, time_emb)
+        x = Attention()(x)
 
         # Up pass
         down_features = (16,) + self.features[:-1]
         for i in reversed(range(len(self.features))):
             x = jnp.concatenate([up_layers[i], x], -1)
             x = ResBlock(down_features[i])(x, time_emb)
-            a = Attention()(x)
-            n = nn.GroupNorm(num_groups=4)(a)
-            x = x + n
+            x = Attention()(x)
             if i > 0:
                 if self.upsampling_method == 'conv':
                     x = nn.ConvTranspose(down_features[i], kernel_size=(3, 3), strides=(2, 2))(x)
