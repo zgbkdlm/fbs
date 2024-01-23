@@ -13,6 +13,7 @@ from fbs.sdes import make_linear_sde, make_linear_sde_score_matching_loss, Stati
     StationaryLinLinearSDE, StationaryExpLinearSDE
 from fbs.nn.models import make_simple_st_nn, MNISTResConv, MNISTAutoEncoder
 from fbs.nn.unet import MNISTUNet
+from fbs.nn.unet_z import MNISTUNet as MNISTUNetZ
 from fbs.nn import sinusoidal_embedding
 
 # Parse arguments
@@ -91,7 +92,9 @@ key, subkey = jax.random.split(key)
 if args.nn == 'mlp':
     my_nn = MNISTAutoEncoder(nn_param_dtype=nn_param_dtype, nn_param_init=nn_param_init)
 elif args.nn == 'unet':
-    my_nn = MNISTUNet(8)
+    my_nn = MNISTUNet(16)
+elif args.nn == 'unetz':
+    my_nn = MNISTUNetZ(train_dt)
 elif args.nn == 'conv':
     my_nn = MNISTResConv(dt=train_dt)
 else:
@@ -130,9 +133,9 @@ if train:
             x0s, _ = dataset.enumerate_subset(j, perm_inds, subkey)
             param, opt_state, loss = optax_kernel(param, opt_state, subkey2, x0s)
             print(f'Epoch: {i} / {nepochs}, iter: {j} / {data_size // train_nsamples}, loss: {loss}')
-        np.save(f'./mnist_{args.nn}.npy', param)
+        np.save(f'./mnist_{args.nn}_{args.sde}.npy', param)
 else:
-    param = np.load(f'./mnist_{args.nn}.npy')
+    param = np.load(f'./mnist_{args.nn}_{args.sde}.npy')
 
 
 # Verify if the score function is learnt properly
@@ -158,7 +161,7 @@ def backward_euler(key_, u0):
 
 
 # Simulate the backward and verify if it matches the target distribution
-kkk = jax.random.PRNGKey(3)
+kkk = jax.random.PRNGKey(33)
 key, subkey = jax.random.split(kkk)
 test_x0 = sampler_x(subkey)
 key, subkey = jax.random.split(key)
