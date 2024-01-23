@@ -99,7 +99,7 @@ class MNISTUNet(nn.Module):
             x = x + n
             up_layers.append(x)
             if i < len(self.features) - 1:
-                x = nn.Conv(feature, kernel_size=(4, 4), strides=(2, 2))(x)
+                x = nn.Conv(feature, kernel_size=(3, 3), strides=(2, 2))(x)
 
         # Middle
         x = ResBlock(self.features[-1])(x, time_emb)
@@ -116,8 +116,8 @@ class MNISTUNet(nn.Module):
             n = nn.GroupNorm(num_groups=4)(a)
             x = x + n
             if i > 0:
-                # x = nn.ConvTranspose(feature, kernel_size=(4, 4), strides=(2, 2))(x)
-                x = jax.image.resize(x, (batch_size, x.shape[1] / 2, x.shape[2] / 2, feature), 'nearest')
+                # x = nn.ConvTranspose(feature, kernel_size=(3, 3), strides=(2, 2))(x)
+                x = jax.image.resize(x, (batch_size, x.shape[1] * 2, x.shape[2] * 2, feature), 'nearest')
 
         # End
         x = ResBlock(16)(x, time_emb)
