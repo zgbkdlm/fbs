@@ -6,31 +6,68 @@ from fbs.nn.base import sinusoidal_embedding
 from typing import List, Sequence
 
 
+# class Attention(nn.Module):
+#     dim: int
+#     num_heads: int = 8
+#     use_bias: bool = False
+#
+#     @nn.compact
+#     def __call__(self, img):
+#         batch, h, w, channels = img.shape
+#         img = img.reshape(batch, h * w, channels)
+#         batch, n, channels = img.shape
+#         scale = (self.dim // self.num_heads) ** -0.5
+#         qkv = nn.Dense(self.dim * 3, use_bias=self.use_bias, kernel_init=nn.initializers.xavier_uniform())(img)
+#         qkv = jnp.reshape(
+#             qkv, (batch, n, 3, self.num_heads, channels // self.num_heads)
+#         )
+#         qkv = jnp.transpose(qkv, (2, 0, 3, 1, 4))
+#         q, k, v = qkv[0], qkv[1], qkv[2]
+#
+#         attention = (q @ jnp.swapaxes(k, -2, -1)) * scale
+#         attention = nn.softmax(attention, axis=-1)
+#
+#         x = (attention @ v).swapaxes(1, 2).reshape(batch, n, channels)
+#         x = nn.Dense(self.dim, kernel_init=nn.initializers.xavier_uniform())(x)
+#         x = jnp.reshape(x, (batch, int(x.shape[1] ** 0.5), int(x.shape[1] ** 0.5), -1))
+#         return x
 class Attention(nn.Module):
-    dim: int
-    num_heads: int = 8
-    use_bias: bool = False
+    """Self-attention residual block.
+    https://github.com/google-research/vdm/blob/main/model_vdm.py#L468
+    """
+    num_heads: int
 
     @nn.compact
-    def __call__(self, img):
-        batch, h, w, channels = img.shape
-        img = img.reshape(batch, h * w, channels)
-        batch, n, channels = img.shape
-        scale = (self.dim // self.num_heads) ** -0.5
-        qkv = nn.Dense(self.dim * 3, use_bias=self.use_bias, kernel_init=nn.initializers.xavier_uniform())(img)
-        qkv = jnp.reshape(
-            qkv, (batch, n, 3, self.num_heads, channels // self.num_heads)
-        )
-        qkv = jnp.transpose(qkv, (2, 0, 3, 1, 4))
-        q, k, v = qkv[0], qkv[1], qkv[2]
+    def __call__(self, x):
+        B, H, W, C = x.shape
 
-        attention = (q @ jnp.swapaxes(k, -2, -1)) * scale
-        attention = nn.softmax(attention, axis=-1)
+        h = nn.GroupNorm(num_groups=4)(x)
+        if self.num_heads == 1:
+            q = nn.Dense(features=C, name='q')(h)
+            k = nn.Dense(features=C, name='k')(h)
+            v = nn.Dense(features=C, name='v')(h)
+            h = dot_product_attention(
+                q[:, :, :, None, :],
+                k[:, :, :, None, :],
+                v[:, :, :, None, :],
+                axis=(1, 2))[:, :, :, 0, :]
+            h = nn.Dense(
+                features=C, kernel_init=nn.initializers.zeros, name='proj_out')(h)
+        else:
+            head_dim = C // self.num_heads
+            q = nn.DenseGeneral(features=(self.num_heads, head_dim), name='q')(h)
+            k = nn.DenseGeneral(features=(self.num_heads, head_dim), name='k')(h)
+            v = nn.DenseGeneral(features=(self.num_heads, head_dim), name='v')(h)
+            assert q.shape == k.shape == v.shape == (
+                B, H, W, self.num_heads, head_dim)
+            h = dot_product_attention(q, k, v, axis=(1, 2))
+            h = nn.DenseGeneral(
+                features=C,
+                axis=(-2, -1),
+                kernel_init=nn.initializers.zeros,
+                name='proj_out')(h)
 
-        x = (attention @ v).swapaxes(1, 2).reshape(batch, n, channels)
-        x = nn.Dense(self.dim, kernel_init=nn.initializers.xavier_uniform())(x)
-        x = jnp.reshape(x, (batch, int(x.shape[1] ** 0.5), int(x.shape[1] ** 0.5), -1))
-        return x
+        return x + h
 
 
 class TimeEmbedding(nn.Module):
@@ -94,9 +131,10 @@ class MNISTUNet(nn.Module):
         up_layers = []
         for i, feature in enumerate(self.features):
             x = ResBlock(feature)(x, time_emb)
-            a = Attention(feature)(x)
-            n = nn.GroupNorm(num_groups=4)(a)
-            x = x + n
+            # a = Attention(feature)(x)
+            # n = nn.GroupNorm(num_groups=4)(a)
+            # x = x + n
+            x = x + nn.GroupNorm(num_groups=4)(x)
             up_layers.append(x)
             if i < len(self.features) - 1:
                 x = nn.Conv(feature, kernel_size=(3, 3), strides=(2, 2))(x)
@@ -109,13 +147,14 @@ class MNISTUNet(nn.Module):
         # x = ResBlock(self.features[-1])(x, time_emb)
 
         # Up pass
-        down_features = (16, ) + self.features[:-1]
+        down_features = (16,) + self.features[:-1]
         for i in reversed(range(len(self.features))):
             x = jnp.concatenate([up_layers[i], x], -1)
             x = ResBlock(down_features[i])(x, time_emb)
-            a = Attention(down_features[i])(x)
-            n = nn.GroupNorm(num_groups=4)(a)
-            x = x + n
+            # a = Attention(down_features[i])(x)
+            # n = nn.GroupNorm(num_groups=4)(a)
+            # x = x + n
+            x = x + nn.GroupNorm(num_groups=4)(x)
             if i > 0:
                 # x = nn.ConvTranspose(feature, kernel_size=(3, 3), strides=(2, 2))(x)
                 x = jax.image.resize(x, (batch_size, x.shape[1] * 2, x.shape[2] * 2, down_features[i]), 'nearest')
