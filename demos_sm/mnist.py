@@ -38,7 +38,7 @@ key = jax.random.PRNGKey(666)
 key, data_key = jax.random.split(key)
 
 T = 1
-nsteps = 100
+nsteps = 1000
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
 
@@ -162,7 +162,7 @@ def backward_euler(key_, u0):
 
 
 # Simulate the backward and verify if it matches the target distribution
-kkk = jax.random.PRNGKey(7788)
+kkk = jax.random.PRNGKey(888)
 key, subkey = jax.random.split(kkk)
 test_x0 = sampler_x(subkey)
 key, subkey = jax.random.split(key)
@@ -176,13 +176,15 @@ plt.tight_layout(pad=0.1)
 plt.show()
 
 key, subkey = jax.random.split(key)
-approx_init_sample = backward_euler(subkey, terminal_val)
+keys = jax.random.split(subkey, num=5)
+approx_init_samples = jax.vmap(backward_euler, in_axes=[0, None])(keys, terminal_val)
 print(jnp.min(test_x0), jnp.max(test_x0))
-print(jnp.min(approx_init_sample), jnp.max(approx_init_sample))
+print(jnp.min(approx_init_samples), jnp.max(approx_init_samples))
 
-fig, axes = plt.subplots(ncols=3, sharey='row')
+fig, axes = plt.subplots(ncols=7, sharey='row')
 axes[0].imshow(test_x0.reshape(28, 28), cmap='gray')
 axes[1].imshow(terminal_val.reshape(28, 28), cmap='gray')
-axes[2].imshow(approx_init_sample.reshape(28, 28), cmap='gray')
+for i in range(2, 7):
+    axes[i].imshow(approx_init_samples[i - 2].reshape(28, 28), cmap='gray')
 plt.tight_layout(pad=0.1)
 plt.show()

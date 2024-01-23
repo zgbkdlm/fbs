@@ -4,6 +4,40 @@ import flax.linen as nn
 from fbs.nn import sinusoidal_embedding, make_st_nn
 from fbs.nn.utils import PixelShuffle
 
+nn_param_dtype = jnp.float64
+nn_param_init = nn.initializers.xavier_normal()
+
+
+class _CrescentTimeBlock(nn.Module):
+    dt: float
+    nfeatures: int
+
+    @nn.compact
+    def __call__(self, time_emb):
+        time_emb = nn.Dense(features=self.nfeatures, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(time_emb)
+        time_emb = nn.gelu(time_emb)
+        time_emb = nn.Dense(features=self.nfeatures, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(time_emb)
+        return time_emb
+
+
+class CrescentMLP(nn.Module):
+    dt: float
+
+    @nn.compact
+    def __call__(self, x, t):
+        time_emb = sinusoidal_embedding(t / self.dt, out_dim=16)
+
+        x = nn.Dense(features=64, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
+        x = _CrescentTimeBlock(dt=self.dt, nfeatures=64)(time_emb) + x
+        x = nn.gelu(x)
+        x = nn.Dense(features=16, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
+        x = _CrescentTimeBlock(dt=self.dt, nfeatures=16)(time_emb) + x
+        x = nn.gelu(x)
+        x = nn.Dense(features=3, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
+        x = _CrescentTimeBlock(dt=self.dt, nfeatures=3)(time_emb) + x
+
+        return jnp.squeeze(x)
+
 
 class MNISTAutoEncoder(nn.Module):
     # This does not really work.

@@ -82,3 +82,13 @@ def test_cross_check():
     loss_ou = ou_loss(None, key, jnp.ones((3, 2)))
     loss_lin = lin_loss(None, key, jnp.ones((3, 2)))
     npt.assert_equal(loss_ou, loss_lin)
+
+
+def test_score_matching_routine():
+    # Test if optimising the score loss can give correct results for Gaussian models.
+    # TODO
+    pass
+
+
+def test_simulators():
+    pass
