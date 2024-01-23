@@ -20,7 +20,7 @@ parser = argparse.ArgumentParser(description='MNIST test.')
 parser.add_argument('--train', action='store_true', default=False, help='Whether train or not.')
 parser.add_argument('--sde', type=str, default='const')
 parser.add_argument('--nn', type=str, default='mlp')
-parser.add_argument('--lr', type=float, default=1e-3)
+parser.add_argument('--lr', type=float, default=1e-4)
 parser.add_argument('--batch_size', type=int, default=64)
 parser.add_argument('--nsteps', type=int, default=50)
 parser.add_argument('--schedule', type=str, default='cos')
@@ -112,9 +112,9 @@ def optax_kernel(param_, opt_state_, key_, xy0s_):
 
 
 if args.schedule == 'cos':
-    schedule = optax.cosine_decay_schedule(args.lr, data_size // train_nsamples, .91)
+    schedule = optax.cosine_decay_schedule(args.lr, data_size // train_nsamples, .95)
 elif args.schedule == 'exp':
-    schedule = optax.exponential_decay(args.lr, data_size // train_nsamples, .91)
+    schedule = optax.exponential_decay(args.lr, data_size // train_nsamples, .95)
 else:
     schedule = optax.constant_schedule(args.lr)
 optimiser = optax.adam(learning_rate=schedule)
