@@ -2,6 +2,7 @@ import math
 import jax
 import jax.numpy as jnp
 import flax.linen as nn
+from fbs.nn.utils import PixelShuffle
 from fbs.nn.base import sinusoidal_embedding
 from typing import List, Sequence
 
@@ -112,6 +113,7 @@ class MNISTUNet(nn.Module):
     dt: float
     features: Sequence[int] = (16, 32, 64)
     nchannels = 1
+    upsampling_method: str = 'pixel_shuffle'
 
     @nn.compact
     def __call__(self, x, t):
@@ -156,8 +158,14 @@ class MNISTUNet(nn.Module):
             # x = x + n
             x = x + nn.GroupNorm(num_groups=4)(x)
             if i > 0:
-                # x = nn.ConvTranspose(feature, kernel_size=(3, 3), strides=(2, 2))(x)
-                x = jax.image.resize(x, (batch_size, x.shape[1] * 2, x.shape[2] * 2, down_features[i]), 'nearest')
+                if self.upsampling_method == 'conv':
+                    x = nn.ConvTranspose(down_features[i], kernel_size=(3, 3), strides=(2, 2))(x)
+                elif self.upsampling_method == 'resize':
+                    x = jax.image.resize(x, (batch_size, x.shape[1] * 2, x.shape[2] * 2, down_features[i]), 'nearest')
+                elif self.upsampling_method == 'pixel_shuffle':
+                    x = nn.Conv(features=down_features[i] * 4, kernel_size=(3, 3))(x)
+                    x = PixelShuffle(scale=2)(x)
+                    x = nn.Conv(features=down_features[i], kernel_size=(3, 3))(x)
 
         # End
         x = ResBlock(16)(x, time_emb)
