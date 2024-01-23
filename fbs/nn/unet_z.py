@@ -102,11 +102,11 @@ class MNISTUNet(nn.Module):
                 x = nn.Conv(feature, kernel_size=(3, 3), strides=(2, 2))(x)
 
         # Middle
-        x = ResBlock(self.features[-1])(x, time_emb)
-        a = Attention(self.features[-1])(x)
-        n = nn.GroupNorm(num_groups=4)(a)
-        x = x + n
-        x = ResBlock(self.features[-1])(x, time_emb)
+        # x = ResBlock(self.features[-1])(x, time_emb)
+        # a = Attention(self.features[-1])(x)
+        # n = nn.GroupNorm(num_groups=4)(a)
+        # x = x + n
+        # x = ResBlock(self.features[-1])(x, time_emb)
 
         # Up pass
         down_features = (16, ) + self.features[:-1]
