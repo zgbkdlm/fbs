@@ -14,25 +14,26 @@ import flax.linen as nn
 from fbs.data import Crescent
 from fbs.sdes import make_ou_sde
 from fbs.nn import sinusoidal_embedding
-from fbs.nn.models import make_simple_st_nn
-from fbs.utils import discretise_lti_sde
+from fbs.nn.models import make_simple_st_nn, CrescentMLP
+from fbs.sdes import make_linear_sde, make_linear_sde_score_matching_loss, StationaryConstLinearSDE, \
+    StationaryLinLinearSDE, StationaryExpLinearSDE, reverse_simulator
 from fbs.filters.csmc.csmc import csmc_kernel
 from fbs.filters.csmc.resamplings import killing
 from functools import partial
 
 # General configs
 nparticles = 100
-nsamples = 1000
+ngibbs = 1000
 burn_in = 100
-jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_enable_x64", False)
 key = jax.random.PRNGKey(666)
-y0 = 6.
+y0 = 4.
 use_pretrained = False
 
-T = 3
-nsteps = 100
+T = 2
+nsteps = 200
 dt = T / nsteps
-ts = jnp.linspace(0, T, nsteps + 1)
+ts = jnp.linspace(0, T - 1e-6, nsteps + 1)
 
 crescent = Crescent()
 
@@ -51,15 +52,8 @@ plt.legend()
 plt.show()
 
 # Define the forward noising process
-a = -0.5
-b = 1.
-gamma = b ** 2
-
-discretise_ou_sde, cond_score_t_0, simulate_cond_forward = make_ou_sde(a, b)
-
-
-def score_scale(t):
-    return discretise_ou_sde(t)[1]
+sde = StationaryConstLinearSDE(a=-0.5, b=1.)
+discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(sde)
 
 
 def simulate_forward(key_, ts_):
@@ -69,78 +63,36 @@ def simulate_forward(key_, ts_):
 
 # Visualise the terminal distribution
 key, subkey = jax.random.split(key)
-keys = jax.random.split(subkey, num=nsamples)
+keys = jax.random.split(subkey, num=ngibbs)
 fwd_trajs = jax.vmap(simulate_forward, in_axes=[0, None])(keys, ts)
 plt.scatter(fwd_trajs[:, -1, 0], fwd_trajs[:, -1, 2], s=1, alpha=0.5)
 plt.show()
 
 # Score matching training
-batch_nsamples = 200
-batch_nsteps = 100
-ntrains = 1000
+train_nsamples = 256
+train_nsteps = 100
+train_dt = T / train_nsteps
 nn_param_init = nn.initializers.xavier_normal()
-
-
-class MLP(nn.Module):
-    @nn.compact
-    def __call__(self, xy, t):
-        # Spatial part
-        xy = nn.Dense(features=64, param_dtype=jnp.float64, kernel_init=nn_param_init)(xy)
-        xy = nn.relu(xy)
-        xy = nn.Dense(features=8, param_dtype=jnp.float64, kernel_init=nn_param_init)(xy)
-
-        # Temporal part
-        t = sinusoidal_embedding(t, out_dim=64)
-        t = nn.Dense(features=16, param_dtype=jnp.float64, kernel_init=nn_param_init)(t)
-        t = nn.relu(t)
-        t = nn.Dense(features=8, param_dtype=jnp.float64, kernel_init=nn_param_init)(t)
-
-        z = jnp.concatenate([xy, t], axis=-1)
-        z = nn.Dense(features=64, param_dtype=jnp.float64, kernel_init=nn_param_init)(z)
-        z = nn.relu(z)
-        z = nn.Dense(features=16, param_dtype=jnp.float64, kernel_init=nn_param_init)(z)
-        z = nn.relu(z)
-        z = nn.Dense(features=3, param_dtype=jnp.float64, kernel_init=nn_param_init)(z)
-        return jnp.squeeze(z)
-
+nn_param_dtype = jnp.float64
 
 key, subkey = jax.random.split(key)
 _, _, array_param, _, nn_score = make_simple_st_nn(subkey,
-                                                   dim_in=3, batch_size=batch_nsamples,
-                                                   nn_model=MLP())
+                                                   dim_in=3, batch_size=train_nsamples,
+                                                   nn_model=CrescentMLP(train_dt))
 
-
-def loss_fn(param_, key_):
-    key_ts, key_fwd = jax.random.split(key_, num=2)
-    batch_ts = jnp.hstack([0.,
-                           jnp.sort(jax.random.uniform(key_ts, (batch_nsteps - 1,), minval=0., maxval=T)),
-                           T])
-    # batch_ts = ts
-    batch_scale = score_scale(batch_ts[1:])
-    fwd_paths = jax.vmap(simulate_forward, in_axes=[0, None])(jax.random.split(key_fwd, num=batch_nsamples),
-                                                              batch_ts)
-    nn_evals = jax.vmap(jax.vmap(nn_score,
-                                 in_axes=[0, 0, None]),
-                        in_axes=[0, None, None])(fwd_paths[:, 1:], batch_ts[1:], param_)
-    cond_score_evals = jax.vmap(jax.vmap(cond_score_t_0,
-                                         in_axes=[0, 0, None]),
-                                in_axes=[0, None, 0])(fwd_paths[:, 1:], batch_ts[1:], fwd_paths[:, 0])
-    # cond_score_evals = jax.vmap(jax.vmap(cond_score_t_0,
-    #                                      in_axes=[0, 0, 0]),
-    #                             in_axes=[0, None, 0])(fwd_paths[:, 1:], jnp.diff(batch_ts), fwd_paths[:, :-1])
-    return jnp.mean(jnp.sum((nn_evals - cond_score_evals) ** 2, axis=-1) * batch_scale[None, :])
+loss_fn = make_linear_sde_score_matching_loss(sde, nn_score, t0=0., T=T, nsteps=train_nsteps, random_times=True)
 
 
 @jax.jit
-def optax_kernel(param_, opt_state_, key_):
-    loss_, grad = jax.value_and_grad(loss_fn)(param_, key_)
+def optax_kernel(param_, opt_state_, key_, xy0s_):
+    loss_, grad = jax.value_and_grad(loss_fn)(param_, key_, xy0s_)
     updates, opt_state_ = optimiser.update(grad, opt_state_, param_)
     param_ = optax.apply_updates(param_, updates)
     return param_, opt_state_, loss_
 
 
 # schedule = optax.cosine_decay_schedule(1e-2, 10, .95)
-schedule = optax.exponential_decay(1e-2, 100, .92)
+schedule = optax.exponential_decay(1e-2, 10, .95)
 # schedule = optax.constant_schedule(1e-2)
 optimiser = optax.adam(learning_rate=schedule)
 param = array_param
@@ -149,48 +101,31 @@ opt_state = optimiser.init(param)
 if use_pretrained:
     param = np.load('./crescent.npy')
 else:
-    for i in range(ntrains):
+    for i in range(1000):
         key, subkey = jax.random.split(key)
-        param, opt_state, loss = optax_kernel(param, opt_state, subkey)
+        keys = jax.random.split(subkey, train_nsamples)
+        samples = jax.vmap(sampler_xy, in_axes=[0])(keys)
+        key, subkey = jax.random.split(key)
+        param, opt_state, loss = optax_kernel(param, opt_state, subkey, samples)
         print(f'i: {i}, loss: {loss}')
     np.save('./crescent.npy', param)
 
 
 # Verify if the score function is learnt properly
-def reverse_drift(uv, t):
-    return -A @ uv + gamma @ nn_score(uv, T - t, param)
+def rev_sim(key_, u0):
+    def learnt_score(x, t):
+        return nn_score(x, t, param)
 
-
-def reverse_drift_u(u, v, t):
-    uv = jnp.hstack([u, v])
-    return (-A @ uv + gamma @ nn_score(uv, T - t, param))[:2]
-
-
-def reverse_drift_v(v, u, t):
-    uv = jnp.hstack([u, v])
-    return (-A @ uv + gamma @ nn_score(uv, T - t, param))[-1]
-
-
-def backward_euler(key_, uv0):
-    def scan_body(carry, elem):
-        uv = carry
-        dw, t = elem
-
-        uv = uv + reverse_drift(uv, t) * dt + B @ dw
-        return uv, None
-
-    _, subkey_ = jax.random.split(key_)
-    dws = jnp.sqrt(dt) * jax.random.normal(subkey_, (nsteps, 3))
-    return jax.lax.scan(scan_body, uv0, (dws, ts[:-1]))[0]
+    return reverse_simulator(key_, u0, ts, learnt_score, sde.drift, sde.dispersion, integrator='euler-maruyama')
 
 
 # Simulate the backward and verify if it matches the target distribution
 key, subkey = jax.random.split(key)
-keys = jax.random.split(subkey, num=nsamples)
-approx_init_samples = jax.vmap(backward_euler, in_axes=[0, 0])(keys, fwd_trajs[:, -1])
+keys = jax.random.split(subkey, num=ngibbs)
+approx_init_samples = jax.vmap(rev_sim, in_axes=[0, 0])(keys, fwd_trajs[:, -1])
 
 key, subkey = jax.random.split(key)
-keys = jax.random.split(subkey, nsamples)
+keys = jax.random.split(subkey, ngibbs)
 xys = jax.vmap(sampler_xy, in_axes=[0])(keys)
 
 fig, axes = plt.subplots(nrows=3, ncols=2, sharey='row', sharex='col')
@@ -210,23 +145,41 @@ plt.tight_layout(pad=0.1)
 plt.show()
 
 
+def reverse_drift(uv, t):
+    return -sde.drift(uv, T - t) + sde.dispersion(T - t) ** 2 * nn_score(uv, T - t, param)
+
+
+def reverse_drift_u(u, v, t):
+    uv = jnp.hstack([u, v])
+    return reverse_drift(uv, t)[:2]
+
+
+def reverse_drift_v(v, u, t):
+    uv = jnp.hstack([u, v])
+    return reverse_drift(uv, t)[-1]
+
+
+def reverse_dispersion(t):
+    return sde.dispersion(T - t)
+
+
 # Now do cSMC conditional sampling
 def transition_sampler(us, v, t, key_):
     return (us + jax.vmap(reverse_drift_u, in_axes=[0, None, None])(us, v, t) * dt
-            + math.sqrt(dt) * jax.random.normal(key_, us.shape) @ B[:2, :2])
+            + math.sqrt(dt) * reverse_dispersion(t) * jax.random.normal(key_, us.shape))
 
 
 @partial(jax.vmap, in_axes=[None, 0, None, None])
 def transition_logpdf(u, u_prev, v, t):
-    return jax.scipy.stats.multivariate_normal.logpdf(u,
-                                                      u_prev + reverse_drift_u(u_prev, v, t) * dt,
-                                                      dt * B[:2, :2] ** 2)
+    return jnp.sum(jax.scipy.stats.norm.logpdf(u,
+                                               u_prev + reverse_drift_u(u_prev, v, t) * dt,
+                                               math.sqrt(dt) * reverse_dispersion(t)))
 
 
 @partial(jax.vmap, in_axes=[None, 0, None, None])
 def likelihood_logpdf(v, u_prev, v_prev, t_prev):
     cond_m = v_prev + reverse_drift_v(v_prev, u_prev, t_prev) * dt
-    return jax.scipy.stats.norm.logpdf(v, cond_m, math.sqrt(dt) * B[-1, -1])
+    return jax.scipy.stats.norm.logpdf(v, cond_m, math.sqrt(dt) * reverse_dispersion(t_prev))
 
 
 def fwd_sampler(key_, x0):
@@ -264,9 +217,9 @@ xs = fwd_sampler(subkey, jnp.zeros((2,)))[:, :2]
 us_star = xs[::-1]
 bs_star = jnp.zeros((nsteps + 1), dtype=int)
 
-uss = np.zeros((nsamples, nsteps + 1, 2))
-xss = np.zeros((nsamples, nsteps + 1, 2))
-for i in range(nsamples):
+uss = np.zeros((ngibbs, nsteps + 1, 2))
+xss = np.zeros((ngibbs, nsteps + 1, 2))
+for i in range(ngibbs):
     key, subkey = jax.random.split(key)
     xs, us_star, bs_star, acc = gibbs_kernel(subkey, xs, us_star, bs_star)
     xss[i], uss[i] = xs, us_star

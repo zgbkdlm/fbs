@@ -36,9 +36,9 @@ key = jax.random.PRNGKey(666)
 key, data_key = jax.random.split(key)
 
 T = 1
-nsteps = 1000
+nsteps = 200
 dt = T / nsteps
-ts = jnp.linspace(0, T, nsteps + 1)
+ts = jnp.linspace(0, T - 1e-5, nsteps + 1)
 
 # MNIST
 d = 784

@@ -25,16 +25,17 @@ class CrescentMLP(nn.Module):
 
     @nn.compact
     def __call__(self, x, t):
-        time_emb = sinusoidal_embedding(t / self.dt, out_dim=16)
+        time_emb = sinusoidal_embedding(t / self.dt, out_dim=32)
 
         x = nn.Dense(features=64, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
-        x = _CrescentTimeBlock(dt=self.dt, nfeatures=64)(time_emb) + x
+        x = (x * _CrescentTimeBlock(dt=self.dt, nfeatures=64)(time_emb) +
+             _CrescentTimeBlock(dt=self.dt, nfeatures=64)(time_emb))
         x = nn.gelu(x)
-        x = nn.Dense(features=16, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
-        x = _CrescentTimeBlock(dt=self.dt, nfeatures=16)(time_emb) + x
+        x = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
+        x = nn.gelu(x)
+        x = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
         x = nn.gelu(x)
         x = nn.Dense(features=3, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
-        x = _CrescentTimeBlock(dt=self.dt, nfeatures=3)(time_emb) + x
 
         return jnp.squeeze(x)
 

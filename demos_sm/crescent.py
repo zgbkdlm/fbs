@@ -10,16 +10,16 @@ import optax
 import flax.linen as nn
 from fbs.data import Crescent
 from fbs.sdes import make_linear_sde, make_linear_sde_score_matching_loss, StationaryConstLinearSDE, \
-    StationaryLinLinearSDE, StationaryExpLinearSDE
+    StationaryLinLinearSDE, StationaryExpLinearSDE, reverse_simulator
 from fbs.nn.models import make_simple_st_nn, CrescentMLP
 from fbs.nn import sinusoidal_embedding
 
 # Parse arguments
 parser = argparse.ArgumentParser(description='Crescent test.')
-parser.add_argument('--train', action='store_true', default=False, help='Whether train or not.')
+parser.add_argument('--train', action='store_true', default=True, help='Whether train or not.')
 parser.add_argument('--nn', type=str, default='mlp')
-parser.add_argument('--lr', type=float, default=1e-3)
-parser.add_argument('--schedule', type=str, default='cos')
+parser.add_argument('--lr', type=float, default=1e-2)
+parser.add_argument('--schedule', type=str, default='exp')
 parser.add_argument('--nepochs', type=int, default=30)
 args = parser.parse_args()
 train = args.train
@@ -31,10 +31,10 @@ jax.config.update("jax_enable_x64", True)
 key = jax.random.PRNGKey(666)
 key, data_key = jax.random.split(key)
 
-T = 2
-nsteps = 100
+T = 1
+nsteps = 200
 dt = T / nsteps
-ts = jnp.linspace(0, T, nsteps + 1)
+ts = jnp.linspace(0, T - 1e-8, nsteps + 1)
 test_nsamples = 10000
 
 # Crescent
@@ -62,6 +62,7 @@ plt.show()
 
 # Define the forward noising process which are independent OU processes
 # sde = StationaryExpLinearSDE(a=-0.5, b=1., c=1., z=1.)
+# sde = StationaryConstLinearSDE(a=-0.5, b=1.)
 sde = StationaryConstLinearSDE(a=-0.5, b=1.)
 discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(sde)
 
@@ -119,25 +120,11 @@ else:
 
 
 # Verify if the score function is learnt properly
-def reverse_drift(u, t):
-    return -sde.drift(u, T - t) + sde.dispersion(T - t) ** 2 * nn_score(u[None, :], T - t, param)
+def rev_sim(key_, u0):
+    def learnt_score(x, t):
+        return nn_score(x, t, param)
 
-
-def reverse_dispersion(t):
-    return sde.dispersion(T - t)
-
-
-def backward_euler(key_, u0):
-    def scan_body(carry, elem):
-        u = carry
-        dw, t = elem
-
-        u = u + reverse_drift(u, t) * dt + reverse_dispersion(t) * dw
-        return u, None
-
-    _, subkey_ = jax.random.split(key_)
-    dws = jnp.sqrt(dt) * jax.random.normal(subkey_, (nsteps, 3))
-    return jax.lax.scan(scan_body, u0, (dws, ts[:-1]))[0]
+    return reverse_simulator(key_, u0, ts, learnt_score, sde.drift, sde.dispersion, integrator='euler-maruyama')
 
 
 # Simulate the backward and verify if it matches the target distribution
@@ -151,7 +138,7 @@ terminal_vals = traj[:, -1, :]
 
 key, subkey = jax.random.split(key)
 keys = jax.random.split(subkey, test_nsamples)
-approx_init_samples = jax.vmap(backward_euler, in_axes=[0, 0])(keys, terminal_vals)
+approx_init_samples = jax.vmap(rev_sim, in_axes=[0, 0])(keys, terminal_vals)
 
 fig, axes = plt.subplots(nrows=3, ncols=2, sharey='row', sharex='col')
 axes[0, 0].scatter(test_x0s[:, 0], test_x0s[:, 1], s=1, alpha=0.5, label='True p(x0, x1)')
