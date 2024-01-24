@@ -1,5 +1,5 @@
 """
-The Attention block is modified from
+The Attention block is adapted from
 https://github.com/yang-song/score_sde/blob/0acb9e0ea3b8cccd935068cd9c657318fbc6ce4c/models/layers.py#L496.
 """
 import string

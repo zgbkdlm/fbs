@@ -10,11 +10,9 @@ import optax
 import flax.linen as nn
 from fbs.data import MNIST
 from fbs.sdes import make_linear_sde, make_linear_sde_score_matching_loss, StationaryConstLinearSDE, \
-    StationaryLinLinearSDE, StationaryExpLinearSDE
+    StationaryLinLinearSDE, StationaryExpLinearSDE, reverse_simulator
 from fbs.nn.models import make_simple_st_nn, MNISTResConv, MNISTAutoEncoder
-from fbs.nn.unet import MNISTUNet
-from fbs.nn.unet_z import MNISTUNet as MNISTUNetZ
-from fbs.nn import sinusoidal_embedding
+from fbs.nn.unet_z import MNISTUNet
 
 # Parse arguments
 parser = argparse.ArgumentParser(description='MNIST test.')
@@ -92,10 +90,8 @@ nn_param_dtype = jnp.float64
 key, subkey = jax.random.split(key)
 if args.nn == 'mlp':
     my_nn = MNISTAutoEncoder(nn_param_dtype=nn_param_dtype, nn_param_init=nn_param_init)
-elif args.nn == 'unet':
-    my_nn = MNISTUNet(16)
-elif args.nn == 'unetz':
-    my_nn = MNISTUNetZ(train_dt)
+elif 'unet' in args.nn:
+    my_nn = MNISTUNet(train_dt)
 elif args.nn == 'conv':
     my_nn = MNISTResConv(dt=train_dt)
 else:
@@ -140,44 +136,24 @@ else:
 
 
 # Verify if the score function is learnt properly
-def reverse_drift(u, t):
-    return -sde.drift(u, T - t) + sde.dispersion(T - t) ** 2 * nn_score(u[None, :], T - t, param)
+def rev_sim(key_, u0):
+    def learnt_score(x, t):
+        return nn_score(x, t, param)
 
-
-def reverse_dispersion(t):
-    return sde.dispersion(T - t)
-
-
-def backward_euler(key_, u0):
-    def scan_body(carry, elem):
-        u = carry
-        dw, t = elem
-
-        u = u + reverse_drift(u, t) * dt + reverse_dispersion(t) * dw
-        return u, None
-
-    _, subkey_ = jax.random.split(key_)
-    dws = jnp.sqrt(dt) * jax.random.normal(subkey_, (nsteps, d))
-    return jax.lax.scan(scan_body, u0, (dws, ts[:-1]))[0]
+    return reverse_simulator(key_, u0, ts, learnt_score, sde.drift, sde.dispersion, integrator='euler-maruyama')
 
 
 # Simulate the backward and verify if it matches the target distribution
-kkk = jax.random.PRNGKey(888)
+kkk = jax.random.PRNGKey(555)
 key, subkey = jax.random.split(kkk)
 test_x0 = sampler_x(subkey)
 key, subkey = jax.random.split(key)
 traj = simulate_cond_forward(subkey, test_x0, ts)
 terminal_val = traj[-1]
 
-fig, axes = plt.subplots(ncols=10, sharey='row')
-for col in range(10):
-    axes[col].imshow(traj[col * 10].reshape(28, 28), cmap='gray')
-plt.tight_layout(pad=0.1)
-plt.show()
-
 key, subkey = jax.random.split(key)
 keys = jax.random.split(subkey, num=5)
-approx_init_samples = jax.vmap(backward_euler, in_axes=[0, None])(keys, terminal_val)
+approx_init_samples = jax.vmap(rev_sim, in_axes=[0, None])(keys, terminal_val)
 print(jnp.min(test_x0), jnp.max(test_x0))
 print(jnp.min(approx_init_samples), jnp.max(approx_init_samples))
 

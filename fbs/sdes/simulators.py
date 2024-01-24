@@ -4,7 +4,33 @@ from fbs.typings import JKey, JArray
 from typing import Callable
 
 
-def reverse_simulator(key: JKey, u0, ts, score, drift, dispersion, method: str):
+def reverse_simulator(key: JKey, u0: JArray, ts: JArray,
+                      score: Callable, drift: Callable, dispersion: Callable,
+                      integrator: str = 'euler-maruyama') -> JArray:
+    r"""Simulate the time-reversal of an SDE.
+
+    Parameters
+    ----------
+    key : JKey
+        JAX random key.
+    u0 : JArray (d, )
+        Initial value.
+    ts : JArray (n + 1, )
+        Times :math:`t_0, t_1, \ldots, t_n`.
+    score : Callable (..., d), float -> (..., d)
+        The score function
+    drift : Callable (d, ), float -> (d, )
+        The drift function.
+    dispersion : Callable float -> float
+        The dispersion function.
+    integrator : str, default='euler-maruyama'
+        The integrator for solving the reverse SDE.
+
+    Returns
+    -------
+    JArray (d, )
+        The terminal value of the reverse process at :math:`t_n`.
+    """
     T = ts[-1]
 
     def reverse_drift(u, t):
@@ -13,23 +39,27 @@ def reverse_simulator(key: JKey, u0, ts, score, drift, dispersion, method: str):
     def reverse_dispersion(t):
         return dispersion(T - t)
 
-    return euler_maruyama(key, u0, ts, reverse_drift, reverse_dispersion)
+    if integrator == 'euler-maruyama':
+        return euler_maruyama(key, u0, ts, reverse_drift, reverse_dispersion)
+    else:
+        raise NotImplementedError(f'Integrator {integrator} not implemented.')
 
 
-def euler_maruyama(key: JKey, u0: JArray, ts: JArray, drift: Callable, dispersion: Callable) -> JArray:
-    r"""Simulate a SDE using the Euler-Maruyama method.
+def euler_maruyama(key: JKey, x0: JArray, ts: JArray,
+                   drift: Callable, dispersion: Callable) -> JArray:
+    r"""Simulate an SDE using the Euler-Maruyama method.
 
     Parameters
     ----------
-    key: JKey
+    key : JKey
         JAX random key.
-    u0: JArray (d, )
+    x0 : JArray (d, )
         Initial value.
-    ts: JArray (n + 1, )
+    ts : JArray (n + 1, )
         Times :math:`t_0, t_1, \ldots, t_n`.
-    drift: Callable (d, ), float -> (d, )
+    drift : Callable (d, ), float -> (d, )
         The drift function.
-    dispersion: Callable float -> float
+    dispersion : Callable float -> float
         The dispersion function.
 
     Returns
@@ -39,21 +69,22 @@ def euler_maruyama(key: JKey, u0: JArray, ts: JArray, drift: Callable, dispersio
     """
 
     def scan_body(carry, elem):
-        u = carry
+        x = carry
         rnd, t_next, t = elem
 
         dt = t_next - t
-        u = u + drift(u, t) * dt + dispersion(t) * jnp.sqrt(dt) * rnd
-        return u, None
+        x = x + drift(x, t) * dt + dispersion(t) * jnp.sqrt(dt) * rnd
+        return x, None
 
-    rnds = jax.random.normal(key, (ts.shape[0] - 1, u0.shape[-1]))
-    return jax.lax.scan(scan_body, u0, (rnds, ts[1:], ts[:-1]))[0]
+    rnds = jax.random.normal(key, (ts.shape[0] - 1, *x0.shape))
+    return jax.lax.scan(scan_body, x0, (rnds, ts[1:], ts[:-1]))[0]
 
 
-def runge_kutta():
+def runge_kutta(key: JKey, x0: JArray, ts: JArray,
+                drift: Callable, dispersion: Callable):
     pass
 
 
-def multilevel_euler():
+def multilevel_euler_maruyama(key: JArray, x0: JArray, t0: float, T: float, max_level: int,
+                              drift: Callable, dispersion: Callable) -> JArray:
     pass
-
