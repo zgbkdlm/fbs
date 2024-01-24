@@ -146,8 +146,8 @@ class MNISTUNet(nn.Module):
         # Up pass
         down_features = (16,) + self.features[:-1]
         for i in reversed(range(len(self.features))):
-            # x = jnp.concatenate([up_layers[i], x], -1)
-            x = up_layers[i] + x
+            x = jnp.concatenate([up_layers[i], x], -1)
+            # x = up_layers[i] + x
             x = ResBlock(down_features[i])(x, time_emb)
             x = Attention()(x)
             if i > 0:
