@@ -113,7 +113,7 @@ else:
 key, subkey = jax.random.split(key)
 _, _, array_param, _, nn_score = make_simple_st_nn(subkey,
                                                    dim_in=d, batch_size=train_nsamples,
-                                                   mlp=mnist_nn)
+                                                   nn_model=mnist_nn)
 
 
 def loss_fn(param_, key_, xy0s_):

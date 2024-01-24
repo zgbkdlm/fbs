@@ -9,16 +9,17 @@ import numpy as np
 import optax
 import flax.linen as nn
 from fbs.data import Crescent
-from fbs.sdes import make_ou_sde, make_ou_score_matching_loss
-from fbs.nn.models import make_simple_st_nn
+from fbs.sdes import make_linear_sde, make_linear_sde_score_matching_loss, StationaryConstLinearSDE, \
+    StationaryLinLinearSDE, StationaryExpLinearSDE, reverse_simulator
+from fbs.nn.models import make_simple_st_nn, CrescentMLP
 from fbs.nn import sinusoidal_embedding
 
 # Parse arguments
 parser = argparse.ArgumentParser(description='Crescent test.')
 parser.add_argument('--train', action='store_true', default=True, help='Whether train or not.')
 parser.add_argument('--nn', type=str, default='mlp')
-parser.add_argument('--lr', type=float, default=1e-3)
-parser.add_argument('--schedule', type=str, default='cos')
+parser.add_argument('--lr', type=float, default=1e-2)
+parser.add_argument('--schedule', type=str, default='exp')
 parser.add_argument('--nepochs', type=int, default=30)
 args = parser.parse_args()
 train = args.train
@@ -30,14 +31,15 @@ jax.config.update("jax_enable_x64", True)
 key = jax.random.PRNGKey(666)
 key, data_key = jax.random.split(key)
 
-T = 2
-nsteps = 100
+T = 1
+nsteps = 200
 dt = T / nsteps
-ts = jnp.linspace(0, T, nsteps + 1)
-test_nsamples = 1000
+ts = jnp.linspace(0, T - 1e-8, nsteps + 1)
+test_nsamples = 10000
 
 # Crescent
 crescent = Crescent()
+
 
 def sampler_x(key_):
     x_, y_ = crescent.sampler(key_, 1)
@@ -59,11 +61,10 @@ plt.tight_layout(pad=0.1)
 plt.show()
 
 # Define the forward noising process which are independent OU processes
-a = -0.5
-b = 1.
-gamma = b ** 2
-
-discretise_ou_sde, cond_score_t_0, simulate_cond_forward = make_ou_sde(a, b)
+# sde = StationaryExpLinearSDE(a=-0.5, b=1., c=1., z=1.)
+# sde = StationaryConstLinearSDE(a=-0.5, b=1.)
+sde = StationaryConstLinearSDE(a=-0.5, b=1.)
+discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(sde)
 
 
 def simulate_forward(key_, ts_):
@@ -79,31 +80,12 @@ nn_param_init = nn.initializers.xavier_normal()
 nn_param_dtype = jnp.float64
 
 
-class MLP(nn.Module):
-    @nn.compact
-    def __call__(self, x, t):
-        x = nn.Dense(features=64, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
-        x = nn.gelu(x)
-        x = nn.Dense(features=8, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
-
-        t = sinusoidal_embedding(t / train_dt, out_dim=64, max_period=train_nsteps)
-        t = nn.Dense(features=8, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(t)
-
-        z = jnp.concatenate([x, t], axis=-1)
-        z = nn.Dense(features=64, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(z)
-        z = nn.gelu(z)
-        z = nn.Dense(features=16, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(z)
-        z = nn.gelu(z)
-        z = nn.Dense(features=3, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(z)
-        return jnp.squeeze(z)
-
-
 key, subkey = jax.random.split(key)
 _, _, array_param, _, nn_score = make_simple_st_nn(subkey,
-                                                   dim_in=3, batch_size=train_nsamples * train_nsteps,
-                                                   mlp=MLP())
+                                                   dim_in=3, batch_size=train_nsamples,
+                                                   nn_model=CrescentMLP(train_dt))
 
-loss_fn = make_ou_score_matching_loss(a, b, nn_score, t0=0., T=T, nsteps=train_nsteps, random_times=True)
+loss_fn = make_linear_sde_score_matching_loss(sde, nn_score, t0=0., T=T, nsteps=train_nsteps, random_times=True)
 
 
 @jax.jit
@@ -115,9 +97,9 @@ def optax_kernel(param_, opt_state_, key_, xy0s_):
 
 
 if args.schedule == 'cos':
-    schedule = optax.cosine_decay_schedule(args.lr, 10, .91)
+    schedule = optax.cosine_decay_schedule(args.lr, 10, .95)
 elif args.schedule == 'exp':
-    schedule = optax.exponential_decay(args.lr, 10, .91)
+    schedule = optax.exponential_decay(args.lr, 10, .95)
 else:
     schedule = optax.constant_schedule(args.lr)
 optimiser = optax.adam(learning_rate=schedule)
@@ -127,7 +109,7 @@ opt_state = optimiser.init(param)
 if not train:
     param = np.load('./crescent.npy')
 else:
-    for i in range(2000):
+    for i in range(1000):
         key, subkey = jax.random.split(key)
         keys = jax.random.split(subkey, train_nsamples)
         samples = jax.vmap(sampler_x, in_axes=[0])(keys)
@@ -138,21 +120,11 @@ else:
 
 
 # Verify if the score function is learnt properly
-def reverse_drift(u, t):
-    return -a * u + gamma * nn_score(u, T - t, param)
+def rev_sim(key_, u0):
+    def learnt_score(x, t):
+        return nn_score(x, t, param)
 
-
-def backward_euler(key_, u0):
-    def scan_body(carry, elem):
-        u = carry
-        dw, t = elem
-
-        u = u + reverse_drift(u, t) * dt + b * dw
-        return u, None
-
-    _, subkey_ = jax.random.split(key_)
-    dws = jnp.sqrt(dt) * jax.random.normal(subkey_, (nsteps, 3))
-    return jax.lax.scan(scan_body, u0, (dws, ts[:-1]))[0]
+    return reverse_simulator(key_, u0, ts, learnt_score, sde.drift, sde.dispersion, integrator='euler-maruyama')
 
 
 # Simulate the backward and verify if it matches the target distribution
@@ -166,7 +138,7 @@ terminal_vals = traj[:, -1, :]
 
 key, subkey = jax.random.split(key)
 keys = jax.random.split(subkey, test_nsamples)
-approx_init_samples = jax.vmap(backward_euler, in_axes=[0, 0])(keys, terminal_vals)
+approx_init_samples = jax.vmap(rev_sim, in_axes=[0, 0])(keys, terminal_vals)
 
 fig, axes = plt.subplots(nrows=3, ncols=2, sharey='row', sharex='col')
 axes[0, 0].scatter(test_x0s[:, 0], test_x0s[:, 1], s=1, alpha=0.5, label='True p(x0, x1)')
