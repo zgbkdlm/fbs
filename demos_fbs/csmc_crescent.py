@@ -107,7 +107,7 @@ class MLP(nn.Module):
 key, subkey = jax.random.split(key)
 _, _, array_param, _, nn_score = make_simple_st_nn(subkey,
                                                    dim_in=3, batch_size=batch_nsamples,
-                                                   mlp=MLP())
+                                                   nn_model=MLP())
 
 
 def loss_fn(param_, key_):
