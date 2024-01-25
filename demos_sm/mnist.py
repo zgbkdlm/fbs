@@ -19,6 +19,7 @@ parser = argparse.ArgumentParser(description='MNIST test.')
 parser.add_argument('--train', action='store_true', default=False, help='Whether train or not.')
 parser.add_argument('--sde', type=str, default='const')
 parser.add_argument('--nn', type=str, default='mlp')
+parser.add_argument('--loss_type', type=str, default='ipf-score')
 parser.add_argument('--lr', type=float, default=1e-4)
 parser.add_argument('--batch_size', type=int, default=64)
 parser.add_argument('--nsteps', type=int, default=50)
@@ -38,7 +39,7 @@ key, data_key = jax.random.split(key)
 T = 1
 nsteps = 1000
 dt = T / nsteps
-ts = jnp.linspace(0, T - 1e-5, nsteps + 1)
+ts = jnp.linspace(0, T, nsteps + 1)
 
 # MNIST
 d = 784
@@ -100,7 +101,7 @@ _, _, array_param, _, nn_score = make_simple_st_nn(subkey,
                                                    dim_in=d, batch_size=train_nsamples,
                                                    nn_model=my_nn)
 
-loss_type = 'ipf-score'
+loss_type = args.loss_type
 loss_fn = make_linear_sde_law_loss(sde, nn_score, t0=0., T=T, nsteps=train_nsteps,
                                    random_times=True, loss_type=loss_type)
 
@@ -114,9 +115,9 @@ def optax_kernel(param_, opt_state_, key_, xy0s_):
 
 
 if args.schedule == 'cos':
-    schedule = optax.cosine_decay_schedule(args.lr, data_size // train_nsamples, .95)
+    schedule = optax.cosine_decay_schedule(args.lr, data_size // train_nsamples / 10, .95)
 elif args.schedule == 'exp':
-    schedule = optax.exponential_decay(args.lr, data_size // train_nsamples, .95)
+    schedule = optax.exponential_decay(args.lr, data_size // train_nsamples / 10, .95)
 else:
     schedule = optax.constant_schedule(args.lr)
 optimiser = optax.adam(learning_rate=schedule)
@@ -132,9 +133,9 @@ if train:
             x0s, _ = dataset.enumerate_subset(j, perm_inds, subkey)
             param, opt_state, loss = optax_kernel(param, opt_state, subkey2, x0s)
             print(f'Epoch: {i} / {nepochs}, iter: {j} / {data_size // train_nsamples}, loss: {loss}')
-        np.save(f'./mnist_{args.nn}_{args.sde}.npy', param)
+        np.save(f'./mnist_{args.nn}_{args.sde}_{loss_type}.npy', param)
 else:
-    param = np.load(f'./mnist_{args.nn}_{args.sde}.npy')
+    param = np.load(f'./mnist_{args.nn}_{args.sde}_{loss_type}.npy')
 
 
 # Verify if the score function is learnt properly
