@@ -68,7 +68,7 @@ if not train:
 if args.sde == 'const':
     sde = StationaryConstLinearSDE(a=-0.5, b=1.)
 elif args.sde == 'lin':
-    sde = StationaryLinLinearSDE(a=-0.5, b=1.)
+    sde = StationaryLinLinearSDE(beta_min=1e-3, beta_max=3., t0=0., T=T)
 elif args.sde == 'exp':
     sde = StationaryExpLinearSDE(a=-0.5, b=1., c=1., z=1.)
 else:
@@ -117,9 +117,9 @@ def optax_kernel(param_, opt_state_, key_, xy0s_):
 
 
 if args.schedule == 'cos':
-    schedule = optax.cosine_decay_schedule(args.lr, data_size // train_nsamples / 10, .95)
+    schedule = optax.cosine_decay_schedule(args.lr, data_size // train_nsamples, .95)
 elif args.schedule == 'exp':
-    schedule = optax.exponential_decay(args.lr, data_size // train_nsamples / 10, .95)
+    schedule = optax.exponential_decay(args.lr, data_size // train_nsamples, .95)
 else:
     schedule = optax.constant_schedule(args.lr)
 optimiser = optax.adam(learning_rate=schedule)

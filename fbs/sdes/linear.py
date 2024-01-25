@@ -27,21 +27,31 @@ class StationaryConstLinearSDE(LinearSDE):
 
 
 class StationaryLinLinearSDE(LinearSDE):
-    """dX(t) = a(t) X(t) dt + b(t) dW(t), where
-        - `b(t)^2 / a(t) = 2 sigma^2`
-        - `a(t) = a t` and `b(t) = b sqrt(t)`, where `a` and `b` are fixed.
+    r"""dX(t) = -0.5 \beta(t) X(t) dt + \sqrt{\beta(t)} dW(t), where
+        - `\beta(t) = (beta_max - beta_min) / (T - t0) t + (beta_min T - beta_max t0) / (T - t0)`
     """
-    a: FloatScalar
-    b: FloatScalar
+    beta_min: FloatScalar
+    beta_max: FloatScalar
+    t0: FloatScalar
+    T: FloatScalar
 
-    def __init__(self, a: FloatScalar, b: FloatScalar):
-        self.a, self.b = a, b
+    def __init__(self, beta_min: FloatScalar, beta_max: FloatScalar, t0: FloatScalar, T: FloatScalar):
+        self.beta_min, self.beta_max, self.t0, self.T = beta_min, beta_max, t0, T
+
+    def beta(self, t):
+        beta_min, beta_max, t0, T = self.beta_min, self.beta_max, self.t0, self.T
+        return (beta_max - beta_min) / (T - t0) * t + (beta_min * T - beta_max * t0) / (T - t0)
+
+    def beta_integral(self, t, s):
+        beta_min, beta_max, t0, T = self.beta_min, self.beta_max, self.t0, self.T
+        return 0.5 * (t - s) * ((beta_max - beta_min) / (T - t0) * (t + s)
+                                + 2 * (beta_min * T - beta_max * t0) / (T - t0))
 
     def drift(self, x, t):
-        return self.a * t * x
+        return -0.5 * self.beta(t) * x
 
     def dispersion(self, t):
-        return self.b * jnp.sqrt(t)
+        return jnp.sqrt(self.beta(t))
 
 
 class StationaryExpLinearSDE(LinearSDE):
@@ -120,10 +130,12 @@ def make_linear_sde(sde: LinearSDE):
 
     def discretise_linear_sde(t, s):
         if isinstance(sde, StationaryLinLinearSDE):
-            a, b = sde.a, sde.b
-            r = a * 0.5 * (t ** 2 - s ** 2)
-            stationary_variance = -b ** 2 / (2 * a)
-            return jnp.exp(r), stationary_variance * (1 - jnp.exp(2 * r))
+            # a, b = sde.beta_min, sde.beta_max
+            # r = a * 0.5 * (t ** 2 - s ** 2)
+            # stationary_variance = -b ** 2 / (2 * a)
+            # return jnp.exp(r), stationary_variance * (1 - jnp.exp(2 * r))
+            r = sde.beta_integral(t, s)
+            return jnp.exp(-0.5 * r), 1 - jnp.exp(-r)
         elif isinstance(sde, StationaryConstLinearSDE):
             a, b = sde.a, sde.b
             return jnp.exp(a * (t - s)), b ** 2 / (2 * a) * (jnp.exp(2 * a * (t - s)) - 1)

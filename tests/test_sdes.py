@@ -19,7 +19,7 @@ def test_linear_sdes():
     T = 20.
 
     const_sde = StationaryConstLinearSDE(a=a, b=b)
-    lin_sde = StationaryLinLinearSDE(a=a, b=b)
+    lin_sde = StationaryLinLinearSDE(beta_min=a, beta_max=b)
     exp_sde = StationaryExpLinearSDE(a=a, b=b, c=1.5, z=2.)
 
     key = jax.random.PRNGKey(666)
