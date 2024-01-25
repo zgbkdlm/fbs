@@ -23,6 +23,7 @@ parser.add_argument('--loss_type', type=str, default='ipf-score')
 parser.add_argument('--lr', type=float, default=1e-4)
 parser.add_argument('--batch_size', type=int, default=64)
 parser.add_argument('--nsteps', type=int, default=50)
+parser.add_argument('--test_nsteps', type=int, default=200)
 parser.add_argument('--schedule', type=str, default='cos')
 parser.add_argument('--nepochs', type=int, default=20)
 
@@ -37,7 +38,7 @@ key = jax.random.PRNGKey(666)
 key, data_key = jax.random.split(key)
 
 T = 1
-nsteps = 1000
+nsteps = 200
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
 
@@ -64,9 +65,9 @@ if not train:
 
 # Define the forward noising process which are independent OU processes
 if args.sde == 'const':
-    sde = StationaryConstLinearSDE(a=-0.5, b=1.)
+    sde = StationaryConstLinearSDE(a=-1, b=jnp.sqrt(2))
 elif args.sde == 'lin':
-    sde = StationaryLinLinearSDE(a=-0.5, b=1.)
+    sde = StationaryLinLinearSDE(a=-1, b=jnp.sqrt(2))
 elif args.sde == 'exp':
     sde = StationaryExpLinearSDE(a=-0.5, b=1., c=1., z=1.)
 else:
