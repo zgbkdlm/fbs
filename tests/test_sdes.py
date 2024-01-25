@@ -7,7 +7,7 @@ import optax
 from fbs.nn import sinusoidal_embedding
 from fbs.nn.models import make_simple_st_nn
 from fbs.sdes.linear import make_linear_sde, StationaryConstLinearSDE, StationaryLinLinearSDE, StationaryExpLinearSDE, \
-    make_linear_sde_score_matching_loss, make_ou_sde, make_ou_score_matching_loss
+    make_linear_sde_law_loss, make_ou_sde, make_ou_score_matching_loss
 from fbs.sdes.simulators import reverse_simulator
 
 jax.config.update("jax_enable_x64", True)
@@ -54,7 +54,7 @@ def test_linear_sdes():
 
         # Test loss
         nn_score = lambda u, t, param: cond_score_t_0(u, t, x0, 0.)
-        loss_fn = make_linear_sde_score_matching_loss(sde, nn_score, 0., T, 10)
+        loss_fn = make_linear_sde_law_loss(sde, nn_score, 0., T, 10)
         loss = loss_fn(None, key, x0.reshape(1, 1))
         npt.assert_almost_equal(loss, 0.)
 
@@ -69,7 +69,7 @@ def test_cross_check():
 
     sde = StationaryConstLinearSDE(a=a, b=b)
     linear_discretise_sde, linear_cond_score_t_0, linear_simulate_cond_forward = make_linear_sde(sde)
-    lin_loss = make_linear_sde_score_matching_loss(sde, score_fn, t0=0., T=2., nsteps=100, random_times=True)
+    lin_loss = make_linear_sde_law_loss(sde, score_fn, t0=0., T=2., nsteps=100, random_times=True)
 
     F_ou, Q_ou = ou_discretise_sde(1.)
     F_l, Q_l = linear_discretise_sde(1., 0.)
@@ -136,7 +136,7 @@ def test_score_matching_routine():
                                                        dim_in=2, batch_size=nsamples,
                                                        nn_model=MLP())
 
-    loss_fn = make_linear_sde_score_matching_loss(sde, nn_score, t0=t0, T=T, nsteps=nsteps, random_times=True)
+    loss_fn = make_linear_sde_law_loss(sde, nn_score, t0=t0, T=T, nsteps=nsteps, random_times=True)
 
     @jax.jit
     def optax_kernel(param_, opt_state_, key_, xy0s_):

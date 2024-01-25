@@ -9,8 +9,8 @@ import numpy as np
 import optax
 import flax.linen as nn
 from fbs.data import Crescent
-from fbs.sdes import make_linear_sde, make_linear_sde_score_matching_loss, StationaryConstLinearSDE, \
-    StationaryLinLinearSDE, StationaryExpLinearSDE, reverse_simulator
+from fbs.sdes import make_linear_sde, make_linear_sde_law_loss, StationaryConstLinearSDE, \
+    StationaryLinLinearSDE, StationaryExpLinearSDE, reverse_simulator, discrete_time_simulator
 from fbs.nn.models import make_simple_st_nn, CrescentMLP
 from fbs.nn import sinusoidal_embedding
 
@@ -32,7 +32,7 @@ key = jax.random.PRNGKey(666)
 key, data_key = jax.random.split(key)
 
 T = 1
-nsteps = 200
+nsteps = 500
 dt = T / nsteps
 ts = jnp.linspace(0, T - 1e-8, nsteps + 1)
 test_nsamples = 10000
@@ -73,19 +73,21 @@ def simulate_forward(key_, ts_):
 
 
 # Score matching
-train_nsamples = 256
+train_nsamples = 128
 train_nsteps = 100
 train_dt = T / train_nsteps
 nn_param_init = nn.initializers.xavier_normal()
 nn_param_dtype = jnp.float64
-
 
 key, subkey = jax.random.split(key)
 _, _, array_param, _, nn_score = make_simple_st_nn(subkey,
                                                    dim_in=3, batch_size=train_nsamples,
                                                    nn_model=CrescentMLP(train_dt))
 
-loss_fn = make_linear_sde_score_matching_loss(sde, nn_score, t0=0., T=T, nsteps=train_nsteps, random_times=True)
+loss_type = 'ipf-score'
+loss_fn = make_linear_sde_law_loss(sde, nn_score,
+                                   t0=0., T=T, nsteps=train_nsteps,
+                                   random_times=True, loss_type=loss_type)
 
 
 @jax.jit
@@ -97,9 +99,9 @@ def optax_kernel(param_, opt_state_, key_, xy0s_):
 
 
 if args.schedule == 'cos':
-    schedule = optax.cosine_decay_schedule(args.lr, 10, .95)
+    schedule = optax.cosine_decay_schedule(args.lr, 50, .95)
 elif args.schedule == 'exp':
-    schedule = optax.exponential_decay(args.lr, 10, .95)
+    schedule = optax.exponential_decay(args.lr, 50, .95)
 else:
     schedule = optax.constant_schedule(args.lr)
 optimiser = optax.adam(learning_rate=schedule)
@@ -120,12 +122,19 @@ else:
 
 
 # Verify if the score function is learnt properly
-def rev_sim(key_, u0):
+if 'score' in loss_type:
     def learnt_score(x, t):
         return nn_score(x, t, param)
 
-    return reverse_simulator(key_, u0, ts, learnt_score, sde.drift, sde.dispersion, integrator='euler-maruyama')
-
+    def rev_sim(key_, u0):
+        return reverse_simulator(key_, u0, ts, learnt_score, sde.drift, sde.dispersion, integrator='euler-maruyama')
+elif loss_type == 'ipf':
+    def rev_sim(key_, u0):
+        return discrete_time_simulator(key_, u0, ts,
+                                       lambda x, t, _: nn_score(x, T - t, param),
+                                       lambda t, t_prev: jnp.sqrt(discretise_linear_sde(T - t_prev, T - t)[1]))
+else:
+    raise NotImplementedError(f'Loss {loss_type} not implemented.')
 
 # Simulate the backward and verify if it matches the target distribution
 key, subkey = jax.random.split(key)

@@ -88,3 +88,19 @@ def runge_kutta(key: JKey, x0: JArray, ts: JArray,
 def multilevel_euler_maruyama(key: JArray, x0: JArray, t0: float, T: float, max_level: int,
                               drift: Callable, dispersion: Callable) -> JArray:
     pass
+
+
+def discrete_time_simulator(key: JKey, x0: JArray, ts: JArray,
+                            f: Callable, q: Callable) -> JArray:
+    """Simulate a discrete-time state-space model
+    X(t_{k+1}) = f(X(t_k), t_{k+1}, t_k) + q(t_{k+1}, t_k) w
+    """
+    def scan_body(carry, elem):
+        x = carry
+        rnd, t_next, t = elem
+
+        x = f(x, t_next, t) + q(t_next, t) * rnd
+        return x, None
+
+    rnds = jax.random.normal(key, (ts.shape[0] - 1, *x0.shape))
+    return jax.lax.scan(scan_body, x0, (rnds, ts[1:], ts[:-1]))[0]

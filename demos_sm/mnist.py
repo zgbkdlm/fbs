@@ -9,7 +9,7 @@ import numpy as np
 import optax
 import flax.linen as nn
 from fbs.data import MNIST
-from fbs.sdes import make_linear_sde, make_linear_sde_score_matching_loss, StationaryConstLinearSDE, \
+from fbs.sdes import make_linear_sde, make_linear_sde_law_loss, StationaryConstLinearSDE, \
     StationaryLinLinearSDE, StationaryExpLinearSDE, reverse_simulator
 from fbs.nn.models import make_simple_st_nn, MNISTResConv, MNISTAutoEncoder
 from fbs.nn.unet_z import MNISTUNet
@@ -36,7 +36,7 @@ key = jax.random.PRNGKey(666)
 key, data_key = jax.random.split(key)
 
 T = 1
-nsteps = 200
+nsteps = 1000
 dt = T / nsteps
 ts = jnp.linspace(0, T - 1e-5, nsteps + 1)
 
@@ -100,7 +100,9 @@ _, _, array_param, _, nn_score = make_simple_st_nn(subkey,
                                                    dim_in=d, batch_size=train_nsamples,
                                                    nn_model=my_nn)
 
-loss_fn = make_linear_sde_score_matching_loss(sde, nn_score, t0=0., T=T, nsteps=train_nsteps, random_times=True)
+loss_type = 'ipf-score'
+loss_fn = make_linear_sde_law_loss(sde, nn_score, t0=0., T=T, nsteps=train_nsteps,
+                                   random_times=True, loss_type=loss_type)
 
 
 @jax.jit

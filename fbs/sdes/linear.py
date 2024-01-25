@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
-from fbs.dsb import ipf_loss
 from fbs.typings import JArray, JKey, FloatScalar
+from functools import partial
 from typing import NamedTuple
 
 
@@ -177,10 +177,12 @@ def make_linear_sde(sde: LinearSDE):
     return discretise_linear_sde, cond_score_t_0, simulate_cond_forward
 
 
-def make_linear_sde_score_matching_loss(sde: LinearSDE, nn_score,
-                                        t0=0., T=2., nsteps: int = 100,
-                                        random_times: bool = True,
-                                        keep_path: bool = True):
+def make_linear_sde_law_loss(sde: LinearSDE, nn_fn,
+                             t0=0., T=2., nsteps: int = 100,
+                             random_times: bool = True,
+                             keep_path: bool = True,
+                             loss_type: str = 'score',
+                             save_mem: bool = False):
     discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(sde)
 
     def score_scale(t, s):
@@ -200,13 +202,32 @@ def make_linear_sde_score_matching_loss(sde: LinearSDE, nn_score,
 
         keys = jax.random.split(key_fwd, num=nsamples)
         fwd_paths = jax.vmap(simulate_cond_forward, in_axes=[0, 0, None])(keys, x0s, ts)  # (n, nsteps + 1, d)
-        nn_evals = jax.vmap(nn_score,
+        nn_evals = jax.vmap(nn_fn,
                             in_axes=[1, 0, None],
                             out_axes=1)(fwd_paths[:, 1:], ts[1:], param)  # (n, nsteps, d)
-        cond_score_evals = jax.vmap(cond_score_t_0,
-                                    in_axes=[1, 0, None, None],
-                                    out_axes=1)(fwd_paths[:, 1:], ts[1:], fwd_paths[:, 0], ts[0])  # (n, nsteps, d)
-        return jnp.mean(jnp.mean((nn_evals - cond_score_evals) ** 2, axis=-1) * scales[None, :])
+
+        if loss_type == 'score':
+            cond_score_evals = jax.vmap(cond_score_t_0,
+                                        in_axes=[1, 0, None, None],
+                                        out_axes=1)(fwd_paths[:, 1:], ts[1:], fwd_paths[:, 0], ts[0])  # (n, nsteps, d)
+            return jnp.mean(jnp.mean((nn_evals - cond_score_evals) ** 2, axis=-1) * scales[None, :])
+        elif loss_type == 'ipf':
+            @partial(jax.vmap, in_axes=[1, 0, 0], out_axes=1)
+            def fwd_transition(x, t, s):
+                return discretise_linear_sde(t, s)[0] * x
+
+            fwd_evals1 = fwd_transition(fwd_paths[:, :-1], ts[1:], ts[:-1])
+            fwd_evals2 = fwd_transition(fwd_paths[:, 1:], ts[1:], ts[:-1])
+            return jnp.mean((nn_evals - (fwd_paths[:, 1:] + fwd_evals1 - fwd_evals2)) ** 2)
+        elif loss_type == 'ipf-score':
+            @partial(jax.vmap, in_axes=[1, 0], out_axes=1)
+            def f(x, t):
+                return sde.drift(x, t)
+
+            return jnp.mean(((nn_evals - f(fwd_paths[:, :-1], ts[:-1])) * (ts[None, 1:, None] - ts[None, :-1, None])
+                             + (fwd_paths[:, 1:] - fwd_paths[:, :-1])) ** 2)
+        else:
+            raise NotImplementedError(f'Loss {loss_type} not implemented.')
 
     return loss_fn
 

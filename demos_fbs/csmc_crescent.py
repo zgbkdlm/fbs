@@ -15,7 +15,7 @@ from fbs.data import Crescent
 from fbs.sdes import make_ou_sde
 from fbs.nn import sinusoidal_embedding
 from fbs.nn.models import make_simple_st_nn, CrescentMLP
-from fbs.sdes import make_linear_sde, make_linear_sde_score_matching_loss, StationaryConstLinearSDE, \
+from fbs.sdes import make_linear_sde, make_linear_sde_law_loss, StationaryConstLinearSDE, \
     StationaryLinLinearSDE, StationaryExpLinearSDE, reverse_simulator
 from fbs.filters.csmc.csmc import csmc_kernel
 from fbs.filters.csmc.resamplings import killing
@@ -80,7 +80,7 @@ _, _, array_param, _, nn_score = make_simple_st_nn(subkey,
                                                    dim_in=3, batch_size=train_nsamples,
                                                    nn_model=CrescentMLP(train_dt))
 
-loss_fn = make_linear_sde_score_matching_loss(sde, nn_score, t0=0., T=T, nsteps=train_nsteps, random_times=True)
+loss_fn = make_linear_sde_law_loss(sde, nn_score, t0=0., T=T, nsteps=train_nsteps, random_times=True)
 
 
 @jax.jit
