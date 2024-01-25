@@ -137,7 +137,7 @@ class MNISTUNet(nn.Module):
             x = Attention()(x)
             up_layers.append(x)
             if i < len(self.features) - 1:
-                x = nn.Conv(feature, kernel_size=(3, 3), strides=(2, 2))(x)
+                x = nn.Conv(feature, kernel_size=(4, 4), strides=(2, 2))(x)
 
         # Middle
         x = ResBlock(self.features[-1])(x, time_emb)
@@ -152,7 +152,7 @@ class MNISTUNet(nn.Module):
             x = Attention()(x)
             if i > 0:
                 if self.upsampling_method == 'conv':
-                    x = nn.ConvTranspose(down_features[i], kernel_size=(3, 3), strides=(2, 2))(x)
+                    x = nn.ConvTranspose(down_features[i], kernel_size=(4, 4), strides=(2, 2))(x)
                 elif self.upsampling_method == 'resize':
                     x = jax.image.resize(x, (batch_size, x.shape[1] * 2, x.shape[2] * 2, down_features[i]), 'nearest')
                     x = nn.Conv(features=down_features[i], kernel_size=(3, 3))(x)
@@ -163,5 +163,5 @@ class MNISTUNet(nn.Module):
 
         # End
         x = ResBlock(16)(x, time_emb)
-        x = nn.Conv(self.nchannels, kernel_size=(3, 3))(x)
+        x = nn.Conv(self.nchannels, kernel_size=(1, 1))(x)
         return jnp.squeeze(jnp.reshape(x, (batch_size, -1)))

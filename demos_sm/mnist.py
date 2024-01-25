@@ -66,9 +66,9 @@ if not train:
 
 # Define the forward noising process which are independent OU processes
 if args.sde == 'const':
-    sde = StationaryConstLinearSDE(a=-1, b=jnp.sqrt(2))
+    sde = StationaryConstLinearSDE(a=-0.5, b=1.)
 elif args.sde == 'lin':
-    sde = StationaryLinLinearSDE(a=-1, b=jnp.sqrt(2))
+    sde = StationaryLinLinearSDE(a=-0.5, b=1.)
 elif args.sde == 'exp':
     sde = StationaryExpLinearSDE(a=-0.5, b=1., c=1., z=1.)
 else:
