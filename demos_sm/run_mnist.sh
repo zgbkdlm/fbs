@@ -2,7 +2,7 @@
 #SBATCH -A Berzelius-2023-146
 #SBATCH --gpus=1
 #SBATCH -o mnist.log
-#SBATCH -t 01:00:00
+#SBATCH -t 02:00:00
 #SBATCH -C "fat"
 
 nn=$1

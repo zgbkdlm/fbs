@@ -24,6 +24,7 @@ parser.add_argument('--lr', type=float, default=1e-4)
 parser.add_argument('--batch_size', type=int, default=64)
 parser.add_argument('--nsteps', type=int, default=50)
 parser.add_argument('--test_nsteps', type=int, default=200)
+parser.add_argument('--test_epoch', type=int, default=5)
 parser.add_argument('--schedule', type=str, default='cos')
 parser.add_argument('--nepochs', type=int, default=20)
 
