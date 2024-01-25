@@ -127,7 +127,7 @@ class MNISTUNet(nn.Module):
         x = x.reshape(batch_size, 28, 28, self.nchannels)
 
         # Top
-        x = nn.Conv(features=16, kernel_size=(5, 5), padding=((3, 3), (3, 3)))(x)
+        x = nn.Conv(features=16, kernel_size=(5, 5), padding=((2, 2), (2, 2)))(x)
         time_emb = TimeEmbedding(self.dt)(t)
 
         # Down pass
