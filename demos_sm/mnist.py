@@ -39,7 +39,7 @@ key = jax.random.PRNGKey(666)
 key, data_key = jax.random.split(key)
 
 T = 1
-nsteps = 200
+nsteps = args.test_nsteps
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
 
@@ -135,9 +135,9 @@ if train:
             x0s, _ = dataset.enumerate_subset(j, perm_inds, subkey)
             param, opt_state, loss = optax_kernel(param, opt_state, subkey2, x0s)
             print(f'Epoch: {i} / {nepochs}, iter: {j} / {data_size // train_nsamples}, loss: {loss}')
-        np.save(f'./mnist_{args.nn}_{args.sde}_{loss_type}.npy', param)
+        np.save(f'./mnist_{args.nn}_{args.sde}_{loss_type}_{i}.npy', param)
 else:
-    param = np.load(f'./mnist_{args.nn}_{args.sde}_{loss_type}.npy')
+    param = np.load(f'./mnist_{args.nn}_{args.sde}_{loss_type}_{args.test_epoch}.npy')
 
 
 # Verify if the score function is learnt properly
