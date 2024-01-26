@@ -232,10 +232,10 @@ def make_linear_sde_law_loss(sde: LinearSDE, nn_fn,
             def f(x, t, t_prev):
                 return x + sde.drift(x, t_prev) * (t - t_prev)
 
-            # return jnp.mean(((nn_evals - f(fwd_paths[:, :-1], ts[:-1])) * (ts[None, 1:, None] - ts[None, :-1, None])
-            #                  + fwd_paths[:, 1:] - fwd_paths[:, :-1]) ** 2)
-            return jnp.mean((nn_evals - (f(fwd_paths[:, :-1], ts[1:], ts[:-1]) - fwd_paths[:, 1:]) / (
-                        ts[None, 1:, None] - ts[None, :-1, None])) ** 2)
+            return jnp.mean(((nn_evals - f(fwd_paths[:, :-1], ts[1:], ts[:-1])) * (ts[None, 1:, None] - ts[None, :-1, None])
+                             + fwd_paths[:, 1:] - fwd_paths[:, :-1]) ** 2)
+            # return jnp.mean((nn_evals - (f(fwd_paths[:, :-1], ts[1:], ts[:-1]) - fwd_paths[:, 1:]) / (
+            #             ts[None, 1:, None] - ts[None, :-1, None])) ** 2)
         else:
             raise NotImplementedError(f'Loss {loss_type} not implemented.')
 
