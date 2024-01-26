@@ -14,12 +14,12 @@ jax.config.update("jax_enable_x64", True)
 
 
 def test_linear_sdes():
-    a, b = -0.8, 2.1
+    a, b = -0.5, 1.
     stationary_mean, stationary_var = 0., b ** 2 / (2 * -a)
-    T = 20.
+    T = 40.
 
     const_sde = StationaryConstLinearSDE(a=a, b=b)
-    lin_sde = StationaryLinLinearSDE(beta_min=a, beta_max=b)
+    lin_sde = StationaryLinLinearSDE(beta_min=0., beta_max=20., t0=0., T=T)
     exp_sde = StationaryExpLinearSDE(a=a, b=b, c=1.5, z=2.)
 
     key = jax.random.PRNGKey(666)
