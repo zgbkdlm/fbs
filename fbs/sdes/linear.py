@@ -130,10 +130,6 @@ def make_linear_sde(sde: LinearSDE):
 
     def discretise_linear_sde(t, s):
         if isinstance(sde, StationaryLinLinearSDE):
-            # a, b = sde.beta_min, sde.beta_max
-            # r = a * 0.5 * (t ** 2 - s ** 2)
-            # stationary_variance = -b ** 2 / (2 * a)
-            # return jnp.exp(r), stationary_variance * (1 - jnp.exp(2 * r))
             r = sde.beta_integral(t, s)
             return jnp.exp(-0.5 * r), 1 - jnp.exp(-r)
         elif isinstance(sde, StationaryConstLinearSDE):

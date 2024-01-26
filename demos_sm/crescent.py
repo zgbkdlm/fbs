@@ -32,7 +32,7 @@ key = jax.random.PRNGKey(666)
 key, data_key = jax.random.split(key)
 
 T = 1
-nsteps = 200
+nsteps = 100
 dt = T / nsteps
 ts = jnp.linspace(0, T - 1e-8, nsteps + 1)
 test_nsamples = 10000
@@ -63,7 +63,7 @@ plt.show()
 # Define the forward noising process which are independent OU processes
 # sde = StationaryExpLinearSDE(a=-0.5, b=1., c=1., z=1.)
 # sde = StationaryConstLinearSDE(a=-0.5, b=1.)
-sde = StationaryLinLinearSDE(beta_min=1e-3, beta_max=3., t0=0., T=T)
+sde = StationaryLinLinearSDE(beta_min=1e-2, beta_max=3., t0=0., T=T)
 discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(sde)
 
 

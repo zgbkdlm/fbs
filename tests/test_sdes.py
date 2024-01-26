@@ -59,6 +59,11 @@ def test_linear_sdes():
         npt.assert_almost_equal(loss, 0.)
 
 
+def test_linlin_sde():
+    """We use linear SDEs a lot, test it more properly.
+    """
+
+
 def test_cross_check():
     # Check the implementation with a reference implementation.
     key = jax.random.PRNGKey(666)
