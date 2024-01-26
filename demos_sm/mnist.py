@@ -18,15 +18,16 @@ from fbs.nn.unet_z import MNISTUNet
 parser = argparse.ArgumentParser(description='MNIST test.')
 parser.add_argument('--train', action='store_true', default=False, help='Whether train or not.')
 parser.add_argument('--sde', type=str, default='const')
-parser.add_argument('--nn', type=str, default='mlp')
-parser.add_argument('--loss_type', type=str, default='ipf-score')
+parser.add_argument('--nn', type=str, default='unetz')
+parser.add_argument('--loss_type', type=str, default='score')
 parser.add_argument('--lr', type=float, default=1e-4)
 parser.add_argument('--batch_size', type=int, default=64)
 parser.add_argument('--nsteps', type=int, default=50)
-parser.add_argument('--test_nsteps', type=int, default=200)
-parser.add_argument('--test_epoch', type=int, default=5)
 parser.add_argument('--schedule', type=str, default='cos')
 parser.add_argument('--nepochs', type=int, default=20)
+parser.add_argument('--ema', action='store_true', default=False)
+parser.add_argument('--test_nsteps', type=int, default=200)
+parser.add_argument('--test_epoch', type=int, default=5)
 
 args = parser.parse_args()
 train = args.train
@@ -122,7 +123,13 @@ elif args.schedule == 'exp':
     schedule = optax.exponential_decay(args.lr, data_size // train_nsamples, .95)
 else:
     schedule = optax.constant_schedule(args.lr)
-optimiser = optax.adam(learning_rate=schedule)
+
+if args.ema:
+    optimiser = optax.adam(learning_rate=1e-4)
+    optimiser = optax.chain(optimiser,
+                            optax.ema(decay=0.999))
+else:
+    optimiser = optax.adam(learning_rate=schedule)
 param = array_param
 opt_state = optimiser.init(param)
 
@@ -135,9 +142,9 @@ if train:
             x0s, _ = dataset.enumerate_subset(j, perm_inds, subkey)
             param, opt_state, loss = optax_kernel(param, opt_state, subkey2, x0s)
             print(f'Epoch: {i} / {nepochs}, iter: {j} / {data_size // train_nsamples}, loss: {loss}')
-        np.save(f'./mnist_{args.nn}_{args.sde}_{loss_type}_{i}.npy', param)
+        np.save(f'./mnist_{args.nn}_{args.sde}_{loss_type}_{"ema_" if args.ema else ""}{i}.npy', param)
 else:
-    param = np.load(f'./mnist_{args.nn}_{args.sde}_{loss_type}_{args.test_epoch}.npy')
+    param = np.load(f'./mnist_{args.nn}_{args.sde}_{loss_type}_{"ema_" if args.ema else ""}{args.test_epoch}.npy')
 
 
 # Verify if the score function is learnt properly

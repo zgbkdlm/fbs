@@ -11,6 +11,8 @@ nsteps=$3
 lr=$4
 sde=$5
 loss_type=$6
+ema=$7
+
 
 source ~/.bashrc
 export XLA_PYTHON_CLIENT_PREALLOCATE=true
@@ -21,4 +23,10 @@ source ./venv/bin/activate
 cd demos_sm
 
 nvidia-smi
-python -u mnist.py --train --schedule="exp" --nn=$nn --batch_size=$batch_size --nsteps=$nsteps --lr=$lr --sde=$sde --loss_type=$loss_type
+
+if "$ema"
+then
+  python -u mnist.py --train --schedule="exp" --nn=$nn --batch_size=$batch_size --nsteps=$nsteps --lr=$lr --sde=$sde --loss_type=$loss_type
+else
+  python -u mnist.py --train --schedule="exp" --nn=$nn --batch_size=$batch_size --nsteps=$nsteps --lr=$lr --sde=$sde --loss_type=$loss_type --ema
+fi

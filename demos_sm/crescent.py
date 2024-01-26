@@ -18,8 +18,8 @@ from fbs.nn import sinusoidal_embedding
 parser = argparse.ArgumentParser(description='Crescent test.')
 parser.add_argument('--train', action='store_true', default=True, help='Whether train or not.')
 parser.add_argument('--nn', type=str, default='mlp')
-parser.add_argument('--lr', type=float, default=1e-2)
-parser.add_argument('--schedule', type=str, default='exp')
+parser.add_argument('--lr', type=float, default=1e-4)
+parser.add_argument('--schedule', type=str, default='const')
 parser.add_argument('--nepochs', type=int, default=30)
 args = parser.parse_args()
 train = args.train
@@ -63,7 +63,7 @@ plt.show()
 # Define the forward noising process which are independent OU processes
 # sde = StationaryExpLinearSDE(a=-0.5, b=1., c=1., z=1.)
 # sde = StationaryConstLinearSDE(a=-0.5, b=1.)
-sde = StationaryConstLinearSDE(a=-0.5, b=1.)
+sde = StationaryLinLinearSDE(beta_min=1e-3, beta_max=3, t0=0., T=T)
 discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(sde)
 
 
@@ -84,7 +84,7 @@ _, _, array_param, _, nn_score = make_simple_st_nn(subkey,
                                                    dim_in=3, batch_size=train_nsamples,
                                                    nn_model=CrescentMLP(train_dt))
 
-loss_type = 'ipf-score'
+loss_type = 'score'
 loss_fn = make_linear_sde_law_loss(sde, nn_score,
                                    t0=0., T=T, nsteps=train_nsteps,
                                    random_times=True, loss_type=loss_type)
@@ -105,13 +105,15 @@ elif args.schedule == 'exp':
 else:
     schedule = optax.constant_schedule(args.lr)
 optimiser = optax.adam(learning_rate=schedule)
+optimiser = optax.chain(optimiser,
+                        optax.ema(decay=0.99))
 param = array_param
 opt_state = optimiser.init(param)
 
 if not train:
     param = np.load('./crescent.npy')
 else:
-    for i in range(1000):
+    for i in range(5000):
         key, subkey = jax.random.split(key)
         keys = jax.random.split(subkey, train_nsamples)
         samples = jax.vmap(sampler_x, in_axes=[0])(keys)
