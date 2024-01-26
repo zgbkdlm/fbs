@@ -230,7 +230,7 @@ def make_linear_sde_law_loss(sde: LinearSDE, nn_fn,
         elif loss_type == 'ipf-score':
             @partial(jax.vmap, in_axes=[1, 0, 0], out_axes=1)
             def f(x, t, t_prev):
-                return x + sde.drift(x, t_prev) * (t - t_prev)
+                return discretise_linear_sde(t, t_prev)[0] * x
 
             return jnp.mean(((nn_evals - f(fwd_paths[:, :-1], ts[1:], ts[:-1])) * (ts[None, 1:, None] - ts[None, :-1, None])
                              + fwd_paths[:, 1:] - fwd_paths[:, :-1]) ** 2)
