@@ -63,7 +63,7 @@ plt.show()
 # Define the forward noising process which are independent OU processes
 # sde = StationaryExpLinearSDE(a=-0.5, b=1., c=1., z=1.)
 # sde = StationaryConstLinearSDE(a=-0.5, b=1.)
-sde = StationaryLinLinearSDE(beta_min=1e-3, beta_max=5, t0=0., T=T)
+sde = StationaryLinLinearSDE(beta_min=1e-3, beta_max=5., t0=0., T=T)
 discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(sde)
 
 
@@ -122,11 +122,11 @@ else:
         print(f'i: {i}, loss: {loss}')
     np.save('./crescent.npy', param)
 
-
 # Verify if the score function is learnt properly
 if 'score' in loss_type:
     def learnt_score(x, t):
         return nn_score(x, t, param)
+
 
     def rev_sim(key_, u0):
         return reverse_simulator(key_, u0, ts, learnt_score, sde.drift, sde.dispersion, integrator='euler-maruyama')
