@@ -16,7 +16,7 @@ from fbs.nn import sinusoidal_embedding
 
 # Parse arguments
 parser = argparse.ArgumentParser(description='Crescent test.')
-parser.add_argument('--train', action='store_true', default=True, help='Whether train or not.')
+parser.add_argument('--train', action='store_true', default=False, help='Whether train or not.')
 parser.add_argument('--nn', type=str, default='mlp')
 parser.add_argument('--lr', type=float, default=1e-4)
 parser.add_argument('--schedule', type=str, default='const')
