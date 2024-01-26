@@ -62,6 +62,30 @@ def test_linear_sdes():
 def test_linlin_sde():
     """We use linear SDEs a lot, test it more properly.
     """
+    a, b = -0.5, 1.
+    T = 40.
+    ts = jnp.linspace(1e-5, T, 100)
+
+    const_sde = StationaryConstLinearSDE(a=a, b=b)
+    lin_sde = StationaryLinLinearSDE(beta_min=1., beta_max=1., t0=0., T=T)
+
+    disc_const, _, _ = make_linear_sde(const_sde)
+    disc_lin, _, _ = make_linear_sde(lin_sde)
+
+    # They should be identical
+    for i in range(2):
+        npt.assert_allclose(disc_lin(ts, 0.)[i], disc_const(ts, 0.)[i])
+
+    # Check if the result matches a closed-form result
+    ts = jnp.linspace(1e-5, 1., 100)
+    beta_min, beta_max = 1e-3, 3.
+    lin_sde = StationaryLinLinearSDE(beta_min=beta_min, beta_max=beta_max, t0=0., T=1.)
+    disc_lin, _, _ = make_linear_sde(lin_sde)
+    alp = ts * beta_min + 0.5 * ts ** 2 * (beta_max - beta_min)
+    true_m = jnp.exp(-0.5 * alp)
+    true_var = 1 - jnp.exp(-alp)
+    npt.assert_allclose(disc_lin(ts, 0.)[0], true_m)
+    npt.assert_allclose(disc_lin(ts, 0.)[1], true_var)
 
 
 def test_cross_check():

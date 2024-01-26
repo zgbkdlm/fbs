@@ -35,7 +35,7 @@ train = args.train
 print(f'Run with {train}')
 
 # General configs
-# jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_enable_x64", True)
 key = jax.random.PRNGKey(666)
 key, data_key = jax.random.split(key)
 
@@ -69,7 +69,7 @@ if not train:
 if args.sde == 'const':
     sde = StationaryConstLinearSDE(a=-0.5, b=1.)
 elif args.sde == 'lin':
-    sde = StationaryLinLinearSDE(beta_min=1e-1, beta_max=3., t0=0., T=T)
+    sde = StationaryLinLinearSDE(beta_min=1e-1, beta_max=10., t0=0., T=T)
 elif args.sde == 'exp':
     sde = StationaryExpLinearSDE(a=-0.5, b=1., c=1., z=1.)
 else:
