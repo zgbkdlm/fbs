@@ -228,12 +228,14 @@ def make_linear_sde_law_loss(sde: LinearSDE, nn_fn,
             fwd_evals2 = fwd_transition(fwd_paths[:, 1:], ts[1:], ts[:-1])
             return jnp.mean((nn_evals - (fwd_paths[:, 1:] + fwd_evals1 - fwd_evals2)) ** 2)
         elif loss_type == 'ipf-score':
-            @partial(jax.vmap, in_axes=[1, 0], out_axes=1)
-            def f(x, t):
-                return sde.drift(x, t)
+            @partial(jax.vmap, in_axes=[1, 0, 0], out_axes=1)
+            def f(x, t, t_prev):
+                return x + sde.drift(x, t_prev) * (t - t_prev)
 
-            return jnp.mean(((nn_evals - f(fwd_paths[:, :-1], ts[:-1])) * (ts[None, 1:, None] - ts[None, :-1, None])
-                             + fwd_paths[:, 1:] - fwd_paths[:, :-1]) ** 2)
+            # return jnp.mean(((nn_evals - f(fwd_paths[:, :-1], ts[:-1])) * (ts[None, 1:, None] - ts[None, :-1, None])
+            #                  + fwd_paths[:, 1:] - fwd_paths[:, :-1]) ** 2)
+            return jnp.mean((nn_evals - (f(fwd_paths[:, :-1], ts[1:], ts[:-1]) - fwd_paths[:, 1:]) / (
+                        ts[None, 1:, None] - ts[None, :-1, None])) ** 2)
         else:
             raise NotImplementedError(f'Loss {loss_type} not implemented.')
 

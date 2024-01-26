@@ -84,7 +84,7 @@ _, _, array_param, _, nn_score = make_simple_st_nn(subkey,
                                                    dim_in=3, batch_size=train_nsamples,
                                                    nn_model=CrescentMLP(train_dt))
 
-loss_type = 'score'
+loss_type = 'ipf-score'
 loss_fn = make_linear_sde_law_loss(sde, nn_score,
                                    t0=0., T=T, nsteps=train_nsteps,
                                    random_times=True, loss_type=loss_type)
