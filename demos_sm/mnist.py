@@ -69,7 +69,7 @@ if not train:
 if args.sde == 'const':
     sde = StationaryConstLinearSDE(a=-0.5, b=1.)
 elif args.sde == 'lin':
-    sde = StationaryLinLinearSDE(beta_min=1e-3, beta_max=5., t0=0., T=T)
+    sde = StationaryLinLinearSDE(beta_min=1e-2, beta_max=3., t0=0., T=T)
 elif args.sde == 'exp':
     sde = StationaryExpLinearSDE(a=-0.5, b=1., c=1., z=1.)
 else:

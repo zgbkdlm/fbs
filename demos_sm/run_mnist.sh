@@ -26,7 +26,7 @@ nvidia-smi
 
 if "$ema"
 then
-  python -u mnist.py --train --schedule="exp" --nn=$nn --batch_size=$batch_size --nsteps=$nsteps --lr=$lr --sde=$sde --loss_type=$loss_type
-else
   python -u mnist.py --train --schedule="exp" --nn=$nn --batch_size=$batch_size --nsteps=$nsteps --lr=$lr --sde=$sde --loss_type=$loss_type --ema
+else
+  python -u mnist.py --train --schedule="exp" --nn=$nn --batch_size=$batch_size --nsteps=$nsteps --lr=$lr --sde=$sde --loss_type=$loss_type
 fi
