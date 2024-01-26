@@ -35,7 +35,7 @@ train = args.train
 print(f'Run with {train}')
 
 # General configs
-jax.config.update("jax_enable_x64", True)
+# jax.config.update("jax_enable_x64", True)
 key = jax.random.PRNGKey(666)
 key, data_key = jax.random.split(key)
 
