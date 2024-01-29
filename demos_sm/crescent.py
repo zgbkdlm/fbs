@@ -16,9 +16,9 @@ from fbs.nn import sinusoidal_embedding
 
 # Parse arguments
 parser = argparse.ArgumentParser(description='Crescent test.')
-parser.add_argument('--train', action='store_true', default=True, help='Whether train or not.')
+parser.add_argument('--train', action='store_true', default=False, help='Whether train or not.')
 parser.add_argument('--nn', type=str, default='mlp')
-parser.add_argument('--lr', type=float, default=1e-2)
+parser.add_argument('--lr', type=float, default=1e-3)
 parser.add_argument('--schedule', type=str, default='const')
 parser.add_argument('--nepochs', type=int, default=30)
 args = parser.parse_args()
@@ -62,8 +62,8 @@ plt.show()
 
 # Define the forward noising process which are independent OU processes
 # sde = StationaryExpLinearSDE(a=-0.5, b=1., c=1., z=1.)
-# sde = StationaryConstLinearSDE(a=-0.5, b=1.)
-sde = StationaryLinLinearSDE(beta_min=1e-2, beta_max=3., t0=0., T=T)
+sde = StationaryConstLinearSDE(a=-0.5, b=1.)
+# sde = StationaryLinLinearSDE(beta_min=1e-2, beta_max=3., t0=0., T=T)
 discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(sde)
 
 
@@ -75,7 +75,8 @@ def simulate_forward(key_, ts_):
 # Score matching
 train_nsamples = 128
 train_nsteps = 100
-train_dt = T / train_nsteps
+max_nsteps = 1000
+train_dt = T / max_nsteps
 nn_param_init = nn.initializers.xavier_normal()
 nn_param_dtype = jnp.float64
 

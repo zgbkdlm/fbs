@@ -32,6 +32,8 @@ class CrescentMLP(nn.Module):
              _CrescentTimeBlock(dt=self.dt, nfeatures=64)(time_emb))
         x = nn.gelu(x)
         x = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
+        x = (x * _CrescentTimeBlock(dt=self.dt, nfeatures=32)(time_emb) +
+             _CrescentTimeBlock(dt=self.dt, nfeatures=32)(time_emb))
         x = nn.gelu(x)
         x = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
         x = nn.gelu(x)

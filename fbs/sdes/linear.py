@@ -193,6 +193,7 @@ def make_linear_sde_law_loss(sde: LinearSDE, nn_fn,
                              save_mem: bool = False):
     discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(sde)
     simulate_cond_forward = partial(simulate_cond_forward, keep_path=keep_path)
+    eps = 1e-5
 
     def score_scale(t, s):
         return discretise_linear_sde(t, s)[1]
@@ -203,7 +204,7 @@ def make_linear_sde_law_loss(sde: LinearSDE, nn_fn,
 
         if random_times:
             ts = jnp.hstack([t0,
-                             jnp.sort(jax.random.uniform(key_ts, (nsteps - 1,), minval=t0, maxval=T)),
+                             jnp.sort(jax.random.uniform(key_ts, (nsteps - 1,), minval=t0 + eps, maxval=T)),
                              T])
         else:
             ts = jnp.linspace(t0, T, nsteps + 1)
