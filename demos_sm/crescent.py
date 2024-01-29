@@ -16,9 +16,9 @@ from fbs.nn import sinusoidal_embedding
 
 # Parse arguments
 parser = argparse.ArgumentParser(description='Crescent test.')
-parser.add_argument('--train', action='store_true', default=False, help='Whether train or not.')
+parser.add_argument('--train', action='store_true', default=True, help='Whether train or not.')
 parser.add_argument('--nn', type=str, default='mlp')
-parser.add_argument('--lr', type=float, default=1e-4)
+parser.add_argument('--lr', type=float, default=1e-2)
 parser.add_argument('--schedule', type=str, default='const')
 parser.add_argument('--nepochs', type=int, default=30)
 args = parser.parse_args()
@@ -34,7 +34,7 @@ key, data_key = jax.random.split(key)
 T = 1
 nsteps = 100
 dt = T / nsteps
-ts = jnp.linspace(0, T - 1e-8, nsteps + 1)
+ts = jnp.linspace(0, T, nsteps + 1)
 test_nsamples = 10000
 
 # Crescent
@@ -84,7 +84,7 @@ _, _, array_param, _, nn_score = make_simple_st_nn(subkey,
                                                    dim_in=3, batch_size=train_nsamples,
                                                    nn_model=CrescentMLP(train_dt))
 
-loss_type = 'ipf-score'
+loss_type = 'score'
 loss_fn = make_linear_sde_law_loss(sde, nn_score,
                                    t0=0., T=T, nsteps=train_nsteps,
                                    random_times=True, loss_type=loss_type)
@@ -105,15 +105,15 @@ elif args.schedule == 'exp':
 else:
     schedule = optax.constant_schedule(args.lr)
 optimiser = optax.adam(learning_rate=schedule)
-optimiser = optax.chain(optimiser,
-                        optax.ema(decay=0.99))
+# optimiser = optax.chain(optimiser,
+#                         optax.ema(decay=0.99))
 param = array_param
 opt_state = optimiser.init(param)
 
 if not train:
     param = np.load('./crescent.npy')
 else:
-    for i in range(5000):
+    for i in range(1000):
         key, subkey = jax.random.split(key)
         keys = jax.random.split(subkey, train_nsamples)
         samples = jax.vmap(sampler_x, in_axes=[0])(keys)

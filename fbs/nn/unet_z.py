@@ -114,7 +114,7 @@ class MNISTUNet(nn.Module):
     dt: float
     features: Sequence[int] = (16, 32, 64)
     nchannels = 1
-    upsampling_method: str = 'pixel_shuffle'
+    upsampling_method: str = 'resize'
 
     @nn.compact
     def __call__(self, x, t):
@@ -127,7 +127,7 @@ class MNISTUNet(nn.Module):
         x = x.reshape(batch_size, 28, 28, self.nchannels)
 
         # Top
-        x = nn.Conv(features=16, kernel_size=(5, 5), padding=((2, 2), (2, 2)))(x)
+        x = nn.Conv(features=16, kernel_size=(7, 7), padding=((3, 3), (3, 3)))(x)
         time_emb = TimeEmbedding(self.dt)(t)
 
         # Down pass
@@ -160,6 +160,8 @@ class MNISTUNet(nn.Module):
                     x = nn.Conv(features=down_features[i] * 4, kernel_size=(3, 3))(x)
                     x = PixelShuffle(scale=2)(x)
                     x = nn.Conv(features=down_features[i], kernel_size=(3, 3))(x)
+                else:
+                    raise NotImplementedError('...')
 
         # End
         x = ResBlock(16)(x, time_emb)
