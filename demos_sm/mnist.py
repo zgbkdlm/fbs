@@ -18,17 +18,17 @@ from fbs.nn.utils import make_optax_kernel
 # Parse arguments
 parser = argparse.ArgumentParser(description='MNIST test.')
 parser.add_argument('--train', action='store_true', default=False, help='Whether train or not.')
-parser.add_argument('--sde', type=str, default='const')
+parser.add_argument('--sde', type=str, default='lin')
 parser.add_argument('--nn', type=str, default='unetz')
 parser.add_argument('--loss_type', type=str, default='score')
 parser.add_argument('--lr', type=float, default=1e-4)
-parser.add_argument('--batch_size', type=int, default=64)
-parser.add_argument('--nsteps', type=int, default=50)
+parser.add_argument('--batch_size', type=int, default=2)
+parser.add_argument('--nsteps', type=int, default=2)
 parser.add_argument('--schedule', type=str, default='cos')
 parser.add_argument('--nepochs', type=int, default=20)
 parser.add_argument('--grad_clip', action='store_true', default=False)
-parser.add_argument('--test_nsteps', type=int, default=200)
-parser.add_argument('--test_epoch', type=int, default=5)
+parser.add_argument('--test_nsteps', type=int, default=500)
+parser.add_argument('--test_epoch', type=int, default=12)
 parser.add_argument('--test_ema', action='store_true', default=False)
 parser.add_argument('--test_seed', type=int, default=666)
 
@@ -88,7 +88,7 @@ def simulate_forward(key_, ts_):
 # Score matching
 train_nsamples = args.batch_size
 train_nsteps = args.nsteps
-min_dt = T / 500
+min_dt = T / 200
 nepochs = args.nepochs
 data_size = dataset.n
 nn_param_init = nn.initializers.xavier_normal()
@@ -142,10 +142,12 @@ if train:
             ema_param = ema_kernel(ema_param, param, j, 200, 0.99)
             print(f'| {args.nn} | {args.sde} | {loss_type} | '
                   f'Epoch: {i} / {nepochs}, iter: {j} / {data_size // train_nsamples}, loss: {loss}')
-        np.savez(f'./mnist_{args.nn}_{args.sde}_{loss_type}_{i}.npy', param=param, ema_param=ema_param)
+        np.savez(f'./mnist_{args.nn}_{args.sde}_{loss_type}_{"clip_" if args.grad_clip else ""}{i}.npz',
+                 param=param, ema_param=ema_param)
 else:
     param = np.load(f'./mnist_{args.nn}_{args.sde}_{loss_type}_'
-                    f'{args.test_epoch}.npy')['ema_param' if args.test_ema else 'param']
+                    f'{"clip_" if args.grad_clip else ""}'
+                    f'{args.test_epoch}.npz')['ema_param' if args.test_ema else 'param']
 
 
 # Verify if the score function is learnt properly
