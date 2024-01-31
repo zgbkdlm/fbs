@@ -11,7 +11,7 @@ nsteps=$3
 lr=$4
 sde=$5
 loss_type=$6
-ema=$7
+grad_clip=$7
 
 
 source ~/.bashrc
@@ -24,9 +24,9 @@ cd demos_sm
 
 nvidia-smi
 
-if "$ema"
+if "$grad_clip"
 then
-  python -u mnist.py --train --schedule="const" --nn=$nn --batch_size=$batch_size --nsteps=$nsteps --lr=$lr --sde=$sde --loss_type=$loss_type --ema
+  python -u mnist.py --train --schedule="const" --nn=$nn --batch_size=$batch_size --nsteps=$nsteps --lr=$lr --sde=$sde --loss_type=$loss_type --grad_clip
 else
   python -u mnist.py --train --schedule="const" --nn=$nn --batch_size=$batch_size --nsteps=$nsteps --lr=$lr --sde=$sde --loss_type=$loss_type
 fi

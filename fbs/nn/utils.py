@@ -1,9 +1,12 @@
+import jax
 import jax.numpy as jnp
+import optax
 import einops
 from jax.flatten_util import ravel_pytree
 from flax import linen
 from fbs.typings import JArray, JKey, FloatScalar
-from typing import Tuple, Callable
+from functools import partial
+from typing import Tuple, Callable, Sequence
 
 
 def make_nn_with_time(nn: linen.Module,
@@ -52,3 +55,24 @@ class PixelShuffle(linen.Module):
 
     def __call__(self, x: JArray) -> JArray:
         return einops.rearrange(x, 'b h w (h2 w2 c) -> b (h h2) (w w2) c', h2=self.scale, w2=self.scale)
+
+
+def make_optax_kernel(optimiser, loss_fn: Callable, jit: bool = True) -> Tuple[Callable, Callable]:
+    def optax_kernel(param: JArray, opt_state, *args, **kwargs):
+        loss, grad = jax.value_and_grad(loss_fn)(param, *args, **kwargs)
+        updates, opt_state = optimiser.update(grad, opt_state, param)
+        param = optax.apply_updates(param, updates)
+        return param, opt_state, loss
+
+    @partial(jax.jit, static_argnums=2)
+    def ema_update(param: JArray, ema_param: JArray, decay: float) -> JArray:
+        return decay * ema_param + (1 - decay) * param
+
+    def ema_kernel(ema_param: JArray, param: JArray, count: int, count_threshold: int, decay: float) -> JArray:
+        if count < count_threshold:
+            ema_param = param
+        else:
+            ema_param = ema_update(param, ema_param, decay)
+        return ema_param
+
+    return jax.jit(optax_kernel) if jit else optax_kernel, ema_kernel

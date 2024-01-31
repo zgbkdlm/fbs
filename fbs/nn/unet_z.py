@@ -114,7 +114,7 @@ class MNISTUNet(nn.Module):
     dt: float
     features: Sequence[int] = (16, 32, 64)
     nchannels = 1
-    upsampling_method: str = 'resize'
+    upsampling_method: str = 'pixel_shuffle'
 
     @nn.compact
     def __call__(self, x, t):

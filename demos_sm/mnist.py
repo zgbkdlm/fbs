@@ -13,6 +13,7 @@ from fbs.sdes import make_linear_sde, make_linear_sde_law_loss, StationaryConstL
     StationaryLinLinearSDE, StationaryExpLinearSDE, reverse_simulator
 from fbs.nn.models import make_simple_st_nn, MNISTResConv, MNISTAutoEncoder
 from fbs.nn.unet_z import MNISTUNet
+from fbs.nn.utils import make_optax_kernel
 
 # Parse arguments
 parser = argparse.ArgumentParser(description='MNIST test.')
@@ -25,9 +26,11 @@ parser.add_argument('--batch_size', type=int, default=64)
 parser.add_argument('--nsteps', type=int, default=50)
 parser.add_argument('--schedule', type=str, default='cos')
 parser.add_argument('--nepochs', type=int, default=20)
-parser.add_argument('--ema', action='store_true', default=False)
+parser.add_argument('--grad_clip', action='store_true', default=False)
 parser.add_argument('--test_nsteps', type=int, default=200)
 parser.add_argument('--test_epoch', type=int, default=5)
+parser.add_argument('--test_ema', action='store_true', default=False)
+parser.add_argument('--test_seed', type=int, default=666)
 
 args = parser.parse_args()
 train = args.train
@@ -109,14 +112,6 @@ loss_fn = make_linear_sde_law_loss(sde, nn_score, t0=0., T=T, nsteps=train_nstep
                                    random_times=True, loss_type=loss_type)
 
 
-@jax.jit
-def optax_kernel(param_, opt_state_, key_, xy0s_):
-    loss_, grad = jax.value_and_grad(loss_fn)(param_, key_, xy0s_)
-    updates, opt_state_ = optimiser.update(grad, opt_state_, param_)
-    param_ = optax.apply_updates(param_, updates)
-    return param_, opt_state_, loss_
-
-
 if args.schedule == 'cos':
     schedule = optax.cosine_decay_schedule(args.lr, data_size // train_nsamples, .95)
 elif args.schedule == 'exp':
@@ -124,13 +119,16 @@ elif args.schedule == 'exp':
 else:
     schedule = optax.constant_schedule(args.lr)
 
-if args.ema:
-    optimiser = optax.adam(learning_rate=1e-4)
-    optimiser = optax.chain(optimiser,
-                            optax.ema(decay=0.999))
+if args.grad_clip:
+    optimiser = optax.adam(learning_rate=schedule)
+    optimiser = optax.chain(optax.clip_by_global_norm(1.),
+                            optimiser)
 else:
     optimiser = optax.adam(learning_rate=schedule)
+
+optax_kernel, ema_kernel = make_optax_kernel(optimiser, loss_fn, jit=True)
 param = array_param
+ema_param = param
 opt_state = optimiser.init(param)
 
 if train:
@@ -141,11 +139,13 @@ if train:
             subkey, subkey2 = jax.random.split(subkey)
             x0s, _ = dataset.enumerate_subset(j, perm_inds, subkey)
             param, opt_state, loss = optax_kernel(param, opt_state, subkey2, x0s)
+            ema_param = ema_kernel(ema_param, param, j, 200, 0.99)
             print(f'| {args.nn} | {args.sde} | {loss_type} | '
                   f'Epoch: {i} / {nepochs}, iter: {j} / {data_size // train_nsamples}, loss: {loss}')
-        np.save(f'./mnist_{args.nn}_{args.sde}_{loss_type}_{"ema_" if args.ema else ""}{i}.npy', param)
+        np.savez(f'./mnist_{args.nn}_{args.sde}_{loss_type}_{i}.npy', param=param, ema_param=ema_param)
 else:
-    param = np.load(f'./mnist_{args.nn}_{args.sde}_{loss_type}_{"ema_" if args.ema else ""}{args.test_epoch}.npy')
+    param = np.load(f'./mnist_{args.nn}_{args.sde}_{loss_type}_'
+                    f'{args.test_epoch}.npy')['ema_param' if args.test_ema else 'param']
 
 
 # Verify if the score function is learnt properly
@@ -157,7 +157,7 @@ def rev_sim(key_, u0):
 
 
 # Simulate the backward and verify if it matches the target distribution
-kkk = jax.random.PRNGKey(555)
+kkk = jax.random.PRNGKey(args.test_seed)
 key, subkey = jax.random.split(kkk)
 test_x0 = sampler_x(subkey)
 key, subkey = jax.random.split(key)
