@@ -19,13 +19,13 @@ from fbs.nn.utils import make_optax_kernel
 parser = argparse.ArgumentParser(description='MNIST test.')
 parser.add_argument('--train', action='store_true', default=False, help='Whether train or not.')
 parser.add_argument('--sde', type=str, default='lin')
-parser.add_argument('--nn', type=str, default='unetz')
+parser.add_argument('--upsampling', type=str, default='pixel_shuffle')
 parser.add_argument('--loss_type', type=str, default='score')
 parser.add_argument('--lr', type=float, default=1e-4)
 parser.add_argument('--batch_size', type=int, default=2)
 parser.add_argument('--nsteps', type=int, default=2)
 parser.add_argument('--schedule', type=str, default='cos')
-parser.add_argument('--nepochs', type=int, default=20)
+parser.add_argument('--nepochs', type=int, default=30)
 parser.add_argument('--grad_clip', action='store_true', default=False)
 parser.add_argument('--test_nsteps', type=int, default=500)
 parser.add_argument('--test_epoch', type=int, default=12)
@@ -72,7 +72,7 @@ if not train:
 if args.sde == 'const':
     sde = StationaryConstLinearSDE(a=-0.5, b=1.)
 elif args.sde == 'lin':
-    sde = StationaryLinLinearSDE(beta_min=0.01, beta_max=5., t0=0., T=T)
+    sde = StationaryLinLinearSDE(beta_min=0.02, beta_max=5., t0=0., T=T)
 elif args.sde == 'exp':
     sde = StationaryExpLinearSDE(a=-0.5, b=1., c=1., z=1.)
 else:
@@ -88,21 +88,12 @@ def simulate_forward(key_, ts_):
 # Score matching
 train_nsamples = args.batch_size
 train_nsteps = args.nsteps
-min_dt = T / 200
+nn_dt = T / 200
 nepochs = args.nepochs
 data_size = dataset.n
-nn_param_init = nn.initializers.xavier_normal()
-nn_param_dtype = jnp.float64
 
 key, subkey = jax.random.split(key)
-if args.nn == 'mlp':
-    my_nn = MNISTAutoEncoder(nn_param_dtype=nn_param_dtype, nn_param_init=nn_param_init)
-elif 'unet' in args.nn:
-    my_nn = MNISTUNet(min_dt)
-elif args.nn == 'conv':
-    my_nn = MNISTResConv(dt=min_dt)
-else:
-    raise NotImplementedError('...')
+my_nn = MNISTUNet(dt=nn_dt, upsampling_method=args.upsampling)
 _, _, array_param, _, nn_score = make_simple_st_nn(subkey,
                                                    dim_in=d, batch_size=train_nsamples,
                                                    nn_model=my_nn)
@@ -113,9 +104,9 @@ loss_fn = make_linear_sde_law_loss(sde, nn_score, t0=0., T=T, nsteps=train_nstep
 
 
 if args.schedule == 'cos':
-    schedule = optax.cosine_decay_schedule(args.lr, data_size // train_nsamples, .95)
+    schedule = optax.cosine_decay_schedule(args.lr, data_size // train_nsamples * 4, .95)
 elif args.schedule == 'exp':
-    schedule = optax.exponential_decay(args.lr, data_size // train_nsamples, .95)
+    schedule = optax.exponential_decay(args.lr, data_size // train_nsamples * 4, .95)
 else:
     schedule = optax.constant_schedule(args.lr)
 
@@ -140,12 +131,13 @@ if train:
             x0s, _ = dataset.enumerate_subset(j, perm_inds, subkey)
             param, opt_state, loss = optax_kernel(param, opt_state, subkey2, x0s)
             ema_param = ema_kernel(ema_param, param, j, 200, 0.99)
-            print(f'| {args.nn} | {args.sde} | {loss_type} | '
-                  f'Epoch: {i} / {nepochs}, iter: {j} / {data_size // train_nsamples}, loss: {loss}')
-        np.savez(f'./mnist_{args.nn}_{args.sde}_{loss_type}_{"clip_" if args.grad_clip else ""}{i}.npz',
+            print(f'| {args.upsampling} | {args.sde} | {loss_type} | {args.schedule} | '
+                  f'Epoch: {i} / {nepochs}, iter: {j} / {data_size // train_nsamples}, loss: {loss:.4f}')
+        np.savez(f'./mnist_{args.upsampling}_{args.sde}_'
+                 f'{loss_type}_{args.schedule}_{"clip_" if args.grad_clip else ""}{i}.npz',
                  param=param, ema_param=ema_param)
 else:
-    param = np.load(f'./mnist_{args.nn}_{args.sde}_{loss_type}_'
+    param = np.load(f'./mnist_{args.upsampling}_{args.sde}_{loss_type}_{args.schedule}_'
                     f'{"clip_" if args.grad_clip else ""}'
                     f'{args.test_epoch}.npz')['ema_param' if args.test_ema else 'param']
 

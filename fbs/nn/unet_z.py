@@ -142,30 +142,30 @@ class MNISTUNet(nn.Module):
                 x = nn.Conv(feature, kernel_size=(3, 3), strides=(2, 2))(x)
 
         # Middle
-        x = ResBlock(self.features[-1])(x, time_emb)
+        x = ResBlock(128)(x, time_emb)
         x = Attention()(x)
 
         # Up pass
-        down_features = (16,) + self.features[:-1]
         for i in reversed(range(len(self.features))):
-            x = jnp.concatenate([up_layers[i], x], -1)
-            # x = up_layers[i] + x
-            x = ResBlock(down_features[i])(x, time_emb)
+            x = ResBlock(self.features[i])(x, time_emb)
             x = Attention()(x)
+            x = jnp.concatenate([up_layers[i], x], -1)
+            x = ResBlock(self.features[i])(x, time_emb)
             if i > 0:
                 if self.upsampling_method == 'conv':
-                    x = nn.ConvTranspose(down_features[i], kernel_size=(3, 3), strides=(2, 2))(x)
+                    x = nn.ConvTranspose(self.features[i - 1], kernel_size=(3, 3), strides=(2, 2))(x)
                 elif self.upsampling_method == 'resize':
-                    x = jax.image.resize(x, (batch_size, x.shape[1] * 2, x.shape[2] * 2, down_features[i]), 'nearest')
-                    x = nn.Conv(features=down_features[i], kernel_size=(3, 3))(x)
+                    x = jax.image.resize(x, (batch_size, x.shape[1] * 2, x.shape[2] * 2, self.features[i - 1]),
+                                         'nearest')
+                    x = nn.Conv(features=self.features[i - 1], kernel_size=(3, 3))(x)
                 elif self.upsampling_method == 'pixel_shuffle':
-                    x = nn.Conv(features=down_features[i] * 4, kernel_size=(3, 3))(x)
+                    x = nn.Conv(features=self.features[i - 1] * 4, kernel_size=(3, 3))(x)
                     x = PixelShuffle(scale=2)(x)
-                    x = nn.Conv(features=down_features[i], kernel_size=(3, 3))(x)
+                    x = nn.Conv(features=self.features[i - 1], kernel_size=(3, 3))(x)
                 else:
                     raise NotImplementedError('...')
 
         # End
-        x = ResBlock(16)(x, time_emb)
+        x = ResBlock(8)(x, time_emb)
         x = nn.Conv(self.nchannels, kernel_size=(1, 1))(x)
         return jnp.squeeze(jnp.reshape(x, (batch_size, -1)))

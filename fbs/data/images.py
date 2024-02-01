@@ -7,13 +7,18 @@ from typing import Tuple
 
 class MNIST(Dataset):
 
-    def __init__(self, key: JKey, data_path: str, task: str = 'inpainting'):
+    def __init__(self, key: JKey, data_path: str, task: str = 'inpainting', test: bool = False):
         data_dict = jnp.load(data_path)
-        self.n = 60000
         self.task = task
 
-        xs = data_dict['X']
-        xs = jax.random.permutation(key, jnp.reshape(xs, (60000, 784)), axis=0)
+        if test:
+            self.n = 10000
+            xs = data_dict['X_test']
+            xs = jax.random.permutation(key, jnp.reshape(xs, (10000, 784)), axis=0)
+        else:
+            self.n = 60000
+            xs = data_dict['X']
+            xs = jax.random.permutation(key, jnp.reshape(xs, (60000, 784)), axis=0)
 
         self.xs = self.standardise(xs)
 

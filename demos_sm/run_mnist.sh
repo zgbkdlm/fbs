@@ -5,13 +5,14 @@
 #SBATCH -t 03:00:00
 #SBATCH -C "fat"
 
-nn=$1
-batch_size=$2
-nsteps=$3
-lr=$4
-sde=$5
-loss_type=$6
-grad_clip=$7
+upsampling=$1
+sde=$2
+batch_size=$3
+nsteps=$4
+lr=$5
+schedule=$6
+loss_type=$7
+grad_clip=$8
 
 
 source ~/.bashrc
@@ -26,7 +27,7 @@ nvidia-smi
 
 if "$grad_clip"
 then
-  python -u mnist.py --train --schedule="const" --nn=$nn --batch_size=$batch_size --nsteps=$nsteps --lr=$lr --sde=$sde --loss_type=$loss_type --grad_clip
+  python -u mnist.py --train --upsampling=$upsampling --sde=$sde --batch_size=$batch_size --nsteps=$nsteps --lr=$lr --schedule=$schedule --loss_type=$loss_type --grad_clip
 else
-  python -u mnist.py --train --schedule="const" --nn=$nn --batch_size=$batch_size --nsteps=$nsteps --lr=$lr --sde=$sde --loss_type=$loss_type
+  python -u mnist.py --train --upsampling=$upsampling --sde=$sde --batch_size=$batch_size --nsteps=$nsteps --lr=$lr --schedule=$schedule --loss_type=$loss_type
 fi
