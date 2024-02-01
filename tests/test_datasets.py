@@ -1,12 +1,12 @@
 import jax.numpy as jnp
 import jax.random
 import numpy.testing as npt
-from fbs.data.base import DataSet
+from fbs.data.base import Dataset
 
 
 class TestDatasetClass:
     def test_enumeration(self):
-        dummyclass = DataSet()
+        dummyclass = Dataset()
 
         data_size = 100
         dummyclass.n = data_size

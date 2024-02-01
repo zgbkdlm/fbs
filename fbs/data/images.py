@@ -1,19 +1,19 @@
 import jax
 import jax.numpy as jnp
-from .base import DataSet
+from .base import Dataset
 from fbs.typings import JKey, Array, JArray
 from typing import Tuple
 
 
-class MNIST(DataSet):
+class MNIST(Dataset):
 
     def __init__(self, key: JKey, data_path: str, task: str = 'inpainting'):
         data_dict = jnp.load(data_path)
-        self.n = 70000
+        self.n = 60000
         self.task = task
 
-        xs = jnp.concatenate([data_dict['X'], data_dict['X_test']], axis=0)
-        xs = jax.random.permutation(key, jnp.reshape(xs, (70000, 784)), axis=0)
+        xs = data_dict['X']
+        xs = jax.random.permutation(key, jnp.reshape(xs, (60000, 784)), axis=0)
 
         self.xs = self.standardise(xs)
 

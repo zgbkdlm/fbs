@@ -6,7 +6,7 @@ from abc import ABCMeta
 from typing import List, Tuple
 
 
-class DataSet(metaclass=ABCMeta):
+class Dataset(metaclass=ABCMeta):
     """
     An abstract class for datasets.
 
@@ -15,7 +15,6 @@ class DataSet(metaclass=ABCMeta):
     """
     n: int
     xs: Array
-    ys: Array
     perm_inds: List[JArray]
 
     @staticmethod
@@ -33,9 +32,9 @@ class DataSet(metaclass=ABCMeta):
         """
         return (array - jnp.mean(array, axis=0)) / jnp.std(array, axis=0)
 
-    def draw_subset(self, key: JKey, batch_size: int) -> Tuple[JArray, JArray]:
+    def draw_subset(self, key: JKey, batch_size: int) -> JArray:
         inds = jax.random.choice(key, jnp.arange(self.n), (batch_size,), replace=False)
-        return self.reshape(self.xs[inds, :]), self.reshape(self.ys[inds, :])
+        return self.reshape(self.xs[inds, :])
 
     def init_enumeration(self, key: JKey, batch_size: int) -> List[JArray]:
         """Randomly split the data into `n / batch_size` chunks. If the divisor is not an integer, then use // which
@@ -52,8 +51,7 @@ class DataSet(metaclass=ABCMeta):
     def enumerate_subset(self, i: int, perm_inds=None, key=None) -> Tuple[JArray, JArray]:
         """Enumerate all the randomly split chunks of data for i = 0, 1, ...
         """
-        inds = self.perm_inds[i]
-        return self.reshape(self.xs[inds, :]), self.reshape(self.ys[inds, :])
+        raise NotImplementedError('Not implemented.')
 
     def sampler(self, key: JKey) -> Tuple[JArray, JArray]:
         raise NotImplementedError('Not implemented.')

@@ -13,12 +13,13 @@ from typing import List, Sequence
 
 
 def _einsum(a, b, c, x, y):
+    """Due to Song Yang"""
     einsum_str = '{},{}->{}'.format(''.join(a), ''.join(b), ''.join(c))
     return jnp.einsum(einsum_str, x, y)
 
 
 def contract_inner(x, y):
-    """tensordot(x, y, 1)."""
+    """tensordot(x, y, 1). Due to Song Yang"""
     x_chars = list(string.ascii_lowercase[:len(x.shape)])
     y_chars = list(string.ascii_uppercase[:len(y.shape)])
     assert len(x_chars) == len(x.shape) and len(y_chars) == len(y.shape)
@@ -28,12 +29,13 @@ def contract_inner(x, y):
 
 
 def default_init(scale=1.):
-    """The same initialization used in DDPM."""
+    """The same initialization used in DDPM. Due to Song Yang"""
     scale = 1e-10 if scale == 0 else scale
     return jax.nn.initializers.variance_scaling(scale, 'fan_avg', 'uniform')
 
 
 class NIN(nn.Module):
+    """Due to Song Yang"""
     num_units: int
     init_scale: float = 0.1
 
@@ -48,7 +50,7 @@ class NIN(nn.Module):
 
 
 class Attention(nn.Module):
-    """Channel-wise self-attention block. Modified from DDPM."""
+    """Channel-wise self-attention block. Modified from DDPM. Due to Song Yang"""
     skip_rescale: bool = False
     init_scale: float = 0.
 
@@ -165,5 +167,5 @@ class MNISTUNet(nn.Module):
 
         # End
         x = ResBlock(16)(x, time_emb)
-        x = nn.Conv(self.nchannels, kernel_size=(3, 3))(x)
+        x = nn.Conv(self.nchannels, kernel_size=(1, 1))(x)
         return jnp.squeeze(jnp.reshape(x, (batch_size, -1)))

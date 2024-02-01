@@ -1,12 +1,12 @@
 import math
 import jax.numpy as jnp
 import jax.random
-from fbs.data.base import DataSet
+from fbs.data.base import Dataset
 from fbs.typings import JArray, JKey
 from typing import Tuple
 
 
-class Crescent(DataSet):
+class Crescent(Dataset):
     r"""
     X ~ N(m, cov),
     Y | X ~ N(X_1 / \psi + 0.5 \, (X_0 ** 2 + \psi_0 ** 2), 1.)
