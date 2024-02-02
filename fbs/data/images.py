@@ -40,8 +40,26 @@ class MNIST(Dataset):
 
     @staticmethod
     def conv(key: JKey, img: Array) -> JArray:
-        kernel = jnp.ones((6, 6)) * jax.random.uniform(key, minval=0.2, maxval=0.8) / 12
-        return jax.scipy.signal.convolve(img, kernel, mode='same')
+        """Corrupt the image with a random Gaussian blur.
+
+        Parameters
+        ----------
+        key : JKey
+            Random key.
+        img : Array (h, w)
+            Image to corrupt.
+
+        Returns
+        -------
+        Array (h, w)
+            Convoluted image.
+        """
+        img = jnp.reshape(img, (1, 28, 28, 1))
+
+        variance = jax.random.uniform(key, minval=0.5, maxval=2.)  # it's not conjugate yeah I know...
+        z_ = jnp.dstack(jnp.meshgrid(jnp.linspace(-1, 1, 5), jnp.linspace(-1, 1, 5)))
+        kernel = jnp.prod(jnp.exp(-z_ ** 2 / variance), axis=-1).reshape(5, 5, 1, 1)
+        return jax.lax.conv_general_dilated(img, kernel, (1, 1), 'SAME', dimension_numbers=('NHWC', 'HWIO', 'NHWC'))
 
     def corrupt(self, key: JKey, img: JArray) -> JArray:
         if self.task == 'inpainting':
@@ -49,27 +67,31 @@ class MNIST(Dataset):
         elif self.task == 'deconv':
             return self.conv(key, img)
         else:
-            raise ValueError('Unknown task.')
+            raise NotImplementedError('Not implemented.')
 
-    def sampler(self, key: JKey, format: str = 'vector') -> Tuple[JArray, JArray]:
+    def sampler(self, key: JKey) -> Tuple[JArray, JArray]:
         key_choice, key_corrupt = jax.random.split(key)
-        if format == 'vector':
-            x = self.xs[jax.random.choice(key_choice, self.n)]
-            y = self.corrupt(key_corrupt, x.reshape(28, 28)).reshape(784)
-        elif format == 'hwc':
-            x = self.xs[jax.random.choice(key_choice, self.n)].reshape(28, 28, 1)
-            y = self.corrupt(key_corrupt, x.reshape(28, 28)).reshape(28, 28, 1)
-        else:
-            raise ValueError('Unknown format.')
+        x = self.xs[jax.random.choice(key_choice, self.n)]
+        y = self.corrupt(key_corrupt, x.reshape(28, 28)).reshape(784)
         return x, y
 
     def enumerate_subset(self, i: int, perm_inds=None, key=None) -> Tuple[JArray, JArray]:
         if perm_inds is None:
             perm_inds = self.perm_inds
         inds = perm_inds[i]
+        batch_size = inds.shape[0]
 
         xs = self.xs[inds, :]
         keys = jax.random.split(key, num=inds.shape[0])
         ys = jax.vmap(self.corrupt,
-                      in_axes=[0, 0])(keys, xs.reshape(inds.shape[0], 28, 28)).reshape(inds.shape[0], 784)
+                      in_axes=[0, 0])(keys, xs.reshape(batch_size, 28, 28)).reshape(batch_size, 784)
         return xs, ys
+
+    def concat(self, x, y):
+        if x.ndim <= 1:
+            batch_shape = ()
+        else:
+            batch_shape = (x.shape[0], )
+        x = jnp.reshape(x, (28, 28, 1))
+        y = jnp.reshape(y, (28, 28, 1))
+        return jnp.reshape(jnp.concatenate([x, y], axis=-1), (*batch_shape, 784 * 2))

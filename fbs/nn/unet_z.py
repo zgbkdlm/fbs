@@ -120,7 +120,7 @@ class MNISTUNet(nn.Module):
 
     @nn.compact
     def __call__(self, x, t):
-        # x: (n, 784) or (n, 28, 28) or (784, )
+        # x: (n, 784, c) or (n, 28, 28, c) or (784 * c, )
         # t: float
         if x.ndim <= 1:
             batch_size = 1
