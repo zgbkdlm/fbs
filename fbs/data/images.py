@@ -87,11 +87,11 @@ class MNIST(Dataset):
                       in_axes=[0, 0])(keys, xs.reshape(batch_size, 28, 28)).reshape(batch_size, 784)
         return xs, ys
 
-    def concat(self, x, y):
+    def concat(self, x: JArray, y: JArray) -> JArray:
         if x.ndim <= 1:
             batch_shape = ()
         else:
             batch_shape = (x.shape[0], )
-        x = jnp.reshape(x, (28, 28, 1))
-        y = jnp.reshape(y, (28, 28, 1))
+        x = jnp.reshape(x, (*batch_shape, 28, 28, 1))
+        y = jnp.reshape(y, (*batch_shape, 28, 28, 1))
         return jnp.reshape(jnp.concatenate([x, y], axis=-1), (*batch_shape, 784 * 2))

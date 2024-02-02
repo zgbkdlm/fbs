@@ -47,23 +47,25 @@ dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
 
 # MNIST
-d = 784
+d = 784 * 2
 key, subkey = jax.random.split(key)
 dataset = MNIST(subkey, '../datasets/mnist.npz', task='deconv')
 
 
-def sampler_x(key_):
-    return dataset.sampler(key_)[0]
+def sampler(key_):
+    x_, y_ = dataset.sampler(key_)
+    return dataset.concat(x_, y_)
 
 
 key, subkey = jax.random.split(key)
 keys = jax.random.split(subkey, 4)
-xs = jax.vmap(sampler_x, in_axes=[0])(keys)
+xys = jax.vmap(sampler, in_axes=[0])(keys)
 
 if not train:
-    fig, axes = plt.subplots(ncols=4)
-    for col in range(4):
-        axes[col].imshow(xs[col].reshape(28, 28), cmap='gray')
+    fig, axes = plt.subplots(nrows=2, ncols=4)
+    for row in range(2):
+        for col in range(4):
+            axes[row, col].imshow(xys[col, row].reshape(28, 28), cmap='gray')
     plt.tight_layout(pad=0.1)
     plt.show()
 
@@ -80,8 +82,8 @@ discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(s
 
 
 def simulate_forward(key_, ts_):
-    x0 = sampler_x(key_)
-    return simulate_cond_forward(jax.random.split(key_)[1], x0, ts_)
+    xy0 = sampler(key_)
+    return simulate_cond_forward(jax.random.split(key_)[1], xy0, ts_)
 
 
 # Score matching
@@ -127,8 +129,9 @@ if train:
         perm_inds = dataset.init_enumeration(subkey, train_nsamples)
         for j in range(data_size // train_nsamples):
             subkey, subkey2 = jax.random.split(subkey)
-            x0s, _ = dataset.enumerate_subset(j, perm_inds, subkey)
-            param, opt_state, loss = optax_kernel(param, opt_state, subkey2, x0s)
+            x0s, y0s = dataset.enumerate_subset(j, perm_inds, subkey)
+            xy0s = dataset.concat(x0s, y0s)
+            param, opt_state, loss = optax_kernel(param, opt_state, subkey2, xy0s)
             ema_param = ema_kernel(ema_param, param, j, 200, 0.99)
             print(f'| {args.upsampling} | {args.sde} | {loss_type} | {args.schedule} | '
                   f'Epoch: {i} / {nepochs}, iter: {j} / {data_size // train_nsamples}, loss: {loss:.4f}')
@@ -152,7 +155,7 @@ def rev_sim(key_, u0):
 # Simulate the backward and verify if it matches the target distribution
 kkk = jax.random.PRNGKey(args.test_seed)
 key, subkey = jax.random.split(kkk)
-test_x0 = sampler_x(subkey)
+test_x0 = sampler(subkey)
 key, subkey = jax.random.split(key)
 traj = simulate_cond_forward(subkey, test_x0, ts)
 terminal_val = traj[-1]
