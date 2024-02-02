@@ -65,7 +65,7 @@ if not train:
     fig, axes = plt.subplots(nrows=2, ncols=4)
     for row in range(2):
         for col in range(4):
-            axes[row, col].imshow(xys[col, row].reshape(28, 28), cmap='gray')
+            axes[row, col].imshow(xys[col].reshape(28, 28, 2)[:, :, row], cmap='gray')
     plt.tight_layout(pad=0.1)
     plt.show()
 
