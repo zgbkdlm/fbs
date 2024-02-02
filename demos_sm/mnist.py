@@ -92,7 +92,7 @@ nepochs = args.nepochs
 data_size = dataset.n
 
 key, subkey = jax.random.split(key)
-my_nn = MNISTUNet(dt=nn_dt, upsampling_method=args.upsampling)
+my_nn = MNISTUNet(dt=nn_dt, nchannels=1, upsampling_method=args.upsampling)
 _, _, array_param, _, nn_score = make_simple_st_nn(subkey,
                                                    dim_in=d, batch_size=train_nsamples,
                                                    nn_model=my_nn)
