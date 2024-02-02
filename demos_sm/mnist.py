@@ -161,7 +161,6 @@ terminal_val = traj[-1]
 key, subkey = jax.random.split(key)
 keys = jax.random.split(subkey, num=5)
 approx_init_samples = jax.vmap(rev_sim, in_axes=[0, None])(keys, terminal_val)
-print(jnp.min(test_x0), jnp.max(test_x0))
 print(jnp.min(approx_init_samples), jnp.max(approx_init_samples))
 
 fig, axes = plt.subplots(ncols=7, sharey='row')
