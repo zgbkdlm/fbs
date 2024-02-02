@@ -9,10 +9,10 @@ import numpy as np
 import optax
 import flax.linen as nn
 from fbs.data import Crescent
-from fbs.sdes import make_linear_sde, make_linear_sde_law_loss, StationaryConstLinearSDE, \
-    StationaryLinLinearSDE, StationaryExpLinearSDE, reverse_simulator, discrete_time_simulator
+from fbs.sdes import make_linear_sde, make_linear_sde_law_loss, StationaryLinLinearSDE, reverse_simulator, \
+    discrete_time_simulator
 from fbs.nn.models import make_simple_st_nn, CrescentMLP
-from fbs.nn import sinusoidal_embedding
+from fbs.nn.utils import make_optax_kernel
 
 # Parse arguments
 parser = argparse.ArgumentParser(description='Crescent test.')
@@ -21,6 +21,7 @@ parser.add_argument('--nn', type=str, default='mlp')
 parser.add_argument('--lr', type=float, default=1e-3)
 parser.add_argument('--schedule', type=str, default='const')
 parser.add_argument('--nepochs', type=int, default=30)
+parser.add_argument('--test_ema', action='store_true', default=True)
 args = parser.parse_args()
 train = args.train
 
@@ -32,7 +33,7 @@ key = jax.random.PRNGKey(666)
 key, data_key = jax.random.split(key)
 
 T = 1
-nsteps = 100
+nsteps = 200
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
 test_nsamples = 10000
@@ -62,8 +63,8 @@ plt.show()
 
 # Define the forward noising process which are independent OU processes
 # sde = StationaryExpLinearSDE(a=-0.5, b=1., c=1., z=1.)
-sde = StationaryConstLinearSDE(a=-0.5, b=1.)
-# sde = StationaryLinLinearSDE(beta_min=1e-2, beta_max=3., t0=0., T=T)
+# sde = StationaryConstLinearSDE(a=-0.5, b=1.)
+sde = StationaryLinLinearSDE(beta_min=2e-2, beta_max=5., t0=0., T=T)
 discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(sde)
 
 
@@ -75,28 +76,17 @@ def simulate_forward(key_, ts_):
 # Score matching
 train_nsamples = 128
 train_nsteps = 100
-max_nsteps = 1000
-train_dt = T / max_nsteps
-nn_param_init = nn.initializers.xavier_normal()
-nn_param_dtype = jnp.float64
+nn_dt = T / 200
 
 key, subkey = jax.random.split(key)
 _, _, array_param, _, nn_score = make_simple_st_nn(subkey,
                                                    dim_in=3, batch_size=train_nsamples,
-                                                   nn_model=CrescentMLP(train_dt))
+                                                   nn_model=CrescentMLP(nn_dt))
 
 loss_type = 'score'
 loss_fn = make_linear_sde_law_loss(sde, nn_score,
                                    t0=0., T=T, nsteps=train_nsteps,
                                    random_times=True, loss_type=loss_type)
-
-
-@jax.jit
-def optax_kernel(param_, opt_state_, key_, xy0s_):
-    loss_, grad = jax.value_and_grad(loss_fn)(param_, key_, xy0s_)
-    updates, opt_state_ = optimiser.update(grad, opt_state_, param_)
-    param_ = optax.apply_updates(param_, updates)
-    return param_, opt_state_, loss_
 
 
 if args.schedule == 'cos':
@@ -106,22 +96,26 @@ elif args.schedule == 'exp':
 else:
     schedule = optax.constant_schedule(args.lr)
 optimiser = optax.adam(learning_rate=schedule)
-# optimiser = optax.chain(optimiser,
-#                         optax.ema(decay=0.99))
+optimiser = optax.chain(optax.clip_by_global_norm(1.),
+                        optimiser)
+optax_kernel, ema_kernel = make_optax_kernel(optimiser, loss_fn, jit=True)
+
 param = array_param
+ema_param = param
 opt_state = optimiser.init(param)
 
 if not train:
-    param = np.load('./crescent.npy')
+    param = np.load('./crescent.npz')['ema_param' if args.test_ema else 'param']
 else:
-    for i in range(1000):
+    for i in range(2000):
         key, subkey = jax.random.split(key)
         keys = jax.random.split(subkey, train_nsamples)
         samples = jax.vmap(sampler_x, in_axes=[0])(keys)
         key, subkey = jax.random.split(key)
         param, opt_state, loss = optax_kernel(param, opt_state, subkey, samples)
+        ema_param = ema_kernel(ema_param, param, i, 20, 0.99)
         print(f'i: {i}, loss: {loss}')
-    np.save('./crescent.npy', param)
+    np.savez('./crescent.npz', param=param, ema_param=ema_param)
 
 # Verify if the score function is learnt properly
 if 'score' in loss_type:
