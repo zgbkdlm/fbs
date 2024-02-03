@@ -165,10 +165,11 @@ keys = jax.random.split(subkey, num=5)
 approx_init_samples = jax.vmap(rev_sim, in_axes=[0, None])(keys, terminal_val)
 print(jnp.min(approx_init_samples), jnp.max(approx_init_samples))
 
-fig, axes = plt.subplots(ncols=7, sharey='row')
-axes[0].imshow(test_x0.reshape(28, 28), cmap='gray')
-axes[1].imshow(terminal_val.reshape(28, 28), cmap='gray')
-for i in range(2, 7):
-    axes[i].imshow(approx_init_samples[i - 2].reshape(28, 28), cmap='gray')
+fig, axes = plt.subplots(nrows=2, ncols=7, sharey='row')
+for row in range(2):
+    axes[row, 0].imshow(test_x0.reshape(28, 28, 2)[:, :, row], cmap='gray')
+    axes[row, 1].imshow(terminal_val.reshape(28, 28, 2)[:, :, row], cmap='gray')
+    for i in range(2, 7):
+        axes[row, i].imshow(approx_init_samples[i - 2].reshape(28, 28, 2)[:, :, row], cmap='gray')
 plt.tight_layout(pad=0.1)
 plt.show()

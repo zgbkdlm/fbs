@@ -59,7 +59,9 @@ class MNIST(Dataset):
         variance = jax.random.uniform(key, minval=0.5, maxval=2.)  # it's not conjugate yeah I know...
         z_ = jnp.dstack(jnp.meshgrid(jnp.linspace(-1, 1, 5), jnp.linspace(-1, 1, 5)))
         kernel = jnp.prod(jnp.exp(-z_ ** 2 / variance), axis=-1).reshape(5, 5, 1, 1)
-        return jax.lax.conv_general_dilated(img, kernel, (1, 1), 'SAME', dimension_numbers=('NHWC', 'HWIO', 'NHWC'))
+        corrupted_img = jax.lax.conv_general_dilated(img, kernel, (1, 1), 'SAME',
+                                                     dimension_numbers=('NHWC', 'HWIO', 'NHWC'))
+        return (corrupted_img - jnp.min(corrupted_img)) / (jnp.max(corrupted_img) - jnp.min(corrupted_img))
 
     def corrupt(self, key: JKey, img: JArray) -> JArray:
         if self.task == 'inpainting':
