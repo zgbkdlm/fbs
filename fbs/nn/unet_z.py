@@ -114,7 +114,7 @@ class ResBlock(nn.Module):
 
 class MNISTUNet(nn.Module):
     dt: float
-    features: Sequence[int] = (16, 32, 64)
+    features: Sequence[int] = (32, 64, 128)
     nchannels: int = 1
     upsampling_method: str = 'pixel_shuffle'
 
