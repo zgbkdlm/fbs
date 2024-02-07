@@ -259,8 +259,8 @@ def gibbs_kernel(key_, xs_, us_star_, bs_star_):
 # Gibbs loop
 key, subkey = jax.random.split(key)
 # xs = fwd_sampler(subkey, jnp.zeros((2,)))[0]
-# xs = dataset.unpack(fwd_sampler(subkey, test_x0))[0]
-xs = dataset.unpack(fwd_sampler(subkey, test_y0))[0]
+xs = dataset.unpack(fwd_sampler(subkey, test_x0))[0]
+# xs = dataset.unpack(fwd_sampler(subkey, test_y0))[0]
 us_star = xs[::-1]
 bs_star = jnp.zeros((nsteps + 1), dtype=int)
 
