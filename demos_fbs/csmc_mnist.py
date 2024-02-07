@@ -266,9 +266,22 @@ for i in range(ngibbs):
     key, subkey = jax.random.split(key)
     xs, us_star, bs_star, acc = gibbs_kernel(subkey, xs, us_star, bs_star)
     uss[i] = us_star
-    if i % 10 == 0:
-        np.save('uss', uss)
-    print(f'Gibbs iter: {i}')
+
+    fig = plt.figure()
+    plt.imshow(us_star[-1, :].reshape(28, 28), cmap='gray')
+    plt.tight_layout(pas=0.1)
+    plt.savefig(f'./tmp_figs/uss_{i}.png')
+    plt.close(fig)
+
+    fig = plt.figure()
+    plt.plot(uss[:i, -1, 300])
+    plt.tight_layout(pas=0.1)
+    plt.savefig(f'./tmp_figs/trace_{i}.png')
+    plt.close(fig)
+
+    print(f'Gibbs iter: {i}, acc: {acc}')
+
+np.save('uss', uss)
 
 # Plot
 plt.plot(uss[:, -1, 500])
