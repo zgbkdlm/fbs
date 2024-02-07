@@ -269,13 +269,13 @@ for i in range(ngibbs):
 
     fig = plt.figure()
     plt.imshow(us_star[-1, :].reshape(28, 28), cmap='gray')
-    plt.tight_layout(pas=0.1)
+    plt.tight_layout(pad=0.1)
     plt.savefig(f'./tmp_figs/uss_{i}.png')
     plt.close(fig)
 
     fig = plt.figure()
     plt.plot(uss[:i, -1, 300])
-    plt.tight_layout(pas=0.1)
+    plt.tight_layout(pad=0.1)
     plt.savefig(f'./tmp_figs/trace_{i}.png')
     plt.close(fig)
 
