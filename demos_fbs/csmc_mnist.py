@@ -1,6 +1,7 @@
 r"""
 Conditional sampling on MNIST
 """
+import math
 import argparse
 import jax
 import jax.numpy as jnp
@@ -10,9 +11,12 @@ import optax
 from fbs.data import MNIST
 from fbs.sdes import make_linear_sde, make_linear_sde_law_loss, StationaryConstLinearSDE, \
     StationaryLinLinearSDE, StationaryExpLinearSDE, reverse_simulator
+from fbs.filters.csmc.csmc import csmc_kernel
+from fbs.filters.csmc.resamplings import killing
 from fbs.nn.models import make_simple_st_nn
 from fbs.nn.unet_z import MNISTUNet
 from fbs.nn.utils import make_optax_kernel
+from functools import partial
 
 # Parse arguments
 parser = argparse.ArgumentParser(description='MNIST test.')
@@ -103,7 +107,6 @@ loss_type = args.loss_type
 loss_fn = make_linear_sde_law_loss(sde, nn_score, t0=0., T=T, nsteps=train_nsteps,
                                    random_times=True, loss_type=loss_type)
 
-
 if args.schedule == 'cos':
     schedule = optax.cosine_decay_schedule(args.lr, data_size // train_nsamples * 4, .95)
 elif args.schedule == 'exp':
@@ -171,5 +174,110 @@ for row in range(2):
     axes[row, 1].imshow(terminal_val.reshape(28, 28, 2)[:, :, row], cmap='gray')
     for i in range(2, 7):
         axes[row, i].imshow(approx_init_samples[i - 2].reshape(28, 28, 2)[:, :, row], cmap='gray')
+plt.tight_layout(pad=0.1)
+plt.show()
+
+# Now conditional sampling
+nparticles = 100
+ngibbs = 1000
+burn_in = 100
+key, subkey = jax.random.split(key)
+test_xy0 = sampler(subkey)
+test_x0, test_y0 = dataset.unpack(test_xy0)
+
+plt.imshow(test_y0.reshape(28, 28), cmap='gray')
+plt.show()
+
+
+def reverse_drift(uv, t):
+    return -sde.drift(uv, T - t) + sde.dispersion(T - t) ** 2 * nn_score(uv, T - t, param)
+
+
+def reverse_drift_u(u, v, t):
+    rdu, rdv = dataset.unpack(reverse_drift(dataset.concat(u, v), t))
+    return rdu
+
+
+def reverse_drift_v(v, u, t):
+    rdu, rdv = dataset.unpack(reverse_drift(dataset.concat(u, v), t))
+    return rdv
+
+
+def reverse_dispersion(t):
+    return sde.dispersion(T - t)
+
+
+def transition_sampler(us, v, t, key_):
+    return (us + jax.vmap(reverse_drift_u, in_axes=[0, None, None])(us, v, t) * dt
+            + math.sqrt(dt) * reverse_dispersion(t) * jax.random.normal(key_, us.shape))
+
+
+@partial(jax.vmap, in_axes=[None, 0, None, None])
+def transition_logpdf(u, u_prev, v, t):
+    return jnp.sum(jax.scipy.stats.norm.logpdf(u,
+                                               u_prev + reverse_drift_u(u_prev, v, t) * dt,
+                                               math.sqrt(dt) * reverse_dispersion(t)))
+
+
+@partial(jax.vmap, in_axes=[None, 0, None, None])
+def likelihood_logpdf(v, u_prev, v_prev, t_prev):
+    cond_m = v_prev + reverse_drift_v(v_prev, u_prev, t_prev) * dt
+    return jnp.sum(jax.scipy.stats.norm.logpdf(v, cond_m, math.sqrt(dt) * reverse_dispersion(t_prev)))
+
+
+def fwd_sampler(key_, x0):
+    xy0 = dataset.concat(x0, test_y0)
+    return simulate_cond_forward(key_, xy0, ts)
+
+
+@jax.jit
+def gibbs_kernel(key_, xs_, us_star_, bs_star_):
+    key_fwd, key_csmc = jax.random.split(key_)
+    path_xy = fwd_sampler(key_fwd, xs_[0])
+    us, vs = dataset.unpack(path_xy)
+
+    def init_sampler(*_):
+        return us[0] * jnp.ones((nparticles, us.shape[-1]))
+
+    def init_likelihood_logpdf(*_):
+        return -math.log(nparticles) * jnp.ones(nparticles)
+
+    us_star_next, bs_star_next = csmc_kernel(key_csmc,
+                                             us_star_, bs_star_,
+                                             vs, ts,
+                                             init_sampler, init_likelihood_logpdf,
+                                             transition_sampler, transition_logpdf,
+                                             likelihood_logpdf,
+                                             killing, nparticles,
+                                             backward=True)
+    xs_next = us_star_next[::-1]
+    return xs_next, us_star_next, bs_star_next, bs_star_next != bs_star_
+
+
+# Gibbs loop
+key, subkey = jax.random.split(key)
+# xs = fwd_sampler(subkey, jnp.zeros((2,)))[:, :2]
+xs = dataset.unpack(fwd_sampler(subkey, test_x0))[0]
+us_star = xs[::-1]
+bs_star = jnp.zeros((nsteps + 1), dtype=int)
+
+uss = np.zeros((ngibbs, nsteps + 1, 784))
+for i in range(ngibbs):
+    key, subkey = jax.random.split(key)
+    xs, us_star, bs_star, acc = gibbs_kernel(subkey, xs, us_star, bs_star)
+    uss[i] = us_star
+    print(f'Gibbs iter: {i}')
+
+np.save('uss', uss)
+
+# Plot
+plt.plot(uss[:, -1, 500])
+plt.plot(uss[:, -1, 300])
+plt.show()
+
+uss = uss[burn_in:]
+fig, axes = plt.subplots(ncols=4)
+for i in range(4):
+    axes[i].imshow(uss[-(i + 1), -1, :].reshape(28, 28), cmap='gray')
 plt.tight_layout(pad=0.1)
 plt.show()

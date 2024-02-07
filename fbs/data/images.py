@@ -94,12 +94,12 @@ class MNIST(Dataset):
         batch_shape = x.shape[:-1]
         x = jnp.reshape(x, (*batch_shape, 28, 28, 1))
         y = jnp.reshape(y, (*batch_shape, 28, 28, 1))
-        return jnp.reshape(jnp.concatenate([x, y], axis=-1), (*batch_shape, 784 * 2))
+        return jnp.reshape(jnp.concatenate([x, y], axis=-1), (*batch_shape, 28 * 28 * 2))
 
     @staticmethod
     def unpack(xy: JArray) -> Tuple[JArray, JArray]:
         batch_shape = xy.shape[:-1]
         xy = jnp.reshape(xy, (*batch_shape, 28, 28, 2))
         x, y = jnp.split(xy, 2, axis=-1)
-        return x, y
+        return x.reshape(*batch_shape, 784), y.reshape(*batch_shape, 784)
 
