@@ -34,6 +34,7 @@ parser.add_argument('--test_nsteps', type=int, default=500)
 parser.add_argument('--test_epoch', type=int, default=12)
 parser.add_argument('--test_ema', action='store_true', default=False)
 parser.add_argument('--test_seed', type=int, default=666)
+parser.add_argument('--nparticles', type=int, default=100)
 
 args = parser.parse_args()
 train = args.train
@@ -178,7 +179,7 @@ plt.tight_layout(pad=0.1)
 plt.show()
 
 # Now conditional sampling
-nparticles = 100
+nparticles = args.nparticles
 ngibbs = 1000
 burn_in = 100
 key, subkey = jax.random.split(key)
