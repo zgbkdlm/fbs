@@ -35,6 +35,7 @@ parser.add_argument('--test_epoch', type=int, default=12)
 parser.add_argument('--test_ema', action='store_true', default=False)
 parser.add_argument('--test_seed', type=int, default=666)
 parser.add_argument('--nparticles', type=int, default=100)
+parser.add_argument('--csmc_backward', action='store_true', default=False)
 
 args = parser.parse_args()
 train = args.train
@@ -250,7 +251,7 @@ def gibbs_kernel(key_, xs_, us_star_, bs_star_):
                                              transition_sampler, transition_logpdf,
                                              likelihood_logpdf,
                                              killing, nparticles,
-                                             backward=True)
+                                             backward=args.csmc_backward)
     xs_next = us_star_next[::-1]
     return xs_next, us_star_next, bs_star_next, bs_star_next != bs_star_
 
@@ -278,7 +279,7 @@ for i in range(ngibbs):
     fig = plt.figure()
     plt.plot(uss[:i, -1, 300])
     plt.tight_layout(pad=0.1)
-    plt.savefig(f'./tmp_figs/trace_{i}.png')
+    plt.savefig(f'./tmp_figs/trace.png')
     plt.close(fig)
 
     print(f'Gibbs iter: {i}, acc: {acc}')
