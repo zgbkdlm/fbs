@@ -266,9 +266,9 @@ for i in range(ngibbs):
     key, subkey = jax.random.split(key)
     xs, us_star, bs_star, acc = gibbs_kernel(subkey, xs, us_star, bs_star)
     uss[i] = us_star
+    if i % 10 == 0:
+        np.save('uss', uss)
     print(f'Gibbs iter: {i}')
-
-np.save('uss', uss)
 
 # Plot
 plt.plot(uss[:, -1, 500])
