@@ -35,6 +35,7 @@ parser.add_argument('--test_epoch', type=int, default=12)
 parser.add_argument('--test_ema', action='store_true', default=False)
 parser.add_argument('--test_seed', type=int, default=666)
 parser.add_argument('--nparticles', type=int, default=100)
+parser.add_argument('--ngibbs', type=int, default=10000)
 parser.add_argument('--csmc_backward', action='store_true', default=False)
 
 args = parser.parse_args()
@@ -181,7 +182,7 @@ plt.show()
 
 # Now conditional sampling
 nparticles = args.nparticles
-ngibbs = 1000
+ngibbs = args.ngibbs
 burn_in = 100
 key, subkey = jax.random.split(key)
 test_xy0 = sampler(subkey)
@@ -264,11 +265,11 @@ xs = dataset.unpack(fwd_sampler(subkey, test_x0))[0]
 us_star = xs[::-1]
 bs_star = jnp.zeros((nsteps + 1), dtype=int)
 
-uss = np.zeros((ngibbs, nsteps + 1, 784))
+uss = np.zeros((ngibbs, nsteps + 1))
 for i in range(ngibbs):
     key, subkey = jax.random.split(key)
     xs, us_star, bs_star, acc = gibbs_kernel(subkey, xs, us_star, bs_star)
-    uss[i] = us_star
+    uss[i] = us_star[:, 300]
 
     fig = plt.figure()
     plt.imshow(us_star[-1, :].reshape(28, 28), cmap='gray')
@@ -277,7 +278,7 @@ for i in range(ngibbs):
     plt.close(fig)
 
     fig = plt.figure()
-    plt.plot(uss[:i, -1, 300])
+    plt.plot(uss[:i, -1])
     plt.tight_layout(pad=0.1)
     plt.savefig(f'./tmp_figs/trace.png')
     plt.close(fig)
