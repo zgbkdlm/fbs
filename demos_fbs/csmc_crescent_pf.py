@@ -15,21 +15,22 @@ from fbs.data import Crescent
 from fbs.nn.models import make_simple_st_nn, CrescentMLP
 from fbs.nn.utils import make_optax_kernel
 from fbs.sdes import make_linear_sde, make_linear_sde_law_loss, StationaryLinLinearSDE, reverse_simulator
-from fbs.filters.csmc.csmc import csmc_kernel
-from fbs.filters.csmc.resamplings import killing
+from fbs.filters.smc import pf_temp
+from fbs.filters.resampling import stratified
 from functools import partial
 
 # General configs
-nparticles = 50
-ngibbs = 2000
+nparticles = 10
+ngibbs = 10000
+thinning = 10
 burn_in = 100
 jax.config.update("jax_enable_x64", False)
 key = jax.random.PRNGKey(666)
 y0 = 4.
-use_pretrained = False
+use_pretrained = True
 use_ema = True
 
-T = 2
+T = 1
 nsteps = 200
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
@@ -81,7 +82,6 @@ loss_type = 'score'
 loss_fn = make_linear_sde_law_loss(sde, nn_score,
                                    t0=0., T=T, nsteps=train_nsteps,
                                    random_times=True, loss_type=loss_type)
-
 
 # schedule = optax.constant_schedule(1e-3)
 schedule = optax.cosine_decay_schedule(1e-3, 50, .95)
@@ -188,54 +188,43 @@ def fwd_sampler(key_, x0):
 
 
 @jax.jit
-def gibbs_kernel(key_, xs_, us_star_, bs_star_):
-    key_fwd, key_csmc = jax.random.split(key_)
-    path_xy = fwd_sampler(key_fwd, xs_[0])
+def gibbs_kernel(key_, x0):
+    key_fwd, key_pf = jax.random.split(key_)
+    path_xy = fwd_sampler(key_fwd, x0)
     us, vs = path_xy[::-1, :2], path_xy[::-1, -1]
 
-    def init_sampler(*_):
-        return us[0] * jnp.ones((nparticles, us.shape[-1]))
-
-    def init_likelihood_logpdf(*_):
-        return -math.log(nparticles) * jnp.ones(nparticles)
-
-    us_star_next, bs_star_next = csmc_kernel(key_csmc,
-                                             us_star_, bs_star_,
-                                             vs, ts,
-                                             init_sampler, init_likelihood_logpdf,
-                                             transition_sampler, transition_logpdf,
-                                             likelihood_logpdf,
-                                             killing, nparticles,
-                                             backward=True)
-    xs_next = us_star_next[::-1]
-    return xs_next, us_star_next, bs_star_next, bs_star_next != bs_star_
+    u0 = us[0]
+    uTs = pf_temp(key_pf,
+                  vs, ts,
+                  u0,
+                  transition_sampler, likelihood_logpdf,
+                  stratified, nparticles)
+    x0_next = uTs[0]
+    return x0_next
 
 
 # Gibbs loop
 key, subkey = jax.random.split(key)
-xs = fwd_sampler(subkey, jnp.zeros((2,)))[:, :2]
-us_star = xs[::-1]
-bs_star = jnp.zeros((nsteps + 1), dtype=int)
+x0 = jnp.zeros((2,))
 
-uss = np.zeros((ngibbs, nsteps + 1, 2))
-xss = np.zeros((ngibbs, nsteps + 1, 2))
+x0s = np.zeros((ngibbs, 2))
 for i in range(ngibbs):
     key, subkey = jax.random.split(key)
-    xs, us_star, bs_star, acc = gibbs_kernel(subkey, xs, us_star, bs_star)
-    xss[i], uss[i] = xs, us_star
-    print(f'Gibbs iter: {i}, acc: {jnp.mean(acc)}')
+    x0 = gibbs_kernel(subkey, x0)
+    x0s[i] = x0
+    print(f'Gibbs iter: {i}')
 
 # Plot
-plt.plot(uss[:, -1, 0])
-plt.plot(uss[:, -1, 1])
+plt.plot(x0s[:, 0])
+plt.plot(x0s[:, 1])
 plt.show()
 
-uss = uss[burn_in:]
+x0s = x0s[burn_in:][::thinning]
 
 # Check the joint
 fig, ax = plt.subplots()
 pcm = ax.pcolormesh(lines_, lines_, post)
-ax.scatter(uss[:, -1, 0], uss[:, -1, 1], c='tab:red', s=1, alpha=0.5, label=f'Approx. p(x | y = {y0})')
+ax.scatter(x0s[:, 0], x0s[:, 1], c='tab:red', s=1, alpha=0.5, label=f'Approx. p(x | y = {y0})')
 ax.legend()
 fig.colorbar(pcm, ax=ax)
 plt.tight_layout(pad=0.1)
@@ -244,7 +233,7 @@ plt.show()
 # Check the joint in terms of 2D hist
 fig, axes = plt.subplots(ncols=2, figsize=(15, 5))
 pcm = axes[0].pcolormesh(lines_, lines_, post)
-axes[1].hist2d(uss[:, -1, 0], uss[:, -1, 1], bins=100, density=True)
+axes[1].hist2d(x0s[:, 0], x0s[:, 1], bins=100, density=True)
 axes[0].set_xlim(-4, 4)
 axes[0].set_ylim(-4, 4)
 axes[1].set_xlim(-4, 4)
@@ -255,9 +244,9 @@ plt.show()
 
 # Check the marginal
 plt.plot(lines_, jax.scipy.integrate.trapezoid(post, lines_, axis=1))
-plt.hist(uss[:, -1, 1], bins=50, density=True, alpha=0.5)
+plt.hist(x0s[:, -1], bins=50, density=True, alpha=0.5)
 plt.show()
 
 plt.plot(lines_, jax.scipy.integrate.trapezoid(post, lines_, axis=0))
-plt.hist(uss[:, -1, 0], bins=50, density=True, alpha=0.5)
+plt.hist(x0s[:, 0], bins=50, density=True, alpha=0.5)
 plt.show()

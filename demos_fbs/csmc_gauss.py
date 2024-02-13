@@ -12,13 +12,13 @@ from fbs.filters.csmc.resamplings import killing
 from functools import partial
 
 # General configs
-nparticles = 100
+nparticles = 10
 nsamples = 1000
 burn_in = 100
-jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_enable_x64", False)
 key = jax.random.PRNGKey(666)
 
-T = 5
+T = 2
 nsteps = 100
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
@@ -28,7 +28,7 @@ m0 = jnp.array([1., -1.])
 cov0 = jnp.array([[2., 0.5],
                   [0.5, 1.2]])
 
-y0 = 5.
+y0 = 9.
 true_cond_m = m0[0] + cov0[0, 1] / cov0[1, 1] * (y0 - m0[1])
 true_cond_var = cov0[0, 0] - cov0[0, 1] ** 2 / cov0[1, 1]
 
