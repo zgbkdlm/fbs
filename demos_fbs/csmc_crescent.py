@@ -20,7 +20,7 @@ from fbs.filters.csmc.resamplings import killing
 from functools import partial
 
 # General configs
-nparticles = 100
+nparticles = 10
 ngibbs = 2000
 burn_in = 100
 jax.config.update("jax_enable_x64", False)
@@ -163,22 +163,23 @@ def reverse_dispersion(t):
 
 
 # Now do cSMC conditional sampling
-def transition_sampler(us, v, t, key_):
-    return (us + jax.vmap(reverse_drift_u, in_axes=[0, None, None])(us, v, t) * dt
-            + math.sqrt(dt) * reverse_dispersion(t) * jax.random.normal(key_, us.shape))
+def transition_sampler(us_prev, v_prev, t_prev, key_):
+    return (us_prev + jax.vmap(reverse_drift_u, in_axes=[0, None, None])(us_prev, v_prev, t_prev) * dt
+            + math.sqrt(dt) * reverse_dispersion(t_prev) * jax.random.normal(key_, us_prev.shape))
 
 
 @partial(jax.vmap, in_axes=[None, 0, None, None])
-def transition_logpdf(u, u_prev, v, t):
+def transition_logpdf(u, u_prev, v_prev, t_prev):
     return jnp.sum(jax.scipy.stats.norm.logpdf(u,
-                                               u_prev + reverse_drift_u(u_prev, v, t) * dt,
-                                               math.sqrt(dt) * reverse_dispersion(t)))
+                                               u_prev + reverse_drift_u(u_prev, v_prev, t_prev) * dt,
+                                               math.sqrt(dt) * reverse_dispersion(t_prev)))
 
 
 @partial(jax.vmap, in_axes=[None, 0, None, None])
 def likelihood_logpdf(v, u_prev, v_prev, t_prev):
-    cond_m = v_prev + reverse_drift_v(v_prev, u_prev, t_prev) * dt
-    return jax.scipy.stats.norm.logpdf(v, cond_m, math.sqrt(dt) * reverse_dispersion(t_prev))
+    return jax.scipy.stats.norm.logpdf(v,
+                                       v_prev + reverse_drift_v(v_prev, u_prev, t_prev) * dt,
+                                       math.sqrt(dt) * reverse_dispersion(t_prev))
 
 
 def fwd_sampler(key_, x0):
