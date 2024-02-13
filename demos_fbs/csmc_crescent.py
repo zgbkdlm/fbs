@@ -30,7 +30,7 @@ use_pretrained = True
 use_ema = True
 
 T = 1
-nsteps = 200
+nsteps = 500
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
 
@@ -223,7 +223,7 @@ for i in range(ngibbs):
     key, subkey = jax.random.split(key)
     xs, us_star, bs_star, acc = gibbs_kernel(subkey, xs, us_star, bs_star)
     xss[i], uss[i] = xs, us_star
-    print(f'Gibbs iter: {i}')
+    print(f'Gibbs iter: {i}, acc: {jnp.mean(acc)}')
 
 # Plot
 plt.plot(uss[:, -1, 0])
