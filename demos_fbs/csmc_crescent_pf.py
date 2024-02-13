@@ -20,18 +20,18 @@ from fbs.filters.resampling import stratified
 from functools import partial
 
 # General configs
-nparticles = 10
-ngibbs = 10000
-thinning = 10
+nparticles = 20
+ngibbs = 2000
+thinning = 1
 burn_in = 100
 jax.config.update("jax_enable_x64", False)
 key = jax.random.PRNGKey(666)
 y0 = 4.
-use_pretrained = True
+use_pretrained = False
 use_ema = True
 
-T = 1
-nsteps = 200
+T = 2
+nsteps = 400
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
 
@@ -70,7 +70,7 @@ plt.show()
 
 # Score matching training
 train_nsamples = 128
-train_nsteps = 100
+train_nsteps = 200
 nn_dt = T / 200
 
 key, subkey = jax.random.split(key)
