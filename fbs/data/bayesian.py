@@ -8,8 +8,8 @@ from typing import Tuple
 
 class Crescent(Dataset):
     r"""
-    X ~ N(m, cov),
-    Y | X ~ N(X_1 / \psi + 0.5 \, (X_0 ** 2 + \psi_0 ** 2), 1.)
+    \phi ~ N(m, cov),
+    Y | \phi ~ N(\phi_1 / \psi + 0.5 \, (\phi_0 ** 2 + \psi_0 ** 2), 1.)
     """
 
     def __init__(self, n: int = 10, psi: float = 1.):
@@ -29,14 +29,19 @@ class Crescent(Dataset):
         return xs, ys
 
     @staticmethod
-    def emission(x, psi):
-        return x[1] / psi + 0.5 * (x[0] ** 2 + psi ** 2)
+    def emission(phi, psi):
+        return phi[1] / psi + 0.5 * (phi[0] ** 2 + psi ** 2)
 
     def log_prior_pdf(self, phi):
         if self.cov_is_diag:
             return jnp.sum(jax.scipy.stats.norm.logpdf(phi, self.m, jnp.diag(self.cov)))
         else:
             return jax.scipy.stats.multivariate_normal.logpdf(phi, self.m, self.cov)
+
+    def score(self, xy):
+        phi, y = xy[..., :2], xy[..., -1]
+        return (jnp.hstack([jax.grad(self.log_prior_pdf)(phi), jnp.array(0.)])
+                + jnp.hstack(jax.grad(self.log_cond_pdf_likelihood, argnums=[1, 0])(y, phi)))
 
     def log_cond_pdf_likelihood(self, y, phi):
         return jnp.sum(jax.scipy.stats.norm.logpdf(y, self.emission(phi, self.psi), 1.))

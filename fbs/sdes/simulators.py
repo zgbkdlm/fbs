@@ -46,7 +46,8 @@ def reverse_simulator(key: JKey, u0: JArray, ts: JArray,
 
 
 def euler_maruyama(key: JKey, x0: JArray, ts: JArray,
-                   drift: Callable, dispersion: Callable) -> JArray:
+                   drift: Callable, dispersion: Callable,
+                   return_path: bool = False) -> JArray:
     r"""Simulate an SDE using the Euler-Maruyama method.
 
     Parameters
@@ -61,23 +62,37 @@ def euler_maruyama(key: JKey, x0: JArray, ts: JArray,
         The drift function.
     dispersion : Callable float -> float
         The dispersion function.
+    return_path : bool, default=False
+        Whether return the path or just the terminal value.
 
     Returns
     -------
-    JArray (d, )
-        The terminal value at :math:`t_n`.
+    JArray (d, ) or JArray (n + 1, d)
+        The terminal value at :math:`t_n`. or the path at :math:`t_0, \ldots, t_n`.
     """
-
-    def scan_body(carry, elem):
-        x = carry
-        rnd, t_next, t = elem
-
-        dt = t_next - t
-        x = x + drift(x, t) * dt + dispersion(t) * jnp.sqrt(dt) * rnd
-        return x, None
-
     rnds = jax.random.normal(key, (ts.shape[0] - 1, *x0.shape))
-    return jax.lax.scan(scan_body, x0, (rnds, ts[1:], ts[:-1]))[0]
+
+    if return_path:
+        def scan_body(carry, elem):
+            x = carry
+            rnd, t_next, t = elem
+
+            dt = t_next - t
+            x = x + drift(x, t) * dt + dispersion(t) * jnp.sqrt(dt) * rnd
+            return x, x
+
+        path = jax.lax.scan(scan_body, x0, (rnds, ts[1:], ts[:-1]))[1]
+        return jnp.concatenate([x0[None, :], path], axis=0)
+    else:
+        def scan_body(carry, elem):
+            x = carry
+            rnd, t_next, t = elem
+
+            dt = t_next - t
+            x = x + drift(x, t) * dt + dispersion(t) * jnp.sqrt(dt) * rnd
+            return x, None
+
+        return jax.lax.scan(scan_body, x0, (rnds, ts[1:], ts[:-1]))[0]
 
 
 def runge_kutta(key: JKey, x0: JArray, ts: JArray,
@@ -95,6 +110,7 @@ def discrete_time_simulator(key: JKey, x0: JArray, ts: JArray,
     """Simulate a discrete-time state-space model
     X(t_{k+1}) = f(X(t_k), t_{k+1}, t_k) + q(t_{k+1}, t_k) w
     """
+
     def scan_body(carry, elem):
         x = carry
         rnd, t_next, t = elem
