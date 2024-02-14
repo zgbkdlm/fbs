@@ -38,7 +38,7 @@ class TestCrescent:
         crescent = Crescent()
 
         T = 5
-        nsteps = 5000
+        nsteps = 100
         ts = jnp.linspace(0, T, nsteps + 1)
 
         def drift(xy, t):

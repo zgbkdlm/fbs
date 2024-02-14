@@ -6,6 +6,7 @@ from typing import Callable
 
 def reverse_simulator(key: JKey, u0: JArray, ts: JArray,
                       score: Callable, drift: Callable, dispersion: Callable,
+                      integration_nsteps: int = 1,
                       integrator: str = 'euler-maruyama') -> JArray:
     r"""Simulate the time-reversal of an SDE.
 
@@ -23,6 +24,8 @@ def reverse_simulator(key: JKey, u0: JArray, ts: JArray,
         The drift function.
     dispersion : Callable float -> float
         The dispersion function.
+    integration_nsteps : int, default=1
+        The number of integration steps between each step.
     integrator : str, default='euler-maruyama'
         The integrator for solving the reverse SDE.
 
@@ -40,13 +43,15 @@ def reverse_simulator(key: JKey, u0: JArray, ts: JArray,
         return dispersion(T - t)
 
     if integrator == 'euler-maruyama':
-        return euler_maruyama(key, u0, ts, reverse_drift, reverse_dispersion)
+        return euler_maruyama(key, u0, ts, reverse_drift, reverse_dispersion,
+                              integration_nsteps=integration_nsteps)
     else:
         raise NotImplementedError(f'Integrator {integrator} not implemented.')
 
 
 def euler_maruyama(key: JKey, x0: JArray, ts: JArray,
                    drift: Callable, dispersion: Callable,
+                   integration_nsteps: int = 1,
                    return_path: bool = False) -> JArray:
     r"""Simulate an SDE using the Euler-Maruyama method.
 
@@ -62,6 +67,8 @@ def euler_maruyama(key: JKey, x0: JArray, ts: JArray,
         The drift function.
     dispersion : Callable float -> float
         The dispersion function.
+    integration_nsteps : int, default=1
+        The number of integration steps between each step.
     return_path : bool, default=False
         Whether return the path or just the terminal value.
 
@@ -70,29 +77,38 @@ def euler_maruyama(key: JKey, x0: JArray, ts: JArray,
     JArray (d, ) or JArray (n + 1, d)
         The terminal value at :math:`t_n`. or the path at :math:`t_0, \ldots, t_n`.
     """
-    rnds = jax.random.normal(key, (ts.shape[0] - 1, *x0.shape))
+    keys = jax.random.split(key, num=ts.shape[0] - 1)
+
+    def step(xt, t, t_next, key_):
+        def scan_body_(carry, elem):
+            x = carry
+            rnd, t_ = elem
+            x = x + drift(x, t_) * ddt + dispersion(t_) * jnp.sqrt(ddt) * rnd
+            return x, None
+
+        ddt = (t_next - t) / integration_nsteps
+        rnds = jax.random.normal(key_, (integration_nsteps, *x0.shape))
+        return jax.lax.scan(scan_body_, xt, (rnds, jnp.linspace(t, t_next - ddt, integration_nsteps)))[0]
 
     if return_path:
         def scan_body(carry, elem):
             x = carry
-            rnd, t_next, t = elem
+            key_, t_next, t = elem
 
-            dt = t_next - t
-            x = x + drift(x, t) * dt + dispersion(t) * jnp.sqrt(dt) * rnd
+            x = step(x, t, t_next, key_)
             return x, x
 
-        path = jax.lax.scan(scan_body, x0, (rnds, ts[1:], ts[:-1]))[1]
+        path = jax.lax.scan(scan_body, x0, (keys, ts[1:], ts[:-1]))[1]
         return jnp.concatenate([x0[None, :], path], axis=0)
     else:
         def scan_body(carry, elem):
             x = carry
-            rnd, t_next, t = elem
+            key_, t_next, t = elem
 
-            dt = t_next - t
-            x = x + drift(x, t) * dt + dispersion(t) * jnp.sqrt(dt) * rnd
+            x = step(x, t, t_next, key_)
             return x, None
 
-        return jax.lax.scan(scan_body, x0, (rnds, ts[1:], ts[:-1]))[0]
+        return jax.lax.scan(scan_body, x0, (keys, ts[1:], ts[:-1]))[0]
 
 
 def runge_kutta(key: JKey, x0: JArray, ts: JArray,
