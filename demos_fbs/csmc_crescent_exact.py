@@ -28,7 +28,7 @@ jax.config.update("jax_enable_x64", False)
 key = jax.random.PRNGKey(666)
 y0 = 4.
 
-T = 2
+T = 2.
 nsteps = 100
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
