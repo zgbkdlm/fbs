@@ -26,11 +26,11 @@ burn_in = 100
 jax.config.update("jax_enable_x64", False)
 key = jax.random.PRNGKey(666)
 y0 = 4.
-use_pretrained = False
+use_pretrained = True
 use_ema = True
 
-T = 2
-nsteps = 200
+T = 6
+nsteps = 1000
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
 

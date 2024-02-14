@@ -53,6 +53,17 @@ class StationaryLinLinearSDE(LinearSDE):
     def dispersion(self, t):
         return jnp.sqrt(self.beta(t))
 
+    def mean(self, t, s, m0):
+        return m0 * jnp.exp(-self.beta_integral(t, s))
+
+    def variance(self, t, s):
+        return 1 - jnp.exp(-2 * self.beta_integral(t, s))
+
+    def bridge_drift(self, x, t, target, T):
+        def log_h(a, b): return jax.scipy.stats.norm.logpdf(a, self.mean(T, t, b), jnp.sqrt(self.variance(T, t)))
+        score_h = jax.grad(log_h, argnums=1)(target, x)
+        return self.drift(x, t) + self.dispersion(t) ** 2 * score_h
+
 
 class StationaryExpLinearSDE(LinearSDE):
     """dX(t) = a(t) X(t) dt + b(t) dW(t), where

@@ -12,20 +12,22 @@ class Crescent(Dataset):
     Y | \phi ~ N(\phi_1 / \psi + 0.5 \, (\phi_0 ** 2 + \psi_0 ** 2), 1.)
     """
 
-    def __init__(self, n: int = 10, psi: float = 1.):
+    def __init__(self, n: int = 10, psi: float = 1., xi: float = 1.):
         self.n = n
         self.psi = psi
         self.m = jnp.array([0., 0.])
         self.cov = jnp.array([[2., 0.],
                               [0., 1.]])
         self.cov_is_diag = True
+        self.xi = xi
 
     def sampler(self, key: JKey, batch_size: int) -> Tuple[JArray, JArray]:
         key, subkey = jax.random.split(key)
         xs = self.m + jax.random.normal(subkey, (batch_size, 2)) @ jnp.linalg.cholesky(self.cov)
 
         key, subkey = jax.random.split(key)
-        ys = jax.vmap(self.emission, in_axes=[0, None])(xs, self.psi) + 1. * jax.random.normal(subkey, (batch_size,))
+        ys = (jax.vmap(self.emission, in_axes=[0, None])(xs, self.psi)
+              + math.sqrt(self.xi) * jax.random.normal(subkey, (batch_size,)))
         return xs, ys
 
     @staticmethod
@@ -44,7 +46,7 @@ class Crescent(Dataset):
                 + jnp.hstack(jax.grad(self.log_cond_pdf_likelihood, argnums=[1, 0])(y, phi)))
 
     def log_cond_pdf_likelihood(self, y, phi):
-        return jnp.sum(jax.scipy.stats.norm.logpdf(y, self.emission(phi, self.psi), 1.))
+        return jnp.sum(jax.scipy.stats.norm.logpdf(y, self.emission(phi, self.psi), math.sqrt(self.xi)))
 
     def posterior(self, phi_mesh: JArray, y: JArray):
         def energy(phi): return jnp.exp(self.log_prior_pdf(phi) + self.log_cond_pdf_likelihood(y, phi))

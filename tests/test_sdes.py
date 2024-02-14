@@ -3,12 +3,12 @@ import jax.numpy as jnp
 import numpy.testing as npt
 import flax.linen as nn
 import optax
-
+import math
 from fbs.nn import sinusoidal_embedding
 from fbs.nn.models import make_simple_st_nn
 from fbs.sdes.linear import make_linear_sde, StationaryConstLinearSDE, StationaryLinLinearSDE, StationaryExpLinearSDE, \
     make_linear_sde_law_loss, make_ou_sde, make_ou_score_matching_loss
-from fbs.sdes.simulators import reverse_simulator
+from fbs.sdes.simulators import reverse_simulator, euler_maruyama
 
 jax.config.update("jax_enable_x64", True)
 
@@ -86,6 +86,28 @@ def test_linlin_sde():
     true_var = 1 - jnp.exp(-alp)
     npt.assert_allclose(disc_lin(ts, 0.)[0], true_m)
     npt.assert_allclose(disc_lin(ts, 0.)[1], true_var)
+
+
+def test_linlin_sde_bridge():
+    T = 1
+    nsteps = 1000
+    dt = T / nsteps
+    ts = jnp.linspace(0, T - dt, nsteps)
+
+    sde = StationaryLinLinearSDE(beta_min=0.1, beta_max=2., t0=0., T=T)
+    target = 5.
+    x0 = jnp.array(1.)
+
+    def simulator(key_):
+        def bridge_drift(x, t):
+            return sde.bridge_drift(x, t, target, T)
+
+        return euler_maruyama(key_, x0, ts, bridge_drift, sde.dispersion, integration_nsteps=1000, return_path=False)
+
+    key = jax.random.PRNGKey(777)
+    keys = jax.random.split(key, num=20)
+    terminal_vals = jax.vmap(simulator)(keys)
+    npt.assert_allclose(terminal_vals, jnp.ones(20) * target, rtol=3e-2)
 
 
 def test_cross_check():
