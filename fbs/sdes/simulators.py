@@ -1,5 +1,6 @@
 import jax
 import jax.numpy as jnp
+from fbs.sdes.linear import StationaryLinLinearSDE
 from fbs.typings import JKey, JArray
 from typing import Callable
 
@@ -75,7 +76,7 @@ def euler_maruyama(key: JKey, x0: JArray, ts: JArray,
     Returns
     -------
     JArray (d, ) or JArray (n + 1, d)
-        The terminal value at :math:`t_n`. or the path at :math:`t_0, \ldots, t_n`.
+        The terminal value at :math:`t_n`, or the path at :math:`t_0, \ldots, t_n`.
     """
     keys = jax.random.split(key, num=ts.shape[0] - 1)
 
@@ -126,3 +127,40 @@ def discrete_time_simulator(key: JKey, x0: JArray, ts: JArray,
 
     rnds = jax.random.normal(key, (ts.shape[0] - 1, *x0.shape))
     return jax.lax.scan(scan_body, x0, (rnds, ts[1:], ts[:-1]))[0]
+
+
+def doob_bridge_simulator(key: JKey,
+                          sde: StationaryLinLinearSDE,
+                          x0: JArray, xT: JArray, ts: JArray,
+                          integration_nsteps: int = 1,
+                          replace: bool = False) -> JArray:
+    r"""Simulate the Doob's bridge of a linear SDE.
+
+    Parameters
+    ----------
+    key : JKey
+        JAX random key.
+    sde : StationaryLinLinearSDE
+        The linear SDE.
+    x0 : JArray (d, )
+        The initial value.
+    xT : JArray (d, )
+        The terminal value.
+    ts : JArray (n + 1, )
+        Times :math:`t_0, t_1, \ldots, t_n`.
+    integration_nsteps : int, default=1
+        The number of integration steps between each step.
+    replace : bool, default=False
+        Whether to replace the terminal value with :math:`x_T`.
+
+    Returns
+    -------
+    JArray (n + 1, d)
+        The path of the Doob bridge at :math:`t_0, \ldots, t_n`."""
+
+    def bridge_drift(x, t):
+        return sde.bridge_drift(x, t, xT, ts[-1])
+
+    bridge_path = euler_maruyama(key, x0, ts, bridge_drift, sde.dispersion,
+                                 integration_nsteps=integration_nsteps, return_path=True)
+    return bridge_path.at[-1].set(xT) if replace else bridge_path
