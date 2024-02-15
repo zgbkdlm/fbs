@@ -11,6 +11,7 @@ import optax
 from fbs.data import MNIST
 from fbs.sdes import make_linear_sde, make_linear_sde_law_loss, StationaryConstLinearSDE, \
     StationaryLinLinearSDE, StationaryExpLinearSDE, reverse_simulator
+from fbs.sdes.simulators import doob_bridge_simulator
 from fbs.filters.csmc.csmc import csmc_kernel
 from fbs.filters.csmc.resamplings import killing
 from fbs.nn.models import make_st_nn
@@ -37,6 +38,7 @@ parser.add_argument('--test_seed', type=int, default=666)
 parser.add_argument('--nparticles', type=int, default=100)
 parser.add_argument('--ngibbs', type=int, default=10000)
 parser.add_argument('--csmc_backward', action='store_true', default=False)
+parser.add_argument('--doob', action='store_true', default=False)
 
 args = parser.parse_args()
 train = args.train
@@ -72,7 +74,7 @@ if not train:
     fig, axes = plt.subplots(nrows=2, ncols=4)
     for row in range(2):
         for col in range(4):
-            axes[row, col].imshow(xys[col].reshape(28, 28, 2)[:, :, row], cmap='gray')
+            axes[row, col].imshow(xys[col, :, :, row], cmap='gray')
     plt.tight_layout(pad=0.1)
     plt.show()
 
@@ -102,8 +104,8 @@ data_size = dataset.n
 
 key, subkey = jax.random.split(key)
 my_nn = MNISTUNet(dt=nn_dt, nchannels=2, upsampling_method=args.upsampling)
-_, _, array_param, _, nn_score = make_st_nn(subkey,
-                                            nn=my_nn, dim_in=d, batch_size=train_nsamples)
+array_param, _, nn_score = make_st_nn(subkey,
+                                      nn=my_nn, dim_in=d, batch_size=train_nsamples)
 
 loss_type = args.loss_type
 loss_fn = make_linear_sde_law_loss(sde, nn_score, t0=0., T=T, nsteps=train_nsteps,
@@ -172,10 +174,10 @@ print(jnp.min(approx_init_samples), jnp.max(approx_init_samples))
 
 fig, axes = plt.subplots(nrows=2, ncols=7, sharey='row')
 for row in range(2):
-    axes[row, 0].imshow(test_x0.reshape(28, 28, 2)[:, :, row], cmap='gray')
-    axes[row, 1].imshow(terminal_val.reshape(28, 28, 2)[:, :, row], cmap='gray')
+    axes[row, 0].imshow(test_x0[:, :, row], cmap='gray')
+    axes[row, 1].imshow(terminal_val[:, :, row], cmap='gray')
     for i in range(2, 7):
-        axes[row, i].imshow(approx_init_samples[i - 2].reshape(28, 28, 2)[:, :, row], cmap='gray')
+        axes[row, i].imshow(approx_init_samples[i - 2][:, :, row], cmap='gray')
 plt.tight_layout(pad=0.1)
 plt.show()
 
@@ -184,10 +186,9 @@ nparticles = args.nparticles
 ngibbs = args.ngibbs
 burn_in = 100
 key, subkey = jax.random.split(key)
-test_xy0 = sampler(subkey)
-test_x0, test_y0 = dataset.unpack(test_xy0)
+test_x0, test_y0 = sampler(subkey)
 
-plt.imshow(test_y0.reshape(28, 28), cmap='gray')
+plt.imshow(test_y0, cmap='gray')
 plt.show()
 
 
@@ -209,16 +210,16 @@ def reverse_dispersion(t):
     return sde.dispersion(T - t)
 
 
-def transition_sampler(us, v, t, key_):
-    return (us + jax.vmap(reverse_drift_u, in_axes=[0, None, None])(us, v, t) * dt
-            + math.sqrt(dt) * reverse_dispersion(t) * jax.random.normal(key_, us.shape))
+def transition_sampler(us_prev, v_prev, t_prev, key_):
+    return (us_prev + jax.vmap(reverse_drift_u, in_axes=[0, None, None])(us_prev, v_prev, t_prev) * dt
+            + math.sqrt(dt) * reverse_dispersion(t_prev) * jax.random.normal(key_, us_prev.shape))
 
 
 @partial(jax.vmap, in_axes=[None, 0, None, None])
-def transition_logpdf(u, u_prev, v, t):
+def transition_logpdf(u, u_prev, v_prev, t_prev):
     return jnp.sum(jax.scipy.stats.norm.logpdf(u,
-                                               u_prev + reverse_drift_u(u_prev, v, t) * dt,
-                                               math.sqrt(dt) * reverse_dispersion(t)))
+                                               u_prev + reverse_drift_u(u_prev, v_prev, t_prev) * dt,
+                                               math.sqrt(dt) * reverse_dispersion(t_prev)))
 
 
 @partial(jax.vmap, in_axes=[None, 0, None, None])
@@ -232,14 +233,20 @@ def fwd_sampler(key_, x0):
     return simulate_cond_forward(key_, xy0, ts)
 
 
+def bridge_sampler(key_, y0_, yT_):
+    return doob_bridge_simulator(key_, sde, y0_, yT_, ts, integration_nsteps=100, replace=True)
+
+
 @jax.jit
 def gibbs_kernel(key_, xs_, us_star_, bs_star_):
-    key_fwd, key_csmc = jax.random.split(key_)
+    key_fwd, key_csmc, key_bridge = jax.random.split(key_, num=3)
     path_xy = fwd_sampler(key_fwd, xs_[0])
-    us, vs = dataset.unpack(path_xy)
+    path_x, path_y = dataset.unpack(path_xy)
+    us = path_x[::-1]
+    vs = bridge_sampler(key_fwd, path_y[0], path_y[-1])[::-1] if args.doob else path_y[::-1]
 
     def init_sampler(*_):
-        return us[0] * jnp.ones((nparticles, us.shape[-1]))
+        return us[0] * jnp.ones((nparticles, *us.shape[1:]))
 
     def init_likelihood_logpdf(*_):
         return -math.log(nparticles) * jnp.ones(nparticles)
@@ -259,8 +266,8 @@ def gibbs_kernel(key_, xs_, us_star_, bs_star_):
 # Gibbs loop
 key, subkey = jax.random.split(key)
 # xs = fwd_sampler(subkey, jnp.zeros((2,)))[0]
-xs = dataset.unpack(fwd_sampler(subkey, test_x0))[0]
-# xs = dataset.unpack(fwd_sampler(subkey, test_y0))[0]
+# xs = dataset.unpack(fwd_sampler(subkey, test_x0))[0]
+xs = dataset.unpack(fwd_sampler(subkey, test_y0))[0]
 us_star = xs[::-1]
 bs_star = jnp.zeros((nsteps + 1), dtype=int)
 
@@ -268,10 +275,10 @@ uss = np.zeros((ngibbs, nsteps + 1))
 for i in range(ngibbs):
     key, subkey = jax.random.split(key)
     xs, us_star, bs_star, acc = gibbs_kernel(subkey, xs, us_star, bs_star)
-    uss[i] = us_star[:, 300]
+    uss[i] = us_star[:, 10, 10]
 
     fig = plt.figure()
-    plt.imshow(us_star[-1, :].reshape(28, 28), cmap='gray')
+    plt.imshow(us_star[-1], cmap='gray')
     plt.tight_layout(pad=0.1)
     plt.savefig(f'./tmp_figs/uss_{i}.png')
     plt.close(fig)
@@ -294,6 +301,6 @@ plt.show()
 uss = uss[burn_in:]
 fig, axes = plt.subplots(ncols=4)
 for i in range(4):
-    axes[i].imshow(uss[-(i + 1), -1, :].reshape(28, 28), cmap='gray')
+    axes[i].imshow(uss[-(i + 1), -1], cmap='gray')
 plt.tight_layout(pad=0.1)
 plt.show()
