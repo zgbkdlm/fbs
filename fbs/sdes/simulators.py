@@ -148,9 +148,9 @@ def doob_bridge_simulator(key: JKey,
         JAX random key.
     sde : StationaryLinLinearSDE
         The linear SDE.
-    x0 : JArray (d, )
+    x0 : JArray (..., )
         The initial value.
-    xT : JArray (d, )
+    xT : JArray (..., )
         The terminal value.
     ts : JArray (n + 1, )
         Times :math:`t_0, t_1, \ldots, t_n`.
@@ -161,7 +161,7 @@ def doob_bridge_simulator(key: JKey,
 
     Returns
     -------
-    JArray (n + 1, d)
+    JArray (n + 1, ...)
         The path of the Doob bridge at :math:`t_0, \ldots, t_n`."""
 
     def bridge_drift(x, t):
