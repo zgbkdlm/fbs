@@ -166,7 +166,7 @@ def make_linear_sde(sde: LinearSDE):
         Parameters
         ----------
         key : JKey
-        x0 : JArray (d, )
+        x0 : JArray (..., )
         ts : JArray (nsteps + 1, )
             t_0, t_1, ..., t_nsteps.
         keep_path : bool, default=True
@@ -175,7 +175,7 @@ def make_linear_sde(sde: LinearSDE):
 
         Returns
         -------
-        JArray (nsteps + 1, d), JArray (nsteps, d)
+        JArray (nsteps + 1, ...), JArray (nsteps, ...)
             X_0, X_1, ..., X_nsteps.
         """
 
@@ -188,12 +188,12 @@ def make_linear_sde(sde: LinearSDE):
             return x, x
 
         if keep_path:
-            rnds = jax.random.normal(key, (ts.shape[0] - 1, x0.shape[0]))
-            return jnp.concatenate([x0[None, :], jax.lax.scan(scan_body, x0, (ts[1:], ts[:-1], rnds))[1]], axis=0)
+            rnds = jax.random.normal(key, (ts.shape[0] - 1, *x0.shape))
+            return jnp.concatenate([x0[jnp.newaxis], jax.lax.scan(scan_body, x0, (ts[1:], ts[:-1], rnds))[1]], axis=0)
         else:
             Fs, Qs = discretise_linear_sde(ts, ts[0])
-            rnds = jax.random.normal(key, (ts.shape[0], x0.shape[0]))
-            return Fs[:, None] * x0[None, :] + jnp.sqrt(Qs)[:, None] * rnds
+            rnds = jax.random.normal(key, (ts.shape[0], *x0.shape))
+            return Fs[:, None] * x0[jnp.newaxis] + jnp.sqrt(Qs)[:, None] * rnds
 
     return discretise_linear_sde, cond_score_t_0, simulate_cond_forward
 
@@ -213,6 +213,7 @@ def make_linear_sde_law_loss(sde: LinearSDE, nn_fn,
 
     def loss_fn(param, key, x0s):
         nsamples = x0s.shape[0]
+        state_shape = x0s.shape[1:]
         key_ts, key_fwd = jax.random.split(key, num=2)
 
         if random_times:
@@ -224,16 +225,17 @@ def make_linear_sde_law_loss(sde: LinearSDE, nn_fn,
         scales = score_scale(ts[1:], ts[0])
 
         keys = jax.random.split(key_fwd, num=nsamples)
-        fwd_paths = jax.vmap(simulate_cond_forward, in_axes=[0, 0, None])(keys, x0s, ts)  # (n, nsteps + 1, d)
+        fwd_paths = jax.vmap(simulate_cond_forward, in_axes=[0, 0, None])(keys, x0s, ts)  # (n, nsteps + 1, ...)
         nn_evals = jax.vmap(nn_fn,
                             in_axes=[1, 0, None],
-                            out_axes=1)(fwd_paths[:, 1:], ts[1:], param)  # (n, nsteps, d)
+                            out_axes=1)(fwd_paths[:, 1:], ts[1:], param)  # (n, nsteps, ...)
 
         if loss_type == 'score':
             cond_score_evals = jax.vmap(cond_score_t_0,
                                         in_axes=[1, 0, None, None],
-                                        out_axes=1)(fwd_paths[:, 1:], ts[1:], fwd_paths[:, 0], ts[0])  # (n, nsteps, d)
-            return jnp.mean(jnp.mean((nn_evals - cond_score_evals) ** 2, axis=-1) * scales[None, :])
+                                        out_axes=1)(fwd_paths[:, 1:], ts[1:], fwd_paths[:, 0], ts[0])  # (n, nsteps,...)
+            return jnp.mean(jnp.mean((nn_evals - cond_score_evals) ** 2,
+                                     axis=list(range(2, 2 + len(state_shape)))) * scales[None, :])
         elif loss_type == 'ipf':
             @partial(jax.vmap, in_axes=[1, 0, 0], out_axes=1)
             def fwd_transition(x, t, s):

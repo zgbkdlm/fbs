@@ -10,7 +10,6 @@ import math
 import matplotlib.pyplot as plt
 import numpy as np
 import optax
-import flax.linen as nn
 from fbs.data import Crescent
 from fbs.nn.models import make_simple_st_nn, CrescentMLP
 from fbs.nn.utils import make_optax_kernel
@@ -22,11 +21,11 @@ from functools import partial
 
 # General configs
 nparticles = 50
-ngibbs = 2000
+ngibbs = 10000
 burn_in = 100
 jax.config.update("jax_enable_x64", False)
 key = jax.random.PRNGKey(666)
-y0 = 4.
+y0 = 2.
 use_pretrained = True
 use_ema = True
 
@@ -96,7 +95,7 @@ opt_state = optimiser.init(param)
 if use_pretrained:
     param = np.load('./crescent.npz')['ema_param' if use_ema else 'param']
 else:
-    for i in range(2000):
+    for i in range(10000):
         key, subkey = jax.random.split(key)
         keys = jax.random.split(subkey, train_nsamples)
         samples = jax.vmap(sampler_xy, in_axes=[0])(keys)
@@ -188,15 +187,15 @@ def fwd_sampler(key_, x0):
 
 
 def bridge_sampler(key_, y0_, yT_):
-    return doob_bridge_simulator(key_, sde, y0_, yT_, ts, integration_nsteps=10, replace=False)
+    return doob_bridge_simulator(key_, sde, y0_, yT_, ts, integration_nsteps=100, replace=True)
 
 
 @jax.jit
 def gibbs_kernel(key_, xs_, us_star_, bs_star_):
     key_fwd, key_bridge, key_csmc = jax.random.split(key_, num=3)
     path_xy = fwd_sampler(key_fwd, xs_[0])
-    us, vs = path_xy[::-1, :2], path_xy[::-1, -1]
-    # us, vs = path_xy[::-1, :2], bridge_sampler(key_bridge, path_xy[0, -1], path_xy[-1, -1])[::-1]
+    # us, vs = path_xy[::-1, :2], path_xy[::-1, -1]
+    us, vs = path_xy[::-1, :2], bridge_sampler(key_bridge, path_xy[0, -1], path_xy[-1, -1])[::-1]
 
     def init_sampler(*_):
         return us[0] * jnp.ones((nparticles, us.shape[-1]))

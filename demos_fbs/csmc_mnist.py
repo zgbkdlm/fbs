@@ -13,7 +13,7 @@ from fbs.sdes import make_linear_sde, make_linear_sde_law_loss, StationaryConstL
     StationaryLinLinearSDE, StationaryExpLinearSDE, reverse_simulator
 from fbs.filters.csmc.csmc import csmc_kernel
 from fbs.filters.csmc.resamplings import killing
-from fbs.nn.models import make_simple_st_nn
+from fbs.nn.models import make_st_nn
 from fbs.nn.unet_z import MNISTUNet
 from fbs.nn.utils import make_optax_kernel
 from functools import partial
@@ -54,7 +54,7 @@ dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
 
 # MNIST
-d = 784 * 2
+d = (28, 28, 2)
 key, subkey = jax.random.split(key)
 dataset = MNIST(subkey, '../datasets/mnist.npz', task='deconv')
 
@@ -102,9 +102,8 @@ data_size = dataset.n
 
 key, subkey = jax.random.split(key)
 my_nn = MNISTUNet(dt=nn_dt, nchannels=2, upsampling_method=args.upsampling)
-_, _, array_param, _, nn_score = make_simple_st_nn(subkey,
-                                                   dim_in=d, batch_size=train_nsamples,
-                                                   nn_model=my_nn)
+_, _, array_param, _, nn_score = make_st_nn(subkey,
+                                            nn=my_nn, dim_in=d, batch_size=train_nsamples)
 
 loss_type = args.loss_type
 loss_fn = make_linear_sde_law_loss(sde, nn_score, t0=0., T=T, nsteps=train_nsteps,

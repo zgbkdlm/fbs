@@ -120,13 +120,17 @@ class MNISTUNet(nn.Module):
 
     @nn.compact
     def __call__(self, x, t):
-        # x: (n, 784, c) or (n, 28, 28, c) or (784 * c, )
+        # x: (..., 784 * c) x should be a concatenated vector of flattened images. This can conviniently
+        # reshape to (..., 28, 28, c) in Fortran order..
         # t: float
         if x.ndim <= 1:
             batch_size = 1
         else:
             batch_size = x.shape[0]
-        x = x.reshape(batch_size, 28, 28, self.nchannels)
+        if self.nchannels == 1:
+            x = x.reshape(batch_size, 28, 28, self.nchannels)
+        else:
+            x = x.reshape(batch_size, 28, 28, self.nchannels, order='F')
 
         # Top
         x = nn.Conv(features=16, kernel_size=(7, 7), padding=((3, 3), (3, 3)))(x)
