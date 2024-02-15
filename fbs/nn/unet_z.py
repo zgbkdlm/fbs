@@ -172,4 +172,4 @@ class MNISTUNet(nn.Module):
         # End
         x = ResBlock(8)(x, time_emb)
         x = nn.Conv(self.nchannels, kernel_size=(1, 1))(x)
-        return jnp.squeeze(jnp.reshape(x, (batch_size, -1)))
+        return x

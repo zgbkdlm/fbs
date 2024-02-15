@@ -66,7 +66,7 @@ class MNIST(Dataset):
         z_ = jnp.dstack(jnp.meshgrid(jnp.linspace(-1, 1, kernel_size), jnp.linspace(-1, 1, kernel_size)))
         kernel = jnp.prod(jnp.exp(-z_ ** 2 / variance), axis=-1).reshape(kernel_size, kernel_size, 1, 1)
         corrupted_img = jax.lax.conv_general_dilated(img, kernel, (1, 1), 'SAME',
-                                                     dimension_numbers=('NHWC', 'HWIO', 'NHWC'))
+                                                     dimension_numbers=('NHWC', 'HWIO', 'NHWC'))[0, :, :, 0]
         return (corrupted_img - jnp.min(corrupted_img)) / (jnp.max(corrupted_img) - jnp.min(corrupted_img))
 
     def corrupt(self, key: JKey, img: JArray) -> JArray:
@@ -92,7 +92,7 @@ class MNIST(Dataset):
         """
         key_choice, key_corrupt = jax.random.split(key)
         x = self.xs[jax.random.choice(key_choice, self.n)]
-        y = jnp.squeeze(self.corrupt(key_corrupt, x))
+        y = self.corrupt(key_corrupt, x)
         return x, y
 
     def enumerate_subset(self, i: int, perm_inds=None, key=None) -> Tuple[JArray, JArray]:

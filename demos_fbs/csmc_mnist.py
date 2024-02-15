@@ -1,6 +1,7 @@
 r"""
 Conditional sampling on MNIST
 """
+import os
 import math
 import argparse
 import jax
