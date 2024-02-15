@@ -1,5 +1,7 @@
 import jax
 import jax.numpy as jnp
+import numpy as np
+
 from fbs.sdes.linear import StationaryLinLinearSDE
 from fbs.typings import JKey, JArray
 from typing import Callable
@@ -60,11 +62,11 @@ def euler_maruyama(key: JKey, x0: JArray, ts: JArray,
     ----------
     key : JKey
         JAX random key.
-    x0 : JArray (d, )
+    x0 : JArray (..., )
         Initial value.
     ts : JArray (n + 1, )
         Times :math:`t_0, t_1, \ldots, t_n`.
-    drift : Callable (d, ), float -> (d, )
+    drift : Callable (..., ), float -> (..., )
         The drift function.
     dispersion : Callable float -> float
         The dispersion function.
@@ -75,7 +77,7 @@ def euler_maruyama(key: JKey, x0: JArray, ts: JArray,
 
     Returns
     -------
-    JArray (d, ) or JArray (n + 1, d)
+    JArray (..., ) or JArray (n + 1, ...)
         The terminal value at :math:`t_n`, or the path at :math:`t_0, \ldots, t_n`.
     """
     keys = jax.random.split(key, num=ts.shape[0] - 1)
@@ -99,7 +101,11 @@ def euler_maruyama(key: JKey, x0: JArray, ts: JArray,
         return x, x if return_path else None
 
     terminal_val, path = jax.lax.scan(scan_body, x0, (keys, ts[:-1], ts[1:]))
-    return jnp.concatenate([x0[None, :], path], axis=0) if return_path else terminal_val
+
+    if return_path:
+        return jnp.concatenate([x0[jnp.newaxis], path], axis=0)
+    else:
+        return terminal_val
 
 
 def runge_kutta(key: JKey, x0: JArray, ts: JArray,

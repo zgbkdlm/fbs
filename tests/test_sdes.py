@@ -94,13 +94,13 @@ def test_linlin_sde_bridge():
     ts = jnp.linspace(0, T, nsteps + 1)
 
     sde = StationaryLinLinearSDE(beta_min=0.1, beta_max=2., t0=0., T=T)
-    target = jnp.array([5.])
-    x0 = jnp.array([1.])
+    target = jnp.array(5.)
+    x0 = jnp.array(1.)
 
     def simulator(key_):
         return doob_bridge_simulator(key_, sde, x0, target, ts,
                                      integration_nsteps=100,
-                                     replace=False)[-1, 0]
+                                     replace=False)[-1]
 
     key = jax.random.PRNGKey(666)
     keys = jax.random.split(key, num=20)

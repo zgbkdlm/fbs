@@ -15,6 +15,7 @@ from fbs.data import Crescent
 from fbs.nn.models import make_simple_st_nn, CrescentMLP
 from fbs.nn.utils import make_optax_kernel
 from fbs.sdes import make_linear_sde, make_linear_sde_law_loss, StationaryLinLinearSDE, reverse_simulator
+from fbs.sdes.simulators import doob_bridge_simulator
 from fbs.filters.csmc.csmc import csmc_kernel
 from fbs.filters.csmc.resamplings import killing
 from functools import partial
@@ -29,8 +30,8 @@ y0 = 4.
 use_pretrained = True
 use_ema = True
 
-T = 6
-nsteps = 1000
+T = 2
+nsteps = 200
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
 
@@ -81,7 +82,6 @@ loss_type = 'score'
 loss_fn = make_linear_sde_law_loss(sde, nn_score,
                                    t0=0., T=T, nsteps=train_nsteps,
                                    random_times=True, loss_type=loss_type)
-
 
 # schedule = optax.constant_schedule(1e-3)
 schedule = optax.cosine_decay_schedule(1e-3, 50, .95)
@@ -187,11 +187,16 @@ def fwd_sampler(key_, x0):
     return simulate_cond_forward(key_, xy0, ts)
 
 
+def bridge_sampler(key_, y0_, yT_):
+    return doob_bridge_simulator(key_, sde, y0_, yT_, ts, integration_nsteps=10, replace=False)
+
+
 @jax.jit
 def gibbs_kernel(key_, xs_, us_star_, bs_star_):
-    key_fwd, key_csmc = jax.random.split(key_)
+    key_fwd, key_bridge, key_csmc = jax.random.split(key_, num=3)
     path_xy = fwd_sampler(key_fwd, xs_[0])
     us, vs = path_xy[::-1, :2], path_xy[::-1, -1]
+    # us, vs = path_xy[::-1, :2], bridge_sampler(key_bridge, path_xy[0, -1], path_xy[-1, -1])[::-1]
 
     def init_sampler(*_):
         return us[0] * jnp.ones((nparticles, us.shape[-1]))
