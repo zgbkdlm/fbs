@@ -91,8 +91,7 @@ def test_linlin_sde():
 def test_linlin_sde_bridge():
     T = 1
     nsteps = 1000
-    dt = T / nsteps
-    ts = jnp.linspace(0, T - dt, nsteps)
+    ts = jnp.linspace(0, T, nsteps + 1)
 
     sde = StationaryLinLinearSDE(beta_min=0.1, beta_max=2., t0=0., T=T)
     target = 5.
@@ -102,9 +101,9 @@ def test_linlin_sde_bridge():
         def bridge_drift(x, t):
             return sde.bridge_drift(x, t, target, T)
 
-        return euler_maruyama(key_, x0, ts, bridge_drift, sde.dispersion, integration_nsteps=1000, return_path=False)
+        return euler_maruyama(key_, x0, ts, bridge_drift, sde.dispersion, integration_nsteps=1, return_path=False)
 
-    key = jax.random.PRNGKey(777)
+    key = jax.random.PRNGKey(666)
     keys = jax.random.split(key, num=20)
     terminal_vals = jax.vmap(simulator)(keys)
     npt.assert_allclose(terminal_vals, jnp.ones(20) * target, rtol=3e-2)

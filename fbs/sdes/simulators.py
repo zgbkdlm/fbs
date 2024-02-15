@@ -90,25 +90,15 @@ def euler_maruyama(key: JKey, x0: JArray, ts: JArray,
         rnds = jax.random.normal(key_, (integration_nsteps, *x0.shape))
         return jax.lax.scan(scan_body_, xt, (rnds, jnp.linspace(t, t_next - ddt, integration_nsteps)))[0]
 
-    if return_path:
-        def scan_body(carry, elem):
-            x = carry
-            key_, t_next, t = elem
+    def scan_body(carry, elem):
+        x = carry
+        key_, t, t_next = elem
 
-            x = step(x, t, t_next, key_)
-            return x, x
+        x = step(x, t, t_next, key_)
+        return x, x if return_path else None
 
-        path = jax.lax.scan(scan_body, x0, (keys, ts[1:], ts[:-1]))[1]
-        return jnp.concatenate([x0[None, :], path], axis=0)
-    else:
-        def scan_body(carry, elem):
-            x = carry
-            key_, t_next, t = elem
-
-            x = step(x, t, t_next, key_)
-            return x, None
-
-        return jax.lax.scan(scan_body, x0, (keys, ts[1:], ts[:-1]))[0]
+    terminal_val, path = jax.lax.scan(scan_body, x0, (keys, ts[:-1], ts[1:]))
+    return jnp.concatenate([x0[None, :], path], axis=0) if return_path else terminal_val
 
 
 def runge_kutta(key: JKey, x0: JArray, ts: JArray,
