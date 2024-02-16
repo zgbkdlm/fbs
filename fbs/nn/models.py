@@ -3,6 +3,7 @@ import jax.numpy as jnp
 import flax.linen as nn
 from fbs.nn import sinusoidal_embedding, make_st_nn
 from fbs.nn.utils import PixelShuffle
+from typing import Sequence
 
 nn_param_dtype = jnp.float64
 nn_param_init = nn.initializers.xavier_normal()
@@ -138,7 +139,9 @@ class MNISTResConv(nn.Module):
         return jnp.squeeze(x)
 
 
-def make_simple_st_nn(key, dim_in, batch_size, nn_model: nn.Module = None,
+def make_simple_st_nn(key,
+                      dim_in: Sequence[int],
+                      batch_size, nn_model: nn.Module = None,
                       embed_dim: int = 128):
     """Make a simple spatio-temporal neural network with sinusoidal embedding.
 
@@ -176,8 +179,8 @@ def make_simple_st_nn(key, dim_in, batch_size, nn_model: nn.Module = None,
 
     if nn_model is None:
         nn_model = ClassicMLP()
-    dict_param = nn_model.init(key, jnp.ones((batch_size, dim_in)), jnp.array(1.))
-    array_param, array_to_dict, forward_pass = make_st_nn(nn_model, dim_in, batch_size, key)
+    dict_param = nn_model.init(key, jnp.ones((batch_size, *dim_in)), jnp.array(1.))
+    array_param, array_to_dict, forward_pass = make_st_nn(key, nn_model, dim_in, batch_size)
     return nn_model, dict_param, array_param, array_to_dict, forward_pass
 
 # TODO: MLP-mixer https://github.com/google-research/big_vision/blob/main/big_vision/models/mlp_mixer.py

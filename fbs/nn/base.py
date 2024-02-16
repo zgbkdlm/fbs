@@ -3,13 +3,10 @@ import flax.linen as linen
 from jax import numpy as jnp
 from jax.flatten_util import ravel_pytree
 from fbs.typings import JArray, FloatScalar, JKey
-from typing import Union, Tuple, Callable
+from typing import Union, Tuple, Callable, Sequence
 
 
-def make_st_nn(nn: linen.Module,
-               dim_x: int,
-               batch_size: int,
-               key: JKey) -> Tuple[
+def make_st_nn(key: JKey, nn: linen.Module, dim_in: Sequence[int], batch_size: int) -> Tuple[
     JArray, Callable[[JArray], dict], Callable[[JArray, FloatScalar, JArray], JArray]]:
     """Make a neural network for approximating a spatial-temporal function :math:`f(x, t)`.
 
@@ -17,7 +14,7 @@ def make_st_nn(nn: linen.Module,
     ----------
     nn : linen.Module
         A neural network instance.
-    dim_x : int
+    dim_in : int
         The spatial dimension.
     batch_size : int
         The data batch size.
@@ -29,7 +26,7 @@ def make_st_nn(nn: linen.Module,
     JArray, Callable[[JArray], dict], Callable (..., d), (p, ) -> (..., d)
         The initial parameter array, the array-to-dict ravel function, and the NN forward pass evaluation function.
     """
-    dict_param = nn.init(key, jnp.ones((batch_size, dim_x)), jnp.array(1.))
+    dict_param = nn.init(key, jnp.ones((batch_size, *dim_in)), jnp.array(1.))
     array_param, array_to_dict = ravel_pytree(dict_param)
 
     def forward_pass(x: JArray, t: FloatScalar, param: JArray) -> JArray:

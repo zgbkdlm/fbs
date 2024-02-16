@@ -10,13 +10,14 @@ import math
 import matplotlib.pyplot as plt
 import numpy as np
 import optax
+import flax.linen as nn
 from fbs.data import Crescent
 from fbs.nn.models import make_simple_st_nn, CrescentMLP
 from fbs.nn.utils import make_optax_kernel
 from fbs.sdes import make_linear_sde, make_linear_sde_law_loss, StationaryLinLinearSDE, reverse_simulator
-from fbs.sdes.simulators import doob_bridge_simulator
 from fbs.filters.csmc.csmc import csmc_kernel
 from fbs.filters.csmc.resamplings import killing
+from fbs.sdes import euler_maruyama
 from functools import partial
 
 # General configs
@@ -25,12 +26,10 @@ ngibbs = 10000
 burn_in = 100
 jax.config.update("jax_enable_x64", False)
 key = jax.random.PRNGKey(666)
-y0 = 2.
-use_pretrained = True
-use_ema = True
+y0 = 4.
 
-T = 2
-nsteps = 200
+T = 2.
+nsteps = 100
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
 
@@ -50,71 +49,34 @@ plt.pcolormesh(lines_, lines_, post)
 plt.legend()
 plt.show()
 
+
 # Define the forward noising process
-sde = StationaryLinLinearSDE(beta_min=2e-2, beta_max=5., t0=0., T=T)
-discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(sde)
+def drift(xy, t):
+    return 0.5 * crescent.score(xy)
+
+
+def dispersion(t):
+    return 1.
 
 
 def simulate_forward(key_, ts_):
-    xy0 = sampler_xy(key_)
-    return simulate_cond_forward(jax.random.split(key_)[1], xy0, ts_)
-
-
-# Visualise the terminal distribution
-key, subkey = jax.random.split(key)
-keys = jax.random.split(subkey, num=5000)
-terminal_vals = jax.vmap(simulate_forward, in_axes=[0, None])(keys, ts)[:, -1, :]
-plt.scatter(terminal_vals[:, 0], terminal_vals[:, 2], s=1, alpha=0.5)
-plt.show()
-
-# Score matching training
-train_nsamples = 128
-train_nsteps = 100
-nn_dt = T / 200
-
-key, subkey = jax.random.split(key)
-_, _, array_param, _, nn_score = make_simple_st_nn(subkey,
-                                                   dim_in=3, batch_size=train_nsamples,
-                                                   nn_model=CrescentMLP(nn_dt))
-
-loss_type = 'score'
-loss_fn = make_linear_sde_law_loss(sde, nn_score,
-                                   t0=0., T=T, nsteps=train_nsteps,
-                                   random_times=True, loss_type=loss_type)
-
-# schedule = optax.constant_schedule(1e-3)
-schedule = optax.cosine_decay_schedule(1e-3, 50, .95)
-optimiser = optax.chain(optax.clip_by_global_norm(1.),
-                        optax.adam(learning_rate=schedule))
-optax_kernel, ema_kernel = make_optax_kernel(optimiser, loss_fn, jit=True)
-
-param = array_param
-ema_param = param
-opt_state = optimiser.init(param)
-
-if use_pretrained:
-    param = np.load('./crescent.npz')['ema_param' if use_ema else 'param']
-else:
-    for i in range(10000):
-        key, subkey = jax.random.split(key)
-        keys = jax.random.split(subkey, train_nsamples)
-        samples = jax.vmap(sampler_xy, in_axes=[0])(keys)
-        key, subkey = jax.random.split(key)
-        param, opt_state, loss = optax_kernel(param, opt_state, subkey, samples)
-        ema_param = ema_kernel(ema_param, param, i, 100, 0.99)
-        print(f'i: {i}, loss: {loss}')
-    np.savez('./crescent.npz', param=param, ema_param=ema_param)
+    key1_, key2_ = jax.random.split(key_)
+    xy0 = sampler_xy(key1_)
+    return euler_maruyama(key2_, xy0, ts_, drift, dispersion, integration_nsteps=1, return_path=True)
 
 
 # Verify if the score function is learnt properly
 def rev_sim(key_, u0):
-    def learnt_score(x, t):
-        return nn_score(x, t, param)
+    def score(x, t):
+        return crescent.score(x)
 
-    return reverse_simulator(key_, u0, ts, learnt_score, sde.drift, sde.dispersion, integrator='euler-maruyama')
+    return reverse_simulator(key_, u0, ts, score, drift, dispersion, integration_nsteps=1, integrator='euler-maruyama')
 
 
 # Simulate the backward and verify if it matches the target distribution
+key, subkey = jax.random.split(key)
+keys = jax.random.split(subkey, num=5000)
+terminal_vals = jax.vmap(simulate_forward, in_axes=[0, None])(keys, ts)[:, -1, :]
 key, subkey = jax.random.split(key)
 keys = jax.random.split(subkey, num=5000)
 approx_init_samples = jax.vmap(rev_sim, in_axes=[0, 0])(keys, terminal_vals)
@@ -144,7 +106,7 @@ plt.show()
 
 
 def reverse_drift(uv, t):
-    return -sde.drift(uv, T - t) + sde.dispersion(T - t) ** 2 * nn_score(uv, T - t, param)
+    return -drift(uv, T - t) + dispersion(T - t) ** 2 * crescent.score(uv)
 
 
 def reverse_drift_u(u, v, t):
@@ -158,7 +120,7 @@ def reverse_drift_v(v, u, t):
 
 
 def reverse_dispersion(t):
-    return sde.dispersion(T - t)
+    return dispersion(T - t)
 
 
 # Now do cSMC conditional sampling
@@ -182,20 +144,16 @@ def likelihood_logpdf(v, u_prev, v_prev, t_prev):
 
 
 def fwd_sampler(key_, x0):
+    key1_, key2_ = jax.random.split(key_)
     xy0 = jnp.hstack([x0, y0])
-    return simulate_cond_forward(key_, xy0, ts)
-
-
-def bridge_sampler(key_, y0_, yT_):
-    return doob_bridge_simulator(key_, sde, y0_, yT_, ts, integration_nsteps=100, replace=True)
+    return euler_maruyama(key2_, xy0, ts, drift, dispersion, integration_nsteps=1, return_path=True)
 
 
 @jax.jit
 def gibbs_kernel(key_, xs_, us_star_, bs_star_):
-    key_fwd, key_bridge, key_csmc = jax.random.split(key_, num=3)
+    key_fwd, key_csmc = jax.random.split(key_)
     path_xy = fwd_sampler(key_fwd, xs_[0])
-    # us, vs = path_xy[::-1, :2], path_xy[::-1, -1]
-    us, vs = path_xy[::-1, :2], bridge_sampler(key_bridge, path_xy[0, -1], path_xy[-1, -1])[::-1]
+    us, vs = path_xy[::-1, :2], path_xy[::-1, -1]
 
     def init_sampler(*_):
         return us[0] * jnp.ones((nparticles, us.shape[-1]))

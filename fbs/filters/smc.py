@@ -88,6 +88,52 @@ def bootstrap_filter(transition_sampler: Callable[[JArray, JArray, FloatScalar, 
     return filtering_samples, nell_ys
 
 
+def pf_temp(key: JKey,
+            vs: JArray, ts: JArray,
+            u0: JArray,
+            transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
+            likelihood_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
+            resampling: Callable,
+            nparticles: int) -> JArray:
+    """Particle MCMC sampling of p(x | y) for separable forward process.
+
+    Parameters
+    ----------
+    key
+    vs
+    ts
+    u0
+    transition_sampler
+    likelihood_logpdf
+    resampling
+    nparticles
+
+    Returns
+    -------
+
+    """
+
+    def scan_body(carry, elem):
+        us_prev = carry
+        v, v_prev, t_prev, key_ = elem
+
+        key_proposal, key_resampling = jax.random.split(key_)
+        us = transition_sampler(us_prev, v_prev, t_prev, key_proposal)
+
+        log_ws = likelihood_logpdf(v, us_prev, v_prev, t_prev)
+        _c = jax.scipy.special.logsumexp(log_ws)
+        log_ws = log_ws - _c
+
+        us = us[resampling(jnp.exp(log_ws), key_resampling), ...]
+
+        return us, None
+
+    keys = jax.random.split(key, num=ts.shape[0] - 1)
+
+    u0s = u0 * jnp.ones((nparticles, u0.shape[0]))
+    return jax.lax.scan(scan_body, u0s, (vs[1:], vs[:-1], ts[:-1], keys))[0]
+
+
 def pmcmc_step(key: JKey,
                vs_bridge: JArray, ts: JArray,
                u0s: JArray,

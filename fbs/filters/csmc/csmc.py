@@ -196,18 +196,19 @@ def forward_pass(key: JKey,
     nsteps = K_plus_one - 1
 
     def scan_body(carry, inp):
-        log_ws, us = carry
+        # t, t_prev mean t_k and t_{k-1}, resp.
+        log_ws, us_prev = carry
         v, v_prev, t_prev, b_star_prev, b_star, key_, u_star = inp
         key_resampling, key_transition = jax.random.split(key_, num=2)
 
         # Conditional resampling
         A = cond_resampling(key_resampling, jnp.exp(log_ws), b_star_prev, b_star, True)
-        us = jnp.take(us, A, axis=0)
+        us_prev = jnp.take(us_prev, A, axis=0)
 
-        us = transition_sampler(us, v_prev, t_prev, key_transition)
+        us = transition_sampler(us_prev, v_prev, t_prev, key_transition)
         us = us.at[b_star].set(u_star)
 
-        log_ws = likelihood_logpdf(v, us, v_prev, t_prev)
+        log_ws = likelihood_logpdf(v, us_prev, v_prev, t_prev)
         log_ws = normalise(log_ws, log_space=True)
 
         return (log_ws, us), (log_ws, A, us)
@@ -267,8 +268,8 @@ def backward_sampling_pass(key, transition_logpdf, vs, ts, uss, log_ws):
     x_T = uss[-1, B_T]
 
     def body(x_t, inp):
-        op_key, xs_t_m_1, log_w_t_m_1, v, t = inp
-        Gamma_log_w = transition_logpdf(x_t, xs_t_m_1, v, t)  # I swapped the order
+        op_key, xs_t_m_1, log_w_t_m_1, v_t_m_1, t_m_1 = inp
+        Gamma_log_w = transition_logpdf(x_t, xs_t_m_1, v_t_m_1, t_m_1)  # I swapped the order
         Gamma_log_w -= jnp.max(Gamma_log_w)
         log_w = Gamma_log_w + log_w_t_m_1
         w = normalise(log_w)
@@ -279,7 +280,8 @@ def backward_sampling_pass(key, transition_logpdf, vs, ts, uss, log_ws):
     # Reverse arrays, ideally, should use jax.lax.scan(reverse=True) but it is simpler this way due to insertions.
     # xs[-2::-1] is the reversed list of xs[:-1], I know, not readable... Same for log_ws.
     # vs[-1:0:-1] means the reverse of vs[1:]
-    inps = keys[:-1], uss[-2::-1], log_ws[-2::-1], vs[-1:0:-1], ts[-1:0:-1]
+    # inps = keys[:-1], uss[-2::-1], log_ws[-2::-1], vs[-1:0:-1], ts[-1:0:-1]
+    inps = keys[:-1], uss[-2::-1], log_ws[-2::-1], vs[-2::-1], ts[-2::-1]
 
     # Run backward pass
     _, (uss, Bs) = jax.lax.scan(body, x_T, inps)

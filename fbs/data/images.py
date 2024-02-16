@@ -6,19 +6,24 @@ from typing import Tuple
 
 
 class MNIST(Dataset):
+    """
+    MNIST dataset.
 
-    def __init__(self, key: JKey, data_path: str, task: str = 'inpainting', test: bool = False):
+    Data `x` has shape (n, 28, 28)
+    """
+
+    def __init__(self, key: JKey, data_path: str, task: str = 'deconv', test: bool = False):
         data_dict = jnp.load(data_path)
         self.task = task
 
         if test:
             self.n = 10000
             xs = data_dict['X_test']
-            xs = jax.random.permutation(key, jnp.reshape(xs, (10000, 784)), axis=0)
+            xs = jax.random.permutation(key, xs, axis=0)
         else:
             self.n = 60000
             xs = data_dict['X']
-            xs = jax.random.permutation(key, jnp.reshape(xs, (60000, 784)), axis=0)
+            xs = jax.random.permutation(key, xs, axis=0)
 
         self.xs = self.standardise(xs)
 
@@ -55,12 +60,13 @@ class MNIST(Dataset):
             Convoluted image.
         """
         img = jnp.reshape(img, (1, 28, 28, 1))
+        kernel_size = 10
 
-        variance = jax.random.uniform(key, minval=0.5, maxval=2.)  # it's not conjugate yeah I know...
-        z_ = jnp.dstack(jnp.meshgrid(jnp.linspace(-1, 1, 5), jnp.linspace(-1, 1, 5)))
-        kernel = jnp.prod(jnp.exp(-z_ ** 2 / variance), axis=-1).reshape(5, 5, 1, 1)
+        variance = jax.random.uniform(key, minval=0.1, maxval=5.)  # it's not conjugate yeah I know...
+        z_ = jnp.dstack(jnp.meshgrid(jnp.linspace(-1, 1, kernel_size), jnp.linspace(-1, 1, kernel_size)))
+        kernel = jnp.prod(jnp.exp(-z_ ** 2 / variance), axis=-1).reshape(kernel_size, kernel_size, 1, 1)
         corrupted_img = jax.lax.conv_general_dilated(img, kernel, (1, 1), 'SAME',
-                                                     dimension_numbers=('NHWC', 'HWIO', 'NHWC'))
+                                                     dimension_numbers=('NHWC', 'HWIO', 'NHWC'))[0, :, :, 0]
         return (corrupted_img - jnp.min(corrupted_img)) / (jnp.max(corrupted_img) - jnp.min(corrupted_img))
 
     def corrupt(self, key: JKey, img: JArray) -> JArray:
@@ -72,34 +78,37 @@ class MNIST(Dataset):
             raise NotImplementedError('Not implemented.')
 
     def sampler(self, key: JKey) -> Tuple[JArray, JArray]:
+        """Sample a pair of images from the dataset.
+
+        Parameters
+        ----------
+        key : JKey
+            Random key.
+
+        Returns
+        -------
+        JArray (28, 28), JArray (28, 28)
+            A pair of clean and corrupted images.
+        """
         key_choice, key_corrupt = jax.random.split(key)
         x = self.xs[jax.random.choice(key_choice, self.n)]
-        y = self.corrupt(key_corrupt, x.reshape(28, 28)).reshape(784)
+        y = self.corrupt(key_corrupt, x)
         return x, y
 
     def enumerate_subset(self, i: int, perm_inds=None, key=None) -> Tuple[JArray, JArray]:
         if perm_inds is None:
             perm_inds = self.perm_inds
         inds = perm_inds[i]
-        batch_size = inds.shape[0]
 
-        xs = self.xs[inds, :]
+        xs = self.xs[inds]
         keys = jax.random.split(key, num=inds.shape[0])
-        ys = jax.vmap(self.corrupt,
-                      in_axes=[0, 0])(keys, xs.reshape(batch_size, 28, 28)).reshape(batch_size, 784)
+        ys = jax.vmap(self.corrupt, in_axes=[0, 0])(keys, xs)
         return xs, ys
 
     @staticmethod
     def concat(x: JArray, y: JArray) -> JArray:
-        batch_shape = x.shape[:-1]
-        x = jnp.reshape(x, (*batch_shape, 28, 28, 1))
-        y = jnp.reshape(y, (*batch_shape, 28, 28, 1))
-        return jnp.reshape(jnp.concatenate([x, y], axis=-1), (*batch_shape, 28 * 28 * 2))
+        return jnp.concatenate([jnp.expand_dims(x, -1), jnp.expand_dims(y, -1)], axis=-1)
 
     @staticmethod
     def unpack(xy: JArray) -> Tuple[JArray, JArray]:
-        batch_shape = xy.shape[:-1]
-        xy = jnp.reshape(xy, (*batch_shape, 28, 28, 2))
-        x, y = jnp.split(xy, 2, axis=-1)
-        return x.reshape(*batch_shape, 784), y.reshape(*batch_shape, 784)
-
+        return xy[..., 0], xy[..., 1]
