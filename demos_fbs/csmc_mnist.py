@@ -187,7 +187,8 @@ nparticles = args.nparticles
 ngibbs = args.ngibbs
 burn_in = 100
 key, subkey = jax.random.split(key)
-test_x0, test_y0 = sampler(subkey)
+test_xy0 = sampler(subkey)
+test_y0 = test_xy0[:, :, 1]
 
 plt.imshow(test_y0, cmap='gray')
 plt.show()
