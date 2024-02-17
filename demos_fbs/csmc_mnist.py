@@ -32,12 +32,12 @@ parser.add_argument('--nsteps', type=int, default=2)
 parser.add_argument('--schedule', type=str, default='cos')
 parser.add_argument('--nepochs', type=int, default=30)
 parser.add_argument('--grad_clip', action='store_true', default=False)
-parser.add_argument('--test_nsteps', type=int, default=500)
+parser.add_argument('--test_nsteps', type=int, default=200)
 parser.add_argument('--test_epoch', type=int, default=12)
 parser.add_argument('--test_ema', action='store_true', default=False)
 parser.add_argument('--test_seed', type=int, default=666)
 parser.add_argument('--nparticles', type=int, default=100)
-parser.add_argument('--ngibbs', type=int, default=10000)
+parser.add_argument('--ngibbs', type=int, default=200)
 parser.add_argument('--csmc_backward', action='store_true', default=False)
 parser.add_argument('--doob', action='store_true', default=False)
 
@@ -188,9 +188,12 @@ ngibbs = args.ngibbs
 burn_in = 100
 key, subkey = jax.random.split(key)
 test_xy0 = sampler(subkey)
-test_y0 = test_xy0[:, :, 1]
+test_x0, test_y0 = test_xy0[:, :, 0], test_xy0[:, :, 1]
 
-plt.imshow(test_y0, cmap='gray')
+fig, axes = plt.subplots(ncols=2)
+axes[0].imshow(test_x0, cmap='gray')
+axes[1].imshow(test_y0, cmap='gray')
+plt.savefig(f'./tmp_figs/pair.png')
 plt.show()
 
 
@@ -260,40 +263,38 @@ def gibbs_kernel(key_, xs_, us_star_, bs_star_):
                                              transition_sampler, transition_logpdf,
                                              likelihood_logpdf,
                                              killing, nparticles,
-                                             backward=args.csmc_backward)
+                                             backward=True)
     xs_next = us_star_next[::-1]
     return xs_next, us_star_next, bs_star_next, bs_star_next != bs_star_
 
 
 # Gibbs loop
 key, subkey = jax.random.split(key)
-# xs = fwd_sampler(subkey, jnp.zeros((2,)))[0]
-# xs = dataset.unpack(fwd_sampler(subkey, test_x0))[0]
 xs = dataset.unpack(fwd_sampler(subkey, test_y0))[0]
 us_star = xs[::-1]
 bs_star = jnp.zeros((nsteps + 1), dtype=int)
 
-uss = np.zeros((ngibbs, nsteps + 1))
+uss = np.zeros((ngibbs, nsteps + 1, 28, 28))
 for i in range(ngibbs):
     key, subkey = jax.random.split(key)
     xs, us_star, bs_star, acc = gibbs_kernel(subkey, xs, us_star, bs_star)
-    uss[i] = us_star[:, 10, 10]
+    uss[i] = us_star
 
     fig = plt.figure()
     plt.imshow(us_star[-1], cmap='gray')
     plt.tight_layout(pad=0.1)
-    plt.savefig(f'./tmp_figs/uss_{i}.png')
+    plt.savefig(f'./tmp_figs/uss_{i}{"_doob" if args.doob else ""}.png')
     plt.close(fig)
 
     fig = plt.figure()
-    plt.plot(uss[:i, -1])
+    plt.plot(uss[:i, -1, 10, 10])
     plt.tight_layout(pad=0.1)
-    plt.savefig(f'./tmp_figs/trace.png')
+    plt.savefig(f'./tmp_figs/trace_pixel{"_doob" if args.doob else ""}.png')
     plt.close(fig)
 
     print(f'Gibbs iter: {i}, acc: {acc}')
 
-np.save('uss', uss)
+np.save(f'uss{"_doob" if args.doob else ""}', uss)
 
 # Plot
 plt.plot(uss[:, -1, 500])
