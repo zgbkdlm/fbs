@@ -23,6 +23,7 @@ from functools import partial
 # Parse arguments
 parser = argparse.ArgumentParser(description='MNIST test.')
 parser.add_argument('--train', action='store_true', default=False, help='Whether train or not.')
+parser.add_argument('--task', type=str, default='deconv-10')
 parser.add_argument('--sde', type=str, default='lin')
 parser.add_argument('--upsampling', type=str, default='pixel_shuffle')
 parser.add_argument('--loss_type', type=str, default='score')
@@ -38,13 +39,13 @@ parser.add_argument('--test_ema', action='store_true', default=False)
 parser.add_argument('--test_seed', type=int, default=666)
 parser.add_argument('--nparticles', type=int, default=100)
 parser.add_argument('--ngibbs', type=int, default=200)
-parser.add_argument('--csmc_backward', action='store_true', default=False)
 parser.add_argument('--doob', action='store_true', default=False)
 
 args = parser.parse_args()
 train = args.train
+task = args.task
 
-print(f'Run with {train}')
+print(f'{"Train" if train else "Test"} {task} on MNIST')
 
 # General configs
 # jax.config.update("jax_enable_x64", True)
@@ -59,7 +60,7 @@ ts = jnp.linspace(0, T, nsteps + 1)
 # MNIST
 d = (28, 28, 2)
 key, subkey = jax.random.split(key)
-dataset = MNIST(subkey, '../datasets/mnist.npz', task='deconv')
+dataset = MNIST(subkey, '../datasets/mnist.npz', task=task)
 
 
 def sampler(key_):
@@ -141,14 +142,12 @@ if train:
             xy0s = dataset.concat(x0s, y0s)
             param, opt_state, loss = optax_kernel(param, opt_state, subkey2, xy0s)
             ema_param = ema_kernel(ema_param, param, j, 200, 0.99)
-            print(f'| {args.upsampling} | {args.sde} | {loss_type} | {args.schedule} | '
+            print(f'| {task} | {args.upsampling} | {args.sde} | {loss_type} | {args.schedule} | '
                   f'Epoch: {i} / {nepochs}, iter: {j} / {data_size // train_nsamples}, loss: {loss:.4f}')
-        np.savez(f'./mnist_{args.upsampling}_{args.sde}_'
-                 f'{loss_type}_{args.schedule}_{"clip_" if args.grad_clip else ""}{i}.npz',
-                 param=param, ema_param=ema_param)
+        filename = f'./mnist_{task}_{args.sde}_{args.schedule}{i}.npz'
+        np.savez(filename, param=param, ema_param=ema_param)
 else:
-    param = np.load(f'./mnist_{args.upsampling}_{args.sde}_{loss_type}_{args.schedule}_'
-                    f'{"clip_" if args.grad_clip else ""}'
+    param = np.load(f'./mnist_{task}_{args.sde}_{args.schedule}_'
                     f'{args.test_epoch}.npz')['ema_param' if args.test_ema else 'param']
 
 
@@ -180,12 +179,12 @@ for row in range(2):
     for i in range(2, 7):
         axes[row, i].imshow(approx_init_samples[i - 2][:, :, row], cmap='gray')
 plt.tight_layout(pad=0.1)
+plt.savefig(f'./tmp_figs/{task}_backward_test.png')
 plt.show()
 
 # Now conditional sampling
 nparticles = args.nparticles
 ngibbs = args.ngibbs
-burn_in = 100
 key, subkey = jax.random.split(key)
 test_xy0 = sampler(subkey)
 test_x0, test_y0 = test_xy0[:, :, 0], test_xy0[:, :, 1]
@@ -193,7 +192,7 @@ test_x0, test_y0 = test_xy0[:, :, 0], test_xy0[:, :, 1]
 fig, axes = plt.subplots(ncols=2)
 axes[0].imshow(test_x0, cmap='gray')
 axes[1].imshow(test_y0, cmap='gray')
-plt.savefig(f'./tmp_figs/pair.png')
+plt.savefig(f'./tmp_figs/{task}_pair.png')
 plt.show()
 
 
@@ -283,27 +282,15 @@ for i in range(ngibbs):
     fig = plt.figure()
     plt.imshow(us_star[-1], cmap='gray')
     plt.tight_layout(pad=0.1)
-    plt.savefig(f'./tmp_figs/uss_{i}{"_doob" if args.doob else ""}.png')
+    plt.savefig(f'./tmp_figs/{task}_uss_{i}{"_doob" if args.doob else ""}.png')
     plt.close(fig)
 
     fig = plt.figure()
     plt.plot(uss[:i, -1, 10, 10])
     plt.tight_layout(pad=0.1)
-    plt.savefig(f'./tmp_figs/trace_pixel{"_doob" if args.doob else ""}.png')
+    plt.savefig(f'./tmp_figs/{task}_trace_pixel{"_doob" if args.doob else ""}.png')
     plt.close(fig)
 
-    print(f'Gibbs iter: {i}, acc: {acc}')
+    print(f'{task} | Gibbs iter: {i}, acc: {acc}')
 
 np.save(f'uss{"_doob" if args.doob else ""}', uss)
-
-# Plot
-plt.plot(uss[:, -1, 500])
-plt.plot(uss[:, -1, 300])
-plt.show()
-
-uss = uss[burn_in:]
-fig, axes = plt.subplots(ncols=4)
-for i in range(4):
-    axes[i].imshow(uss[-(i + 1), -1], cmap='gray')
-plt.tight_layout(pad=0.1)
-plt.show()

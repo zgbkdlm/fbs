@@ -1,5 +1,6 @@
 import jax
 import jax.numpy as jnp
+import itertools
 from .base import Dataset
 from fbs.typings import JKey, Array, JArray
 from typing import Tuple
@@ -12,7 +13,11 @@ class MNIST(Dataset):
     Data `x` has shape (n, 28, 28)
     """
 
-    def __init__(self, key: JKey, data_path: str, task: str = 'deconv', test: bool = False):
+    def __init__(self,
+                 key: JKey,
+                 data_path: str,
+                 task: str = 'deconv-10',
+                 test: bool = False):
         data_dict = jnp.load(data_path)
         self.task = task
 
@@ -32,19 +37,20 @@ class MNIST(Dataset):
         return array
 
     @staticmethod
-    def paint(key, img: Array, paint_val: float = 0.) -> JArray:
+    def paint(key, img: Array, rectangle_size: int = 15) -> JArray:
         """Paint the image with a random rectangle.
         """
-        img = jnp.reshape(img, (28, 28))
-        start_ind_x, start_ind_y = jax.random.randint(key, (2,), minval=5, maxval=10)
 
-        key, subkey = jax.random.split(key)
-        width, height = jax.random.randint(subkey, (2,), minval=10, maxval=17)
+        def gen_mask(i, j):
+            mask = jnp.ones((1, 28, 28))
+            return mask.at[:, i:i + rectangle_size, j: j + rectangle_size].set(0.)
 
-        img = img.at[start_ind_x:start_ind_x + width, start_ind_y:start_ind_y + height].set(paint_val)  # Not doable
+        masks = jnp.concatenate([gen_mask(i, j) for (i, j) in itertools.product((0, 5, 10, 12), (0, 5, 10, 12))],
+                                axis=0)
+        return img * jax.random.choice(key, masks)
 
     @staticmethod
-    def conv(key: JKey, img: Array) -> JArray:
+    def conv(key: JKey, img: Array, kernel_size: int = 10) -> JArray:
         """Corrupt the image with a random Gaussian blur.
 
         Parameters
@@ -53,6 +59,7 @@ class MNIST(Dataset):
             Random key.
         img : Array (h, w)
             Image to corrupt.
+        kernel_size
 
         Returns
         -------
@@ -60,7 +67,6 @@ class MNIST(Dataset):
             Convoluted image.
         """
         img = jnp.reshape(img, (1, 28, 28, 1))
-        kernel_size = 10
 
         variance = jax.random.uniform(key, minval=0.1, maxval=5.)  # it's not conjugate yeah I know...
         z_ = jnp.dstack(jnp.meshgrid(jnp.linspace(-1, 1, kernel_size), jnp.linspace(-1, 1, kernel_size)))
@@ -70,10 +76,12 @@ class MNIST(Dataset):
         return (corrupted_img - jnp.min(corrupted_img)) / (jnp.max(corrupted_img) - jnp.min(corrupted_img))
 
     def corrupt(self, key: JKey, img: JArray) -> JArray:
-        if self.task == 'inpainting':
-            raise NotImplementedError('Not implemented.')
-        elif self.task == 'deconv':
-            return self.conv(key, img)
+        if 'inpaint' in self.task:
+            rec_size = int(self.task.split('-')[-1])
+            return self.paint(key, img, rec_size)
+        elif 'deconv' in self.task:
+            kernel_size = int(self.task.split('-')[-1])
+            return self.conv(key, img, kernel_size)
         else:
             raise NotImplementedError('Not implemented.')
 
