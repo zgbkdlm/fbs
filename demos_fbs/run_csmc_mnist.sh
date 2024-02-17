@@ -14,4 +14,4 @@ source ./venv/bin/activate
 cd demos_fbs
 
 nvidia-smi
-python csmc_mnist.py --train --task=$1 --batch_size=64 --nsteps=64 --grad_clip --test_nsteps=1000 --test_epoch=29 --test_ema --test_seed=567 --nparticles=100 --ngibbs=500
+python -u csmc_mnist.py --train --task=$1 --batch_size=64 --nsteps=64 --grad_clip --test_nsteps=1000 --test_epoch=29 --test_ema --test_seed=567 --nparticles=100 --ngibbs=500

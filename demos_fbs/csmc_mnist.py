@@ -61,10 +61,11 @@ ts = jnp.linspace(0, T, nsteps + 1)
 d = (28, 28, 2)
 key, subkey = jax.random.split(key)
 dataset = MNIST(subkey, '../datasets/mnist.npz', task=task)
+dataset_test = MNIST(subkey, '../datasets/mnist.npz', task=task, test=True)
 
 
-def sampler(key_):
-    x_, y_ = dataset.sampler(key_)
+def sampler(key_, test: bool = False):
+    x_, y_ = dataset_test.sampler(key_) if test else dataset.sampler(key_)
     return dataset.concat(x_, y_)
 
 
@@ -162,7 +163,7 @@ def rev_sim(key_, u0):
 # Simulate the backward and verify if it matches the target distribution
 kkk = jax.random.PRNGKey(args.test_seed)
 key, subkey = jax.random.split(kkk)
-test_x0 = sampler(subkey)
+test_x0 = sampler(subkey, test=True)
 key, subkey = jax.random.split(key)
 traj = simulate_cond_forward(subkey, test_x0, ts)
 terminal_val = traj[-1]
@@ -186,7 +187,7 @@ plt.show()
 nparticles = args.nparticles
 ngibbs = args.ngibbs
 key, subkey = jax.random.split(key)
-test_xy0 = sampler(subkey)
+test_xy0 = sampler(subkey, test=True)
 test_x0, test_y0 = test_xy0[:, :, 0], test_xy0[:, :, 1]
 
 fig, axes = plt.subplots(ncols=2)
