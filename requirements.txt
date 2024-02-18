@@ -9,3 +9,4 @@ pytest
 einops
 -i https://download.pytorch.org/whl/cpu
 torch
+scikit-image
