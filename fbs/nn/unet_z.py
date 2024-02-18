@@ -136,7 +136,7 @@ class MNISTUNet(nn.Module):
         up_layers = []
         for i, feature in enumerate(self.features):
             x = ResBlock(feature)(x, time_emb)
-            # x = Attention()(x)
+            x = Attention()(x)
             up_layers.append(x)
             if i < len(self.features) - 1:
                 x = nn.Conv(feature, kernel_size=(3, 3), strides=(2, 2))(x)
@@ -148,7 +148,7 @@ class MNISTUNet(nn.Module):
         # Up pass
         for i in reversed(range(len(self.features))):
             x = ResBlock(self.features[i])(x, time_emb)
-            # x = Attention()(x)
+            x = Attention()(x)
             x = jnp.concatenate([up_layers[i], x], -1)
             x = ResBlock(self.features[i])(x, time_emb)
             if i > 0:
@@ -166,7 +166,7 @@ class MNISTUNet(nn.Module):
                     raise NotImplementedError('...')
 
         # End
-        x = ResBlock(8)(x, time_emb)
+        x = ResBlock(16)(x, time_emb)
         x = nn.Conv(self.nchannels, kernel_size=(1, 1))(x)
 
         if batch_size == 1:
