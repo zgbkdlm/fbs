@@ -270,12 +270,7 @@ def gibbs_kernel(key_, xs_, us_star_, bs_star_):
 
 # Gibbs loop
 key, subkey = jax.random.split(key)
-if 'deconv' or 'supr' in task:
-    xs = dataset.unpack(fwd_sampler(subkey, test_y0))[0]
-elif 'inpaint' in task:
-    xs = dataset.unpack(fwd_sampler(subkey, jnp.zeros_like(test_y0)))[0]
-else:
-    raise NotImplementedError(f'Unknown task {task}')
+xs = dataset.unpack(fwd_sampler(subkey, jnp.zeros_like(test_y0)))[0]
 us_star = xs[::-1]
 bs_star = jnp.zeros((nsteps + 1), dtype=int)
 
