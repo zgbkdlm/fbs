@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import optax
 from fbs.data import CIFAR10
+from fbs.data.images import normalise_rgb
 from fbs.sdes import make_linear_sde, make_linear_sde_law_loss, StationaryConstLinearSDE, \
     StationaryLinLinearSDE, StationaryExpLinearSDE, reverse_simulator
 from fbs.sdes.simulators import doob_bridge_simulator
@@ -114,9 +115,9 @@ loss_fn = make_linear_sde_law_loss(sde, nn_score, t0=0., T=T, nsteps=train_nstep
                                    random_times=True, loss_type=loss_type)
 
 if args.schedule == 'cos':
-    schedule = optax.cosine_decay_schedule(args.lr, data_size // train_nsamples * 4, .95)
+    schedule = optax.cosine_decay_schedule(args.lr, data_size // train_nsamples * 4, .96)
 elif args.schedule == 'exp':
-    schedule = optax.exponential_decay(args.lr, data_size // train_nsamples * 4, .95)
+    schedule = optax.exponential_decay(args.lr, data_size // train_nsamples * 4, .96)
 else:
     schedule = optax.constant_schedule(args.lr)
 
@@ -141,7 +142,7 @@ if train:
             x0s, y0s = dataset.enumerate_subset(j, perm_inds, subkey)
             xy0s = dataset.concat(x0s, y0s)
             param, opt_state, loss = optax_kernel(param, opt_state, subkey2, xy0s)
-            ema_param = ema_kernel(ema_param, param, j, 200, 0.99)
+            ema_param = ema_kernel(ema_param, param, j, 500, 0.99)
             print(f'| {task} | {args.upsampling} | {args.sde} | {loss_type} | {args.schedule} | '
                   f'Epoch: {i} / {nepochs}, iter: {j} / {data_size // train_nsamples}, loss: {loss:.4f}')
         filename = f'./cifar10_{task}_{args.sde}_{args.schedule}_{i}.npz'
@@ -174,10 +175,10 @@ print(jnp.min(approx_init_samples), jnp.max(approx_init_samples))
 
 fig, axes = plt.subplots(nrows=2, ncols=7, sharey='row')
 for row in range(2):
-    axes[row, 0].imshow(test_sample0[:, :, row * 3:(row + 1) * 3])
+    axes[row, 0].imshow(normalise_rgb(test_sample0[:, :, row * 3:(row + 1) * 3]))
     axes[row, 1].imshow(terminal_val[:, :, row * 3:(row + 1) * 3])
     for i in range(2, 7):
-        axes[row, i].imshow(approx_init_samples[i - 2][:, :, row * 3:(row + 1) * 3])
+        axes[row, i].imshow(normalise_rgb(approx_init_samples[i - 2][:, :, row * 3:(row + 1) * 3]))
 plt.tight_layout(pad=0.1)
 plt.savefig(f'./tmp_figs/cifar10_{task}_backward_test.png')
 plt.show()
@@ -285,7 +286,7 @@ for i in range(ngibbs):
     uss[i] = us_star
 
     fig = plt.figure()
-    plt.imshow(us_star[-1])
+    plt.imshow(normalise_rgb(us_star[-1]))
     plt.tight_layout(pad=0.1)
     plt.savefig(f'./tmp_figs/cifar10_{task}_uss_{i}{"_doob" if args.doob else ""}.png')
     plt.close(fig)

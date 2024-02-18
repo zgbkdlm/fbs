@@ -174,7 +174,7 @@ class CIFAR10(Dataset):
             return jax.image.resize(jax.image.resize(img, (1, int(32 / ratio), int(32 / ratio), 3), 'nearest'),
                                     (1, 32, 32, 3), 'nearest')
 
-        imgs = jnp.concatenate([down(i) for i in (2, 4, 8)], axis=0)
+        imgs = jnp.concatenate([down(i) for i in (4, 8)], axis=0)
         return jax.random.choice(key, imgs)
 
     def conv(self, key: JKey, img: Array, kernel_size: int = 10) -> JArray:
@@ -202,7 +202,7 @@ class CIFAR10(Dataset):
                                   (nchannels, nchannels, kernel_size, kernel_size))
         corrupted_img = jax.lax.conv_general_dilated(img, kernel, (1, 1), 'SAME',
                                                      dimension_numbers=('NHWC', 'IOHW', 'NHWC'))[0, :, :]
-        return (corrupted_img - jnp.min(corrupted_img)) / (jnp.max(corrupted_img) - jnp.min(corrupted_img))
+        return normalise_rgb(corrupted_img)
 
     def corrupt(self, key: JKey, img: JArray) -> JArray:
         if 'inpaint' in self.task:
@@ -253,3 +253,9 @@ class CIFAR10(Dataset):
     def unpack(self, xy: JArray) -> Tuple[JArray, JArray]:
         nchannels = self.image_shape[-1]
         return xy[..., :3], xy[..., 3:]
+
+
+def normalise_rgb(img: JArray) -> JArray:
+    mins = jnp.min(img, axis=-1, keepdims=True)
+    maxs = jnp.max(img, axis=-1, keepdims=True)
+    return (img - mins) / (maxs - mins)
