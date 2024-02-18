@@ -77,7 +77,7 @@ if not train:
     fig, axes = plt.subplots(nrows=2, ncols=4)
     for row in range(2):
         for col in range(4):
-            axes[row, col].imshow(xys[col, :, :, row * 3:(row + 1) * 3])
+            axes[row, col].imshow(normalise_rgb(xys[col, :, :, row * 3:(row + 1) * 3]))
     plt.tight_layout(pad=0.1)
     plt.show()
 

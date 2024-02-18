@@ -250,12 +250,12 @@ class CIFAR10(Dataset):
         else:
             return jnp.concatenate([x, y], axis=-1)
 
-    def unpack(self, xy: JArray) -> Tuple[JArray, JArray]:
-        nchannels = self.image_shape[-1]
+    @staticmethod
+    def unpack(xy: JArray) -> Tuple[JArray, JArray]:
         return xy[..., :3], xy[..., 3:]
 
 
 def normalise_rgb(img: JArray) -> JArray:
-    mins = jnp.min(img, axis=-1, keepdims=True)
-    maxs = jnp.max(img, axis=-1, keepdims=True)
+    mins = jnp.min(img, axis=[-2, -3], keepdims=True)
+    maxs = jnp.max(img, axis=[-2, -3], keepdims=True)
     return (img - mins) / (maxs - mins)
