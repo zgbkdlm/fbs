@@ -1,7 +1,6 @@
 r"""
-Conditional sampling on MNIST
+Conditional sampling on CIFAR10
 """
-import os
 import math
 import argparse
 import jax
@@ -23,7 +22,7 @@ from functools import partial
 # Parse arguments
 parser = argparse.ArgumentParser(description='CIFAR10 test.')
 parser.add_argument('--train', action='store_true', default=False, help='Whether train or not.')
-parser.add_argument('--task', type=str, default='deconv-10')
+parser.add_argument('--task', type=str, default='supr')
 parser.add_argument('--sde', type=str, default='lin')
 parser.add_argument('--upsampling', type=str, default='pixel_shuffle')
 parser.add_argument('--loss_type', type=str, default='score')
@@ -57,7 +56,7 @@ nsteps = args.test_nsteps
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
 
-# MNIST
+# CIFAR10
 d = (32, 32, 6)
 key, subkey = jax.random.split(key)
 dataset = CIFAR10(subkey, '../datasets/cifar10.npz', task=task)
@@ -77,7 +76,7 @@ if not train:
     fig, axes = plt.subplots(nrows=2, ncols=4)
     for row in range(2):
         for col in range(4):
-            axes[row, col].imshow(xys[col, :, :, row * 3:(row + 1) * 3], cmap='gray')
+            axes[row, col].imshow(xys[col, :, :, row * 3:(row + 1) * 3])
     plt.tight_layout(pad=0.1)
     plt.show()
 
@@ -145,10 +144,10 @@ if train:
             ema_param = ema_kernel(ema_param, param, j, 200, 0.99)
             print(f'| {task} | {args.upsampling} | {args.sde} | {loss_type} | {args.schedule} | '
                   f'Epoch: {i} / {nepochs}, iter: {j} / {data_size // train_nsamples}, loss: {loss:.4f}')
-        filename = f'./mnist_{task}_{args.sde}_{args.schedule}_{i}.npz'
+        filename = f'./cifar10_{task}_{args.sde}_{args.schedule}_{i}.npz'
         np.savez(filename, param=param, ema_param=ema_param)
 else:
-    param = np.load(f'./mnist_{task}_{args.sde}_{args.schedule}_'
+    param = np.load(f'./cifar10_{task}_{args.sde}_{args.schedule}_'
                     f'{args.test_epoch}.npz')['ema_param' if args.test_ema else 'param']
 
 
@@ -161,8 +160,8 @@ def rev_sim(key_, u0):
 
 
 # Simulate the backward and verify if it matches the target distribution
-kkk = jax.random.PRNGKey(args.test_seed)
-key, subkey = jax.random.split(kkk)
+key = jax.random.PRNGKey(args.test_seed)
+key, subkey = jax.random.split(key)
 test_x0 = sampler(subkey, test=True)
 key, subkey = jax.random.split(key)
 traj = simulate_cond_forward(subkey, test_x0, ts)
@@ -175,12 +174,12 @@ print(jnp.min(approx_init_samples), jnp.max(approx_init_samples))
 
 fig, axes = plt.subplots(nrows=2, ncols=7, sharey='row')
 for row in range(2):
-    axes[row, 0].imshow(test_x0[:, :, row * 3:(row + 1) * 3], cmap='gray')
-    axes[row, 1].imshow(terminal_val[:, :, row * 3:(row + 1) * 3], cmap='gray')
+    axes[row, 0].imshow(test_x0[:, :, row * 3:(row + 1) * 3])
+    axes[row, 1].imshow(terminal_val[:, :, row * 3:(row + 1) * 3])
     for i in range(2, 7):
-        axes[row, i].imshow(approx_init_samples[i - 2][:, :, row * 3:(row + 1) * 3], cmap='gray')
+        axes[row, i].imshow(approx_init_samples[i - 2][:, :, row * 3:(row + 1) * 3])
 plt.tight_layout(pad=0.1)
-plt.savefig(f'./tmp_figs/{task}_backward_test.png')
+plt.savefig(f'./tmp_figs/cifar10_{task}_backward_test.png')
 plt.show()
 
 # Now conditional sampling
@@ -191,9 +190,9 @@ test_xy0 = sampler(subkey, test=True)
 test_x0, test_y0 = test_xy0[:, :, :3], test_xy0[:, :, 3:]
 
 fig, axes = plt.subplots(ncols=2)
-axes[0].imshow(test_x0, cmap='gray')
-axes[1].imshow(test_y0, cmap='gray')
-plt.savefig(f'./tmp_figs/{task}_pair.png')
+axes[0].imshow(test_x0)
+axes[1].imshow(test_y0)
+plt.savefig(f'./tmp_figs/cifar10_{task}_pair.png')
 plt.show()
 
 
@@ -270,7 +269,7 @@ def gibbs_kernel(key_, xs_, us_star_, bs_star_):
 
 # Gibbs loop
 key, subkey = jax.random.split(key)
-if 'deconv' in task:
+if 'deconv' or 'supr' in task:
     xs = dataset.unpack(fwd_sampler(subkey, test_y0))[0]
 elif 'inpaint' in task:
     xs = dataset.unpack(fwd_sampler(subkey, jnp.zeros_like(test_y0)))[0]
@@ -286,15 +285,15 @@ for i in range(ngibbs):
     uss[i] = us_star
 
     fig = plt.figure()
-    plt.imshow(us_star[-1], cmap='gray')
+    plt.imshow(us_star[-1])
     plt.tight_layout(pad=0.1)
-    plt.savefig(f'./tmp_figs/{task}_uss_{i}{"_doob" if args.doob else ""}.png')
+    plt.savefig(f'./tmp_figs/cifar10_{task}_uss_{i}{"_doob" if args.doob else ""}.png')
     plt.close(fig)
 
     fig = plt.figure()
     plt.plot(uss[:i, -1, 10, 10, 0])
     plt.tight_layout(pad=0.1)
-    plt.savefig(f'./tmp_figs/{task}_trace_pixel{"_doob" if args.doob else ""}.png')
+    plt.savefig(f'./tmp_figs/cifar10_{task}_trace_pixel{"_doob" if args.doob else ""}.png')
     plt.close(fig)
 
     print(f'{task} | Gibbs iter: {i}, acc: {acc}')

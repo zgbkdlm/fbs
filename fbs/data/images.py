@@ -151,14 +151,14 @@ class CIFAR10(Dataset):
 
         if test:
             self.n = 10000
-            xs = data_dict['train_data']
+            xs = data_dict['test_data']
             xs = jax.random.permutation(key, xs, axis=0)
             self.xs = jnp.reshape(xs, (10000, 32, 32, 3))
         else:
             self.n = 50000
-            xs = data_dict['test_data']
+            xs = data_dict['train_data']
             xs = jax.random.permutation(key, xs, axis=0)
-            self.xs = jnp.reshape(xs, (60000, 32, 32, 3))
+            self.xs = jnp.reshape(xs, (50000, 32, 32, 3))
 
         self.xs = self.standardise(xs)
         self.image_shape = (32, 32, 3)
@@ -168,16 +168,14 @@ class CIFAR10(Dataset):
         return array
 
     def downsample(self, key: JArray, img: Array) -> Array:
-        nchannels = self.image_shape[-1]
         img = jnp.reshape(img, (1, *self.image_shape))
 
-        kernel_sizes = jnp.array([2, 4, 8, 16])
-        kernel_size = jax.random.choice(key, kernel_sizes)
-        kernel = jnp.ones((kernel_size, kernel_size, nchannels, nchannels))
+        def down(ratio):
+            return jax.image.resize(jax.image.resize(img, (1, int(32 / ratio), int(32 / ratio), 3), 'nearest'),
+                                    (1, 32, 32, 3), 'nearest')
 
-        corrupted_img = jax.lax.conv_general_dilated(img, kernel, (1, 1), 'SAME',
-                                                     dimension_numbers=('NHWC', 'HWIO', 'NHWC'))[0, :, :]
-        return (corrupted_img - jnp.min(corrupted_img)) / (jnp.max(corrupted_img) - jnp.min(corrupted_img))
+        imgs = jnp.concatenate([down(i) for i in (2, 4, 8)], axis=0)
+        return jax.random.choice(key, imgs)
 
     def conv(self, key: JKey, img: Array, kernel_size: int = 10) -> JArray:
         """Corrupt the image with a random Gaussian blur.
@@ -200,9 +198,10 @@ class CIFAR10(Dataset):
 
         variance = jax.random.uniform(key, minval=0.1, maxval=5.)  # it's not conjugate yeah I know...
         z_ = jnp.dstack(jnp.meshgrid(jnp.linspace(-1, 1, kernel_size), jnp.linspace(-1, 1, kernel_size)))
-        kernel = jnp.prod(jnp.exp(-z_ ** 2 / variance), axis=-1).reshape(kernel_size, kernel_size, nchannels, nchannels)
+        kernel = jnp.broadcast_to(jnp.prod(jnp.exp(-z_ ** 2 / variance), axis=-1),
+                                  (nchannels, nchannels, kernel_size, kernel_size))
         corrupted_img = jax.lax.conv_general_dilated(img, kernel, (1, 1), 'SAME',
-                                                     dimension_numbers=('NHWC', 'HWIO', 'NHWC'))[0, :, :]
+                                                     dimension_numbers=('NHWC', 'IOHW', 'NHWC'))[0, :, :]
         return (corrupted_img - jnp.min(corrupted_img)) / (jnp.max(corrupted_img) - jnp.min(corrupted_img))
 
     def corrupt(self, key: JKey, img: JArray) -> JArray:
@@ -253,4 +252,4 @@ class CIFAR10(Dataset):
 
     def unpack(self, xy: JArray) -> Tuple[JArray, JArray]:
         nchannels = self.image_shape[-1]
-        return xy[..., :nchannels], xy[..., nchannels:]
+        return xy[..., :3], xy[..., 3:]
