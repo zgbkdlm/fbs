@@ -166,7 +166,7 @@ class MNISTUNet(nn.Module):
                     raise NotImplementedError('...')
 
         # End
-        x = ResBlock(16)(x, time_emb)
+        x = ResBlock(8)(x, time_emb)
         x = nn.Conv(self.nchannels, kernel_size=(1, 1))(x)
 
         if batch_size == 1:
