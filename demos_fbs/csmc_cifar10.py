@@ -162,9 +162,9 @@ def rev_sim(key_, u0):
 # Simulate the backward and verify if it matches the target distribution
 key = jax.random.PRNGKey(args.test_seed)
 key, subkey = jax.random.split(key)
-test_x0 = sampler(subkey, test=True)
+test_sample0 = sampler(subkey, test=True)
 key, subkey = jax.random.split(key)
-traj = simulate_cond_forward(subkey, test_x0, ts)
+traj = simulate_cond_forward(subkey, test_sample0, ts)
 terminal_val = traj[-1]
 
 key, subkey = jax.random.split(key)
@@ -174,7 +174,7 @@ print(jnp.min(approx_init_samples), jnp.max(approx_init_samples))
 
 fig, axes = plt.subplots(nrows=2, ncols=7, sharey='row')
 for row in range(2):
-    axes[row, 0].imshow(test_x0[:, :, row * 3:(row + 1) * 3])
+    axes[row, 0].imshow(test_sample0[:, :, row * 3:(row + 1) * 3])
     axes[row, 1].imshow(terminal_val[:, :, row * 3:(row + 1) * 3])
     for i in range(2, 7):
         axes[row, i].imshow(approx_init_samples[i - 2][:, :, row * 3:(row + 1) * 3])
