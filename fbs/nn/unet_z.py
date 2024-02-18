@@ -114,7 +114,7 @@ class ResBlock(nn.Module):
 
 class MNISTUNet(nn.Module):
     dt: float
-    features: Sequence[int] = (32, 64, 128)
+    features: Sequence[int] = (16, 32, 64)
     nchannels: int = 1
     upsampling_method: str = 'pixel_shuffle'
 
@@ -166,7 +166,7 @@ class MNISTUNet(nn.Module):
                     raise NotImplementedError('...')
 
         # End
-        x = ResBlock(8)(x, time_emb)
+        x = ResBlock(16)(x, time_emb)
         x = nn.Conv(self.nchannels, kernel_size=(1, 1))(x)
 
         if batch_size == 1:
