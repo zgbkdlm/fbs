@@ -16,7 +16,7 @@ from fbs.sdes.simulators import doob_bridge_simulator
 from fbs.filters.csmc.csmc import csmc_kernel
 from fbs.filters.csmc.resamplings import killing
 from fbs.nn.models import make_st_nn
-from fbs.nn.unet_mnist import MNISTUNet
+from fbs.nn.unet_cifar import UNet
 from fbs.nn.utils import make_optax_kernel
 from functools import partial
 
@@ -106,7 +106,7 @@ nepochs = args.nepochs
 data_size = dataset.n
 
 key, subkey = jax.random.split(key)
-my_nn = MNISTUNet(dt=nn_dt, nchannels=6, upsampling_method=args.upsampling)
+my_nn = UNet(dt=nn_dt)
 array_param, _, nn_score = make_st_nn(subkey,
                                       nn=my_nn, dim_in=d, batch_size=train_nsamples)
 
