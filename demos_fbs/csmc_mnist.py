@@ -16,7 +16,7 @@ from fbs.sdes.simulators import doob_bridge_simulator
 from fbs.filters.csmc.csmc import csmc_kernel
 from fbs.filters.csmc.resamplings import killing
 from fbs.nn.models import make_st_nn
-from fbs.nn.unet_z import MNISTUNet
+from fbs.nn.unet_mnist import MNISTUNet
 from fbs.nn.utils import make_optax_kernel
 from functools import partial
 
