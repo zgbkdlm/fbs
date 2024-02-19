@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -A Berzelius-2023-194
 #SBATCH --gpus=1
-#SBATCH -o cifar10.log
+#SBATCH -o cifar10-sm.log
 #SBATCH -t 05:00:00
 #SBATCH -C "fat"
 
