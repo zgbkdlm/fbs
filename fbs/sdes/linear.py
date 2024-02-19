@@ -207,7 +207,7 @@ def make_linear_sde_law_loss(sde: LinearSDE, nn_fn,
                              loss_type: str = 'score',
                              save_mem: bool = False):
     discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(sde)
-    eps = 1e-6
+    eps = 1e-5
 
     def score_scale(t, s):
         return discretise_linear_sde(t, s)[1]
