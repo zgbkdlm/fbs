@@ -232,7 +232,7 @@ def make_linear_sde_law_loss(sde: LinearSDE, nn_fn,
             return None, nn_fn(x, t, param)
 
         if save_mem:
-            nn_evals = jax.lax.scan(scan_nn, fwd_paths[:, 1:], ts[1:])
+            nn_evals = jax.lax.scan(scan_nn, None, (fwd_paths[:, 1:], ts[1:]))
         else:
             nn_evals = jax.vmap(nn_fn,
                                 in_axes=[1, 0, None],
