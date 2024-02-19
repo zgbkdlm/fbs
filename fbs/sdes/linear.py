@@ -226,9 +226,17 @@ def make_linear_sde_law_loss(sde: LinearSDE, nn_fn,
 
         keys = jax.random.split(key_fwd, num=nsamples)
         fwd_paths = jax.vmap(simulate_cond_forward, in_axes=[0, 0, None])(keys, x0s, ts)  # (n, nsteps + 1, ...)
-        nn_evals = jax.vmap(nn_fn,
-                            in_axes=[1, 0, None],
-                            out_axes=1)(fwd_paths[:, 1:], ts[1:], param)  # (n, nsteps, ...)
+
+        def scan_nn(_, elem):
+            x, t = elem
+            return None, nn_fn(x, t, param)
+
+        if save_mem:
+            nn_evals = jax.lax.scan(scan_nn, fwd_paths[:, 1:], ts[1:])
+        else:
+            nn_evals = jax.vmap(nn_fn,
+                                in_axes=[1, 0, None],
+                                out_axes=1)(fwd_paths[:, 1:], ts[1:], param)  # (n, nsteps, ...)
 
         if loss_type == 'score':
             cond_score_evals = jax.vmap(cond_score_t_0,
