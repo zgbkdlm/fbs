@@ -284,7 +284,10 @@ class UNet(nn.Module):
         hs.append(h)
         # use sinusoidal embeddings to encode timesteps
         # time_emb = SinusoidalPosEmb(self.dim, dtype=self.dtype)(time / self.dt)  # [B. dim]
-        time_emb = jnp.broadcast_to(sinusoidal_embedding(time / self.dt, out_dim=self.dim), (B, self.dim))
+        if time.ndim < 1:
+            time_emb = jnp.broadcast_to(sinusoidal_embedding(time / self.dt, out_dim=self.dim), (B, self.dim))
+        else:
+            time_emb = jax.vmap(lambda z: sinusoidal_embedding(z, out_dim=self.dim))(time / self.dt)
         time_emb = nn.Dense(features=self.dim * 4, dtype=self.dtype)(time_emb)
         time_emb = nn.Dense(features=self.dim * 4, dtype=self.dtype)(nn.gelu(time_emb))  # [B, 4*dim]
 
