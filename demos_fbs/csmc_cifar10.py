@@ -32,6 +32,8 @@ parser.add_argument('--batch_size', type=int, default=2)
 parser.add_argument('--nsteps', type=int, default=2)
 parser.add_argument('--schedule', type=str, default='cos')
 parser.add_argument('--nepochs', type=int, default=40)
+parser.add_argument('--save_mem', action='store_true', default=False,
+                    help='Save memory by sharing the batch of x and t')
 parser.add_argument('--grad_clip', action='store_true', default=False)
 parser.add_argument('--test_nsteps', type=int, default=500)
 parser.add_argument('--test_epoch', type=int, default=39)
@@ -106,13 +108,13 @@ nepochs = args.nepochs
 data_size = dataset.n
 
 key, subkey = jax.random.split(key)
-my_nn = UNet(dt=nn_dt)
+my_nn = UNet(dt=nn_dt, dim=64)
 array_param, _, nn_score = make_st_nn(subkey,
                                       nn=my_nn, dim_in=d, batch_size=train_nsamples)
 
 loss_type = args.loss_type
 loss_fn = make_linear_sde_law_loss(sde, nn_score, t0=0., T=T, nsteps=train_nsteps,
-                                   random_times=True, loss_type=loss_type, save_mem=True)
+                                   random_times=True, loss_type=loss_type, save_mem=args.save_mem)
 
 if args.schedule == 'cos':
     schedule = optax.cosine_decay_schedule(args.lr, data_size // train_nsamples * 4, .96)
@@ -142,7 +144,7 @@ if train:
             x0s, y0s = dataset.enumerate_subset(j, perm_inds, subkey)
             xy0s = dataset.concat(x0s, y0s)
             param, opt_state, loss = optax_kernel(param, opt_state, subkey2, xy0s)
-            ema_param = ema_kernel(ema_param, param, j, 500, 0.99)
+            ema_param = ema_kernel(ema_param, param, j, 200, 0.995)
             print(f'| {task} | {args.upsampling} | {args.sde} | {loss_type} | {args.schedule} | '
                   f'Epoch: {i} / {nepochs}, iter: {j} / {data_size // train_nsamples}, loss: {loss:.4f}')
         filename = f'./cifar10_{task}_{args.sde}_{args.schedule}_{i}.npz'
