@@ -1,5 +1,5 @@
 r"""
-Conditional sampling on CIFAR10
+Conditional sampling on CelebA HQ dataset.
 """
 import math
 import argparse
@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 import optax
-from fbs.data import CIFAR10
+from fbs.data import CelebAHQ
 from fbs.data.images import normalise_rgb
 from fbs.sdes import make_linear_sde, make_linear_sde_law_loss, StationaryConstLinearSDE, \
     StationaryLinLinearSDE, StationaryExpLinearSDE, reverse_simulator
@@ -21,13 +21,14 @@ from fbs.nn.utils import make_optax_kernel
 from functools import partial
 
 # Parse arguments
-parser = argparse.ArgumentParser(description='CIFAR10 test.')
+parser = argparse.ArgumentParser(description='CelebA test.')
 parser.add_argument('--train', action='store_true', default=False, help='Whether train or not.')
 parser.add_argument('--task', type=str, default='supr')
+parser.add_argument('--resolution', type=int, default=64)
 parser.add_argument('--sde', type=str, default='lin')
 parser.add_argument('--upsampling', type=str, default='pixel_shuffle')
 parser.add_argument('--loss_type', type=str, default='score')
-parser.add_argument('--lr', type=float, default=1e-4)
+parser.add_argument('--lr', type=float, default=2e-4)
 parser.add_argument('--batch_size', type=int, default=2)
 parser.add_argument('--nsteps', type=int, default=2)
 parser.add_argument('--schedule', type=str, default='cos')
@@ -44,8 +45,9 @@ parser.add_argument('--doob', action='store_true', default=False)
 args = parser.parse_args()
 train = args.train
 task = args.task
+resolution = args.resolution
 
-print(f'{"Train" if train else "Test"} {task} on CIFAR10')
+print(f'{"Train" if train else "Test"} {task} on CelebaHQ{resolution}')
 
 # General configs
 # jax.config.update("jax_enable_x64", True)
@@ -58,10 +60,10 @@ dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
 
 # CIFAR10
-d = (32, 32, 6)
+d = (resolution, resolution, 6)
 key, subkey = jax.random.split(key)
-dataset = CIFAR10(subkey, '../datasets/cifar10.npz', task=task)
-dataset_test = CIFAR10(subkey, '../datasets/cifar10.npz', task=task, test=True)
+dataset = CelebAHQ(subkey, f'../datasets/celeba_hq{resolution}.npy', task=task, resolution=resolution)
+dataset_test = CelebAHQ(subkey, f'../datasets/celeba_hq{resolution}.npy', task=task, resolution=resolution, test=True)
 
 
 def sampler(key_, test: bool = False):
@@ -147,10 +149,10 @@ if train:
             ema_param = ema_kernel(ema_param, param, j, 500, 0.99)
             print(f'| {task} | {args.upsampling} | {args.sde} | {loss_type} | {args.schedule} | '
                   f'Epoch: {i} / {nepochs}, iter: {j} / {data_size // train_nsamples}, loss: {loss:.4f}')
-        filename = f'./cifar10_{task}_{args.sde}_{args.schedule}_{i}.npz'
+        filename = f'./celeba{resolution}_{task}_{args.sde}_{args.schedule}_{i}.npz'
         np.savez(filename, param=param, ema_param=ema_param)
 else:
-    param = np.load(f'./cifar10_{task}_{args.sde}_{args.schedule}_'
+    param = np.load(f'./celeba{resolution}_{task}_{args.sde}_{args.schedule}_'
                     f'{args.test_epoch}.npz')['ema_param' if args.test_ema else 'param']
 
 
@@ -182,7 +184,7 @@ for row in range(2):
     for i in range(2, 7):
         axes[row, i].imshow(normalise_rgb(approx_init_samples[i - 2][:, :, row * 3:(row + 1) * 3]))
 plt.tight_layout(pad=0.1)
-plt.savefig(f'./tmp_figs/cifar10_{task}_backward_test.png')
+plt.savefig(f'./tmp_figs/celeba{resolution}_{task}_backward_test.png')
 plt.show()
 
 # Now conditional sampling
@@ -195,7 +197,7 @@ test_x0, test_y0 = test_xy0[:, :, :3], test_xy0[:, :, 3:]
 fig, axes = plt.subplots(ncols=2)
 axes[0].imshow(test_x0)
 axes[1].imshow(test_y0)
-plt.savefig(f'./tmp_figs/cifar10_{task}_pair.png')
+plt.savefig(f'./tmp_figs/celeba{resolution}_{task}_pair.png')
 plt.show()
 
 
@@ -276,7 +278,7 @@ xs = dataset.unpack(fwd_sampler(subkey, jnp.zeros_like(test_y0)))[0]
 us_star = xs[::-1]
 bs_star = jnp.zeros((nsteps + 1), dtype=int)
 
-uss = np.zeros((ngibbs, nsteps + 1, 32, 32, 3))
+uss = np.zeros((ngibbs, nsteps + 1, resolution, resolution, 3))
 for i in range(ngibbs):
     key, subkey = jax.random.split(key)
     xs, us_star, bs_star, acc = gibbs_kernel(subkey, xs, us_star, bs_star)
@@ -285,13 +287,13 @@ for i in range(ngibbs):
     fig = plt.figure()
     plt.imshow(normalise_rgb(us_star[-1]))
     plt.tight_layout(pad=0.1)
-    plt.savefig(f'./tmp_figs/cifar10_{task}_uss_{i}{"_doob" if args.doob else ""}.png')
+    plt.savefig(f'./tmp_figs/celeba{resolution}_{task}_uss_{i}{"_doob" if args.doob else ""}.png')
     plt.close(fig)
 
     fig = plt.figure()
     plt.plot(uss[:i, -1, 10, 10, 0])
     plt.tight_layout(pad=0.1)
-    plt.savefig(f'./tmp_figs/cifar10_{task}_trace_pixel{"_doob" if args.doob else ""}.png')
+    plt.savefig(f'./tmp_figs/celeba{resolution}_{task}_trace_pixel{"_doob" if args.doob else ""}.png')
     plt.close(fig)
 
     print(f'{task} | Gibbs iter: {i}, acc: {acc}')
