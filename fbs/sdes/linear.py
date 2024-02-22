@@ -204,11 +204,9 @@ def make_linear_sde(sde: LinearSDE):
 def make_linear_sde_law_loss(sde: LinearSDE, nn_fn,
                              t0=0., T=2., nsteps: int = 100,
                              random_times: bool = True,
-                             keep_path: bool = True,
                              loss_type: str = 'score',
                              save_mem: bool = False):
     discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(sde)
-    simulate_cond_forward = partial(simulate_cond_forward, keep_path=keep_path)
     eps = 1e-5
 
     def score_scale(t, s):
@@ -228,19 +226,11 @@ def make_linear_sde_law_loss(sde: LinearSDE, nn_fn,
         scales = score_scale(ts[1:], ts[0])
 
         keys = jax.random.split(key_fwd, num=nsamples)
-        fwd_paths = jax.vmap(simulate_cond_forward, in_axes=[0, 0, None])(keys, x0s, ts)  # (n, nsteps + 1, ...)
-
-        def scan_nn(_, elem):
-            x, t = elem
-            return None, nn_fn(x, t, param)
-
-        if save_mem:
-            nn_evals = jnp.swapaxes(jax.lax.scan(scan_nn, None, (jnp.swapaxes(fwd_paths[:, 1:], 0, 1), ts[1:]))[1],
-                                    0, 1)
-        else:
-            nn_evals = jax.vmap(nn_fn,
-                                in_axes=[1, 0, None],
-                                out_axes=1)(fwd_paths[:, 1:], ts[1:], param)  # (n, nsteps, ...)
+        fwd_paths = jax.vmap(partial(simulate_cond_forward, keep_path=True),
+                             in_axes=[0, 0, None])(keys, x0s, ts)  # (n, nsteps + 1, ...)
+        nn_evals = jax.vmap(nn_fn,
+                            in_axes=[1, 0, None],
+                            out_axes=1)(fwd_paths[:, 1:], ts[1:], param)  # (n, nsteps, ...)
 
         if loss_type == 'score':
             cond_score_evals = jax.vmap(cond_score_t_0,
@@ -286,8 +276,8 @@ def make_linear_sde_law_loss(sde: LinearSDE, nn_fn,
         scales = score_scale(ts, t0)
 
         keys = jax.random.split(key_fwd, num=nsamples)
-        point_simulate = lambda key_, x0s_, ts_: simulate_cond_forward(key_, x0s_, ts_, t0=t0, keep_path=False)
-        fwd_paths = jax.vmap(point_simulate, in_axes=[0, 0, 0])(keys, x0s, ts)  # (n, ...)
+        fwd_paths = jax.vmap(partial(simulate_cond_forward, t0=t0, keep_path=False),
+                             in_axes=[0, 0, 0])(keys, x0s, ts)  # (n, ...)
         nn_evals = nn_fn(fwd_paths, ts, param)  # (n, ...)
 
         if loss_type == 'score':

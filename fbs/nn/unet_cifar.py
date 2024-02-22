@@ -258,7 +258,7 @@ class AttnBlock(nn.Module):
 
 class UNet(nn.Module):
     dt: float
-    dim: int = 64
+    dim: int
     init_dim: Optional[int] = None  # if None, same as dim
     out_dim: Optional[int] = None
     dim_mults: Tuple[int, int, int, int] = (1, 2, 4)
@@ -283,7 +283,6 @@ class UNet(nn.Module):
 
         hs.append(h)
         # use sinusoidal embeddings to encode timesteps
-        # time_emb = SinusoidalPosEmb(self.dim, dtype=self.dtype)(time / self.dt)  # [B. dim]
         if time.ndim < 1:
             time_emb = jnp.broadcast_to(sinusoidal_embedding(time / self.dt, out_dim=self.dim), (B, self.dim))
         else:
