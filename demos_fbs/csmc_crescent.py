@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import optax
 from fbs.data import Crescent
-from fbs.nn.models import make_simple_st_nn, CrescentMLP
+from fbs.nn.models import make_st_nn, CrescentMLP
 from fbs.nn.utils import make_optax_kernel
 from fbs.sdes import make_linear_sde, make_linear_sde_law_loss, StationaryLinLinearSDE, reverse_simulator
 from fbs.sdes.simulators import doob_bridge_simulator
@@ -20,12 +20,12 @@ from fbs.filters.csmc.resamplings import killing
 from functools import partial
 
 # General configs
-nparticles = 50
-ngibbs = 10000
+nparticles = 100
+ngibbs = 5000
 burn_in = 100
 jax.config.update("jax_enable_x64", False)
 key = jax.random.PRNGKey(666)
-y0 = 2.
+y0 = 4.
 use_pretrained = True
 use_ema = True
 
@@ -73,17 +73,16 @@ train_nsteps = 100
 nn_dt = T / 200
 
 key, subkey = jax.random.split(key)
-_, _, array_param, _, nn_score = make_simple_st_nn(subkey,
-                                                   dim_in=3, batch_size=train_nsamples,
-                                                   nn_model=CrescentMLP(nn_dt))
+array_param, _, nn_score = make_st_nn(subkey, CrescentMLP(nn_dt),
+                                      dim_in=(3,), batch_size=train_nsamples)
 
 loss_type = 'score'
 loss_fn = make_linear_sde_law_loss(sde, nn_score,
                                    t0=0., T=T, nsteps=train_nsteps,
-                                   random_times=True, loss_type=loss_type)
+                                   random_times=True, loss_type=loss_type, save_mem=False)
 
 # schedule = optax.constant_schedule(1e-3)
-schedule = optax.cosine_decay_schedule(1e-3, 50, .95)
+schedule = optax.cosine_decay_schedule(1e-3, 10000, 1e-2)
 optimiser = optax.chain(optax.clip_by_global_norm(1.),
                         optax.adam(learning_rate=schedule))
 optax_kernel, ema_kernel = make_optax_kernel(optimiser, loss_fn, jit=True)

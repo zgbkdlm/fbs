@@ -143,7 +143,7 @@ if train:
             xy0s = dataset.concat(x0s, y0s)
             param, opt_state, loss = optax_kernel(param, opt_state, subkey2, xy0s)
             ema_param = ema_kernel(ema_param, param, j, 200, 0.99)
-            print(f'| {task} | {args.upsampling} | {args.sde} | {loss_type} | {args.schedule} | '
+            print(f'MNIST | {task} | {args.upsampling} | {args.sde} | {loss_type} | {args.schedule} | '
                   f'Epoch: {i} / {nepochs}, iter: {j} / {data_size // train_nsamples}, loss: {loss:.4f}')
         filename = f'./mnist_{task}_{args.sde}_{args.schedule}_{i}.npz'
         np.savez(filename, param=param, ema_param=ema_param)

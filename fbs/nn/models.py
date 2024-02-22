@@ -26,7 +26,10 @@ class CrescentMLP(nn.Module):
 
     @nn.compact
     def __call__(self, x, t):
-        time_emb = sinusoidal_embedding(t / self.dt, out_dim=32)
+        if t.ndim < 1:
+            time_emb = jnp.expand_dims(sinusoidal_embedding(t / self.dt, out_dim=32), 0)
+        else:
+            time_emb = jax.vmap(lambda z: sinusoidal_embedding(z, out_dim=32))(t / self.dt)
 
         x = nn.Dense(features=64, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
         x = (x * _CrescentTimeBlock(dt=self.dt, nfeatures=64)(time_emb) +

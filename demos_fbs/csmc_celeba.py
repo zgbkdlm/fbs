@@ -149,7 +149,7 @@ if train:
             xy0s = dataset.concat(x0s, y0s)
             param, opt_state, loss = optax_kernel(param, opt_state, subkey2, xy0s)
             ema_param = ema_kernel(ema_param, param, j, 500, 0.99)
-            print(f'| {task} | {args.upsampling} | {args.sde} | {loss_type} | {args.schedule} | '
+            print(f'CelebA{resolution} | {task} | {args.upsampling} | {args.sde} | {loss_type} | {args.schedule} | '
                   f'Epoch: {i} / {nepochs}, iter: {j} / {data_size // train_nsamples}, loss: {loss:.4f}')
         filename = f'./celeba{resolution}_{task}_{args.sde}_{args.schedule}_{i}.npz'
         if (i + 1) % 50 == 0:
