@@ -120,7 +120,7 @@ loss_fn = make_linear_sde_law_loss(sde, nn_score, t0=0., T=T, nsteps=train_nstep
 
 nsteps_per_epoch = data_size // train_nsamples
 if args.schedule == 'cos':
-    until_steps = int(0.9 * nepochs) * nsteps_per_epoch
+    until_steps = int(0.95 * nepochs) * nsteps_per_epoch
     schedule = optax.cosine_decay_schedule(init_value=args.lr, decay_steps=until_steps, alpha=1e-2)
 elif args.schedule == 'exp':
     schedule = optax.exponential_decay(args.lr, data_size // train_nsamples, .96)
