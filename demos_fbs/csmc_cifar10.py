@@ -150,7 +150,8 @@ if train:
             print(f'| {task} | {args.upsampling} | {args.sde} | {loss_type} | {args.schedule} | '
                   f'Epoch: {i} / {nepochs}, iter: {j} / {data_size // train_nsamples}, loss: {loss:.4f}')
         filename = f'./cifar10_{task}_{args.sde}_{args.schedule}_{i}.npz'
-        np.savez(filename, param=param, ema_param=ema_param)
+        if (i + 1) % 50 == 0:
+            np.savez(filename, param=param, ema_param=ema_param)
 else:
     param = np.load(f'./cifar10_{task}_{args.sde}_{args.schedule}_'
                     f'{args.test_epoch}.npz')['ema_param' if args.test_ema else 'param']
