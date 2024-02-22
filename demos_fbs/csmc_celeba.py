@@ -33,6 +33,8 @@ parser.add_argument('--batch_size', type=int, default=2)
 parser.add_argument('--nsteps', type=int, default=2)
 parser.add_argument('--schedule', type=str, default='cos')
 parser.add_argument('--nepochs', type=int, default=40)
+parser.add_argument('--save_mem', action='store_true', default=False,
+                    help='Save memory by sharing the batch of x and t')
 parser.add_argument('--grad_clip', action='store_true', default=False)
 parser.add_argument('--test_nsteps', type=int, default=500)
 parser.add_argument('--test_epoch', type=int, default=39)
@@ -114,7 +116,7 @@ array_param, _, nn_score = make_st_nn(subkey,
 
 loss_type = args.loss_type
 loss_fn = make_linear_sde_law_loss(sde, nn_score, t0=0., T=T, nsteps=train_nsteps,
-                                   random_times=True, loss_type=loss_type, save_mem=True)
+                                   random_times=True, loss_type=loss_type, save_mem=args.save_mem)
 
 nsteps_per_epoch = data_size // train_nsamples
 if args.schedule == 'cos':
