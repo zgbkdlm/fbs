@@ -15,7 +15,7 @@ class Image(Dataset):
         return array
 
     def downsample(self, key: JArray, img: Array) -> Array:
-        ratios = (2, 4)
+        ratios = (4, 8)
         w, h, c = self.image_shape
 
         def down(ratio):

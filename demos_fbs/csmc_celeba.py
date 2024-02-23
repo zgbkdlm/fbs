@@ -152,7 +152,7 @@ if train:
             print(f'CelebA{resolution} | {task} | {args.upsampling} | {args.sde} | {loss_type} | {args.schedule} | '
                   f'Epoch: {i} / {nepochs}, iter: {j} / {data_size // train_nsamples}, loss: {loss:.4f}')
         filename = f'./celeba{resolution}_{task}_{args.sde}_{args.schedule}_{i}.npz'
-        if (i + 1) % 50 == 0:
+        if (i + 1) % 100 == 0:
             np.savez(filename, param=param, ema_param=ema_param)
 else:
     param = np.load(f'./celeba{resolution}_{task}_{args.sde}_{args.schedule}_'
