@@ -16,7 +16,7 @@ from fbs.sdes.simulators import doob_bridge_simulator
 from fbs.filters.csmc.csmc import csmc_kernel
 from fbs.filters.csmc.resamplings import killing
 from fbs.nn.models import make_st_nn
-from fbs.nn.unet_mnist import MNISTUNet
+from fbs.nn.unet_cifar import UNet
 from fbs.nn.utils import make_optax_kernel
 from functools import partial
 
@@ -27,11 +27,13 @@ parser.add_argument('--task', type=str, default='deconv-10')
 parser.add_argument('--sde', type=str, default='lin')
 parser.add_argument('--upsampling', type=str, default='pixel_shuffle')
 parser.add_argument('--loss_type', type=str, default='score')
-parser.add_argument('--lr', type=float, default=1e-4)
+parser.add_argument('--lr', type=float, default=2e-4)
 parser.add_argument('--batch_size', type=int, default=2)
 parser.add_argument('--nsteps', type=int, default=2)
 parser.add_argument('--schedule', type=str, default='cos')
 parser.add_argument('--nepochs', type=int, default=30)
+parser.add_argument('--save_mem', action='store_true', default=False,
+                    help='Save memory by sharing the batch of x and t')
 parser.add_argument('--grad_clip', action='store_true', default=False)
 parser.add_argument('--test_nsteps', type=int, default=200)
 parser.add_argument('--test_epoch', type=int, default=12)
@@ -106,7 +108,7 @@ nepochs = args.nepochs
 data_size = dataset.n
 
 key, subkey = jax.random.split(key)
-my_nn = MNISTUNet(dt=nn_dt, nchannels=2, upsampling_method=args.upsampling)
+my_nn = UNet(dt=nn_dt, dim=32)
 array_param, _, nn_score = make_st_nn(subkey,
                                       nn=my_nn, dim_in=d, batch_size=train_nsamples)
 
@@ -114,10 +116,12 @@ loss_type = args.loss_type
 loss_fn = make_linear_sde_law_loss(sde, nn_score, t0=0., T=T, nsteps=train_nsteps,
                                    random_times=True, loss_type=loss_type)
 
+nsteps_per_epoch = data_size // train_nsamples
 if args.schedule == 'cos':
-    schedule = optax.cosine_decay_schedule(args.lr, data_size // train_nsamples * 4, .95)
+    until_steps = int(0.95 * nepochs) * nsteps_per_epoch
+    schedule = optax.cosine_decay_schedule(init_value=args.lr, decay_steps=until_steps, alpha=1e-2)
 elif args.schedule == 'exp':
-    schedule = optax.exponential_decay(args.lr, data_size // train_nsamples * 4, .95)
+    schedule = optax.exponential_decay(args.lr, data_size // train_nsamples, .96)
 else:
     schedule = optax.constant_schedule(args.lr)
 
@@ -142,11 +146,12 @@ if train:
             x0s, y0s = dataset.enumerate_subset(j, perm_inds, subkey)
             xy0s = dataset.concat(x0s, y0s)
             param, opt_state, loss = optax_kernel(param, opt_state, subkey2, xy0s)
-            ema_param = ema_kernel(ema_param, param, j, 200, 0.99)
+            ema_param = ema_kernel(ema_param, param, j, 500, 0.99)
             print(f'MNIST | {task} | {args.upsampling} | {args.sde} | {loss_type} | {args.schedule} | '
                   f'Epoch: {i} / {nepochs}, iter: {j} / {data_size // train_nsamples}, loss: {loss:.4f}')
         filename = f'./mnist_{task}_{args.sde}_{args.schedule}_{i}.npz'
-        np.savez(filename, param=param, ema_param=ema_param)
+        if (i + 1) % 100 == 0:
+            np.savez(filename, param=param, ema_param=ema_param)
 else:
     param = np.load(f'./mnist_{task}_{args.sde}_{args.schedule}_'
                     f'{args.test_epoch}.npz')['ema_param' if args.test_ema else 'param']
@@ -180,7 +185,7 @@ for row in range(2):
     for i in range(2, 7):
         axes[row, i].imshow(approx_init_samples[i - 2][:, :, row], cmap='gray')
 plt.tight_layout(pad=0.1)
-plt.savefig(f'./tmp_figs/{task}_backward_test.png')
+plt.savefig(f'./tmp_figs/mnist_{task}_backward_test.png')
 plt.show()
 
 # Now conditional sampling
@@ -188,12 +193,12 @@ nparticles = args.nparticles
 ngibbs = args.ngibbs
 key, subkey = jax.random.split(key)
 test_xy0 = sampler(subkey, test=True)
-test_x0, test_y0 = test_xy0[:, :, 0], test_xy0[:, :, 1]
+test_x0, test_y0 = test_xy0[:, :, :1], test_xy0[:, :, 1:]
 
 fig, axes = plt.subplots(ncols=2)
 axes[0].imshow(test_x0, cmap='gray')
 axes[1].imshow(test_y0, cmap='gray')
-plt.savefig(f'./tmp_figs/{task}_pair.png')
+plt.savefig(f'./tmp_figs/mnist_{task}_pair.png')
 plt.show()
 
 
@@ -270,31 +275,26 @@ def gibbs_kernel(key_, xs_, us_star_, bs_star_):
 
 # Gibbs loop
 key, subkey = jax.random.split(key)
-if 'deconv' in task:
-    xs = dataset.unpack(fwd_sampler(subkey, test_y0))[0]
-elif 'inpaint' in task:
-    xs = dataset.unpack(fwd_sampler(subkey, jnp.zeros_like(test_y0)))[0]
-else:
-    raise NotImplementedError(f'Unknown task {task}')
+xs = dataset.unpack(fwd_sampler(subkey, jnp.zeros_like(test_y0)))[0]
 us_star = xs[::-1]
 bs_star = jnp.zeros((nsteps + 1), dtype=int)
 
-uss = np.zeros((ngibbs, nsteps + 1, 28, 28))
+uss = np.zeros((ngibbs, nsteps + 1, 28, 28, 1))
 for i in range(ngibbs):
     key, subkey = jax.random.split(key)
     xs, us_star, bs_star, acc = gibbs_kernel(subkey, xs, us_star, bs_star)
     uss[i] = us_star
 
     fig = plt.figure()
-    plt.imshow(us_star[-1], cmap='gray')
+    plt.imshow(us_star[-1, :, :, 0], cmap='gray')
     plt.tight_layout(pad=0.1)
-    plt.savefig(f'./tmp_figs/{task}_uss_{i}{"_doob" if args.doob else ""}.png')
+    plt.savefig(f'./tmp_figs/mnist_{task}_uss_{i}{"_doob" if args.doob else ""}.png')
     plt.close(fig)
 
     fig = plt.figure()
-    plt.plot(uss[:i, -1, 10, 10])
+    plt.plot(uss[:i, -1, 10, 10, 0])
     plt.tight_layout(pad=0.1)
-    plt.savefig(f'./tmp_figs/{task}_trace_pixel{"_doob" if args.doob else ""}.png')
+    plt.savefig(f'./tmp_figs/mnist_{task}_trace_pixel{"_doob" if args.doob else ""}.png')
     plt.close(fig)
 
     print(f'{task} | Gibbs iter: {i}, acc: {acc}')

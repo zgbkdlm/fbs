@@ -120,7 +120,7 @@ class Image(Dataset):
         return xy[..., :c], xy[..., c:]
 
 
-class MNIST(Dataset):
+class MNIST(Image):
     """
     MNIST dataset.
 
@@ -130,7 +130,7 @@ class MNIST(Dataset):
     def __init__(self,
                  key: JKey,
                  data_path: str,
-                 task: str = 'deconv-10',
+                 task: str = 'deconv-15',
                  test: bool = False):
         data_dict = jnp.load(data_path)
         self.task = task
@@ -139,113 +139,15 @@ class MNIST(Dataset):
             self.n = 10000
             xs = data_dict['X_test']
             xs = jax.random.permutation(key, xs, axis=0)
+            xs = jnp.reshape(xs, (10000, 28, 28, 1))
         else:
             self.n = 60000
             xs = data_dict['X']
             xs = jax.random.permutation(key, xs, axis=0)
+            xs = jnp.reshape(xs, (60000, 28, 28, 1))
 
         self.xs = self.standardise(xs)
-
-    @staticmethod
-    def standardise(array: Array) -> JArray:
-        return array
-
-    @staticmethod
-    def paint(key, img: Array, rectangle_size: int = 15) -> JArray:
-        """Paint the image with a random rectangle.
-        """
-
-        def gen_mask(i, j):
-            mask = jnp.ones((1, 28, 28, 1))
-            return mask.at[:, i:i + rectangle_size, j: j + rectangle_size, :].set(0.)
-
-        masks = jnp.concatenate([gen_mask(i, j) for (i, j) in itertools.product((0, 5, 10, 12), (0, 5, 10, 12))],
-                                axis=0)
-        return img * jax.random.choice(key, masks)
-
-    @staticmethod
-    def downsample(key: JArray, img: Array) -> Array:
-        img = jnp.reshape(img, (1, 28, 28))
-
-        kernel_sizes = jnp.array([2, 4, 8, 16])
-        kernel_size = jax.random.choice(key, kernel_sizes)
-        kernel = jnp.ones((kernel_size, kernel_size, 1, 1))
-
-        corrupted_img = jax.lax.conv_general_dilated(img, kernel, (1, 1), 'SAME',
-                                                     dimension_numbers=('NHWC', 'HWIO', 'NHWC'))[0, :, :, 0]
-        return (corrupted_img - jnp.min(corrupted_img)) / (jnp.max(corrupted_img) - jnp.min(corrupted_img))
-
-    @staticmethod
-    def conv(key: JKey, img: Array, kernel_size: int = 10) -> JArray:
-        """Corrupt the image with a random Gaussian blur.
-
-        Parameters
-        ----------
-        key : JKey
-            Random key.
-        img : Array (h, w)
-            Image to corrupt.
-        kernel_size
-
-        Returns
-        -------
-        Array (h, w)
-            Convoluted image.
-        """
-        img = jnp.reshape(img, (1, 28, 28))
-
-        variance = jax.random.uniform(key, minval=0.1, maxval=5.)  # it's not conjugate yeah I know...
-        z_ = jnp.dstack(jnp.meshgrid(jnp.linspace(-1, 1, kernel_size), jnp.linspace(-1, 1, kernel_size)))
-        kernel = jnp.prod(jnp.exp(-z_ ** 2 / variance), axis=-1).reshape(kernel_size, kernel_size, 1, 1)
-        corrupted_img = jax.lax.conv_general_dilated(img, kernel, (1, 1), 'SAME',
-                                                     dimension_numbers=('NHWC', 'HWIO', 'NHWC'))[0, :, :, 0]
-        return (corrupted_img - jnp.min(corrupted_img)) / (jnp.max(corrupted_img) - jnp.min(corrupted_img))
-
-    def corrupt(self, key: JKey, img: JArray) -> JArray:
-        if 'inpaint' in self.task:
-            rec_size = int(self.task.split('-')[-1])
-            return self.paint(key, img, rec_size)
-        elif 'deconv' in self.task:
-            kernel_size = int(self.task.split('-')[-1])
-            return self.conv(key, img, kernel_size)
-        else:
-            raise NotImplementedError('Not implemented.')
-
-    def sampler(self, key: JKey) -> Tuple[JArray, JArray]:
-        """Sample a pair of images from the dataset.
-
-        Parameters
-        ----------
-        key : JKey
-            Random key.
-
-        Returns
-        -------
-        JArray (28, 28), JArray (28, 28)
-            A pair of clean and corrupted images.
-        """
-        key_choice, key_corrupt = jax.random.split(key)
-        x = self.xs[jax.random.choice(key_choice, self.n)]
-        y = self.corrupt(key_corrupt, x)
-        return x, y
-
-    def enumerate_subset(self, i: int, perm_inds=None, key=None) -> Tuple[JArray, JArray]:
-        if perm_inds is None:
-            perm_inds = self.perm_inds
-        inds = perm_inds[i]
-
-        xs = self.xs[inds]
-        keys = jax.random.split(key, num=inds.shape[0])
-        ys = jax.vmap(self.corrupt, in_axes=[0, 0])(keys, xs)
-        return xs, ys
-
-    @staticmethod
-    def concat(x: JArray, y: JArray) -> JArray:
-        return jnp.concatenate([jnp.expand_dims(x, -1), jnp.expand_dims(y, -1)], axis=-1)
-
-    @staticmethod
-    def unpack(xy: JArray) -> Tuple[JArray, JArray]:
-        return xy[..., 0], xy[..., 1]
+        self.image_shape = (28, 28, 1)
 
 
 class CIFAR10(Image):
