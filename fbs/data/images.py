@@ -146,7 +146,7 @@ class MNIST(Image):
             xs = jax.random.permutation(key, xs, axis=0)
             xs = jnp.reshape(xs, (60000, 28, 28, 1))
 
-        self.xs = self.standardise(xs)
+        self.xs = self.standardise(xs).astype('float32')
         self.image_shape = (28, 28, 1)
 
 
