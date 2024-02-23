@@ -114,7 +114,7 @@ array_param, _, nn_score = make_st_nn(subkey,
 
 loss_type = args.loss_type
 loss_fn = make_linear_sde_law_loss(sde, nn_score, t0=0., T=T, nsteps=train_nsteps,
-                                   random_times=True, loss_type=loss_type)
+                                   random_times=True, loss_type=loss_type, save_mem=args.save_mem)
 
 nsteps_per_epoch = data_size // train_nsamples
 if args.schedule == 'cos':
