@@ -108,7 +108,7 @@ nepochs = args.nepochs
 data_size = dataset.n
 
 key, subkey = jax.random.split(key)
-my_nn = UNet(dt=nn_dt, dim=32, dim_mults=(2, 4))
+my_nn = UNet(dt=nn_dt, dim=32)
 array_param, _, nn_score = make_st_nn(subkey,
                                       nn=my_nn, dim_in=d, batch_size=train_nsamples)
 
