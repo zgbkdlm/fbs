@@ -139,6 +139,7 @@ axes[0, 0].set_xlim(-4, 4)
 axes[0, 1].set_xlim(-4, 4)
 axes[1, 0].set_ylim(-5, 10)
 plt.tight_layout(pad=0.1)
+plt.savefig('crescent_approx.pdf', trasparent=True)
 plt.show()
 
 
