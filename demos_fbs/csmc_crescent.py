@@ -20,13 +20,13 @@ from fbs.filters.csmc.resamplings import killing
 from functools import partial
 
 # General configs
-nparticles = 200
+nparticles = 100
 ngibbs = 5000
 burn_in = 100
 jax.config.update("jax_enable_x64", False)
 key = jax.random.PRNGKey(666)
-y0 = 5.
-use_pretrained = False
+y0 = 4.
+use_pretrained = True
 use_ema = True
 
 T = 2
@@ -243,10 +243,10 @@ plt.show()
 uss = uss[burn_in:]
 
 # Check the joint
-fig, ax = plt.subplots()
-pcm = ax.contourf(lines_, lines_, post)
-ax.scatter(uss[:, -1, 0], uss[:, -1, 1], c='tab:red', s=1, alpha=0.2,
-           label=f'Approx. samples p(x | y = {y0})')
+fig, ax = plt.subplots(figsize=(8, 4.8))
+pcm = ax.contourf(lines_, lines_, post, levels=20, cmap='Greys')
+ax.scatter(uss[:, -1, 0], uss[:, -1, 1], c='tab:blue', s=1, alpha=0.4, edgecolor='none',
+           label=rf'Approx. samples $p(x \mid y = {y0})$')
 ax.legend()
 fig.colorbar(pcm, ax=ax)
 plt.tight_layout(pad=0.1)

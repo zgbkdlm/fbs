@@ -41,7 +41,7 @@ parser.add_argument('--test_epoch', type=int, default=39)
 parser.add_argument('--test_ema', action='store_true', default=False)
 parser.add_argument('--test_seed', type=int, default=666)
 parser.add_argument('--nparticles', type=int, default=100)
-parser.add_argument('--ngibbs', type=int, default=500)
+parser.add_argument('--ngibbs', type=int, default=10)
 parser.add_argument('--doob', action='store_true', default=False)
 
 args = parser.parse_args()
@@ -56,7 +56,7 @@ print(f'{"Train" if train else "Test"} {task} on CelebaHQ{resolution}')
 key = jax.random.PRNGKey(666)
 key, data_key = jax.random.split(key)
 
-T = 1
+T = 2
 nsteps = args.test_nsteps
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
@@ -110,7 +110,7 @@ nepochs = args.nepochs
 data_size = dataset.n
 
 key, subkey = jax.random.split(key)
-my_nn = UNet(dt=nn_dt, dim=64)
+my_nn = UNet(dt=nn_dt, dim=64, upsampling=args.upsampling)
 array_param, _, nn_score = make_st_nn(subkey,
                                       nn=my_nn, dim_in=d, batch_size=train_nsamples)
 
@@ -148,7 +148,7 @@ if train:
             x0s, y0s = dataset.enumerate_subset(j, perm_inds, subkey)
             xy0s = dataset.concat(x0s, y0s)
             param, opt_state, loss = optax_kernel(param, opt_state, subkey2, xy0s)
-            ema_param = ema_kernel(ema_param, param, j, 500, 0.99)
+            ema_param = ema_kernel(ema_param, param, j, 500, 2, 0.99)
             print(f'CelebA{resolution} | {task} | {args.upsampling} | {args.sde} | {loss_type} | {args.schedule} | '
                   f'Epoch: {i} / {nepochs}, iter: {j} / {data_size // train_nsamples}, loss: {loss:.4f}')
         filename = f'./celeba{resolution}_{task}_{args.sde}_{args.schedule}_{i}.npz'
@@ -193,15 +193,6 @@ plt.show()
 # Now conditional sampling
 nparticles = args.nparticles
 ngibbs = args.ngibbs
-key, subkey = jax.random.split(key)
-test_xy0 = sampler(subkey, test=True)
-test_x0, test_y0 = test_xy0[:, :, :3], test_xy0[:, :, 3:]
-
-fig, axes = plt.subplots(ncols=2)
-axes[0].imshow(test_x0)
-axes[1].imshow(test_y0)
-plt.savefig(f'./tmp_figs/celeba{resolution}_{task}_pair.png')
-plt.show()
 
 
 def reverse_drift(uv, t):
@@ -238,6 +229,17 @@ def transition_logpdf(u, u_prev, v_prev, t_prev):
 def likelihood_logpdf(v, u_prev, v_prev, t_prev):
     cond_m = v_prev + reverse_drift_v(v_prev, u_prev, t_prev) * dt
     return jnp.sum(jax.scipy.stats.norm.logpdf(v, cond_m, math.sqrt(dt) * reverse_dispersion(t_prev)))
+
+
+key, subkey = jax.random.split(key)
+test_xy0 = sampler(subkey, test=True)
+test_x0, test_y0 = test_xy0[:, :, :3], test_xy0[:, :, 3:]
+
+fig, axes = plt.subplots(ncols=2)
+axes[0].imshow(test_x0)
+axes[1].imshow(test_y0)
+plt.savefig(f'./tmp_figs/celeba{resolution}_{task}_pair.png')
+plt.show()
 
 
 def fwd_sampler(key_, x0):

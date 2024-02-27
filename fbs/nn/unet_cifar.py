@@ -7,6 +7,7 @@ under the Apache-2.0 license.
 - Modifications:
     - Deleted the batch in time embedding.
     - Added pixel_shuffle upsampling.
+    - Changed resize from 'nearest' to 'linear'.
     - Removed assert statements.
     - Removed "name".
     - Used in-house sinusoidal_embedding.
@@ -62,7 +63,7 @@ class Upsample(nn.Module):
         B, H, W, C = x.shape
         dim = self.dim if self.dim is not None else C
         if self.method == 'resize':
-            x = jax.image.resize(x, (B, H * 2, W * 2, C), 'nearest')
+            x = jax.image.resize(x, (B, H * 2, W * 2, C), 'linear')
             x = nn.Conv(dim, kernel_size=(3, 3), padding=1, dtype=self.dtype)(x)
         elif self.method == 'pixel_shuffle':
             x = nn.Conv(C * 4, kernel_size=(3, 3), padding=1, dtype=self.dtype)(x)
@@ -267,6 +268,7 @@ class AttnBlock(nn.Module):
 class UNet(nn.Module):
     dt: float
     dim: int
+    upsampling: str = 'resize'
     init_dim: Optional[int] = None  # if None, same as dim
     out_dim: Optional[int] = None
     dim_mults: Tuple[int, int, int, int] = (1, 2, 4)
@@ -345,7 +347,7 @@ class UNet(nn.Module):
 
             assert h.shape[-1] == dim_in
             if ind > 0:
-                h = Upsample(dim=dim_out, dtype=self.dtype, name=f'up_{ind}.upsample_0')(h)
+                h = Upsample(dim=dim_out, method=self.upsampling, dtype=self.dtype, name=f'up_{ind}.upsample_0')(h)
 
         h = nn.Conv(features=init_dim, kernel_size=(3, 3), padding=1, dtype=self.dtype, name=f'up_0.conv_0')(h)
 

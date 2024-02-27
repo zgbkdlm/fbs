@@ -12,7 +12,7 @@ def bootstrap_filter(transition_sampler: Callable[[JArray, JArray, FloatScalar, 
                      ts: JArray,
                      init_sampler: Callable[[JArray, JArray, int], JArray],
                      key: JKey,
-                     nsamples: int,
+                     nparticles: int,
                      resampling: Callable[[JArray, JArray], JArray],
                      log: bool = True,
                      return_last: bool = True) -> Tuple[JArray, JFloat]:
@@ -34,7 +34,7 @@ def bootstrap_filter(transition_sampler: Callable[[JArray, JArray, FloatScalar, 
         Sampler for :math:`p(u0 | v0)`.
     key : JKey
         PRNGKey.
-    nsamples : int
+    nparticles : int
         Number of samples/particles n.
     resampling : (n, ), key -> (n, )
         Resample method.
@@ -55,29 +55,29 @@ def bootstrap_filter(transition_sampler: Callable[[JArray, JArray, FloatScalar, 
     """
 
     def scan_body(carry, elem):
-        samples, log_nell = carry
+        us_prev, log_nell = carry
         v, v_prev, t_prev, key_ = elem
 
-        samples = transition_sampler(samples, v_prev, t_prev, key_)
+        us = transition_sampler(us_prev, v_prev, t_prev, key_)
 
         if log:
-            log_weights = measurement_cond_pdf(v, samples, v_prev, t_prev)
+            log_weights = measurement_cond_pdf(v, us_prev, v_prev, t_prev)
             _c = jax.scipy.special.logsumexp(log_weights)
-            log_nell -= _c - math.log(nsamples)
+            log_nell -= _c - math.log(nparticles)
             log_weights = log_weights - _c
             weights = jnp.exp(log_weights)
         else:
-            weights = measurement_cond_pdf(v, samples, v_prev, t_prev)
+            weights = measurement_cond_pdf(v, us_prev, v_prev, t_prev)
             log_nell -= jnp.log(jnp.mean(weights))
             weights = weights / jnp.sum(weights)
 
         _, subkey_ = jax.random.split(key_)
-        samples = samples[resampling(weights, subkey_), ...]
+        us = us[resampling(weights, subkey_), ...]
 
-        return (samples, log_nell), None if return_last else samples
+        return (us, log_nell), None if return_last else us
 
     nsteps = vs.shape[0] - 1
-    init_samples = init_sampler(key, vs[0], nsamples)
+    init_samples = init_sampler(key, vs[0], nparticles)
     keys = jax.random.split(key, num=nsteps)
 
     (last_samples, nell_ys), filtering_samples = jax.lax.scan(scan_body,
@@ -86,6 +86,10 @@ def bootstrap_filter(transition_sampler: Callable[[JArray, JArray, FloatScalar, 
     if return_last:
         return last_samples, nell_ys
     return filtering_samples, nell_ys
+
+
+def bootstrap_backward_smoother():
+    pass
 
 
 def pf_temp(key: JKey,
