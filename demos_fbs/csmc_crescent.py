@@ -25,8 +25,8 @@ ngibbs = 5000
 burn_in = 100
 jax.config.update("jax_enable_x64", False)
 key = jax.random.PRNGKey(666)
-y0 = 4.
-use_pretrained = True
+y0 = 5.
+use_pretrained = False
 use_ema = True
 
 T = 2
@@ -68,7 +68,7 @@ plt.scatter(terminal_vals[:, 0], terminal_vals[:, 2], s=1, alpha=0.5)
 plt.show()
 
 # Score matching training
-train_nsamples = 128
+train_nsamples = 1024
 train_nsteps = 100
 nn_dt = T / 200
 
@@ -229,6 +229,12 @@ for i in range(ngibbs):
     print(f'Gibbs iter: {i}, acc: {jnp.mean(acc)}')
 
 # Plot
+plt.rcParams.update({
+    'text.usetex': True,
+    'font.family': "serif",
+    'text.latex.preamble': r'\usepackage{amsmath,amsfonts}',
+    'font.size': 17})
+
 plt.plot(uss[:, -1, 0])
 plt.plot(uss[:, -1, 1])
 plt.show()
@@ -238,10 +244,12 @@ uss = uss[burn_in:]
 # Check the joint
 fig, ax = plt.subplots()
 pcm = ax.pcolormesh(lines_, lines_, post)
-ax.scatter(uss[:, -1, 0], uss[:, -1, 1], c='tab:red', s=1, alpha=0.5, label=f'Approx. p(x | y = {y0})')
+ax.scatter(uss[:, -1, 0], uss[:, -1, 1], c='tab:red', s=1, alpha=0.2,
+           label=f'Approx. samples p(x | y = {y0})')
 ax.legend()
 fig.colorbar(pcm, ax=ax)
 plt.tight_layout(pad=0.1)
+plt.savefig('crescent_joint.pdf', trasparent=True)
 plt.show()
 
 # Check the joint in terms of 2D hist
@@ -259,8 +267,10 @@ plt.show()
 # Check the marginal
 plt.plot(lines_, jax.scipy.integrate.trapezoid(post, lines_, axis=1))
 plt.hist(uss[:, -1, 1], bins=50, density=True, alpha=0.5)
+plt.savefig('crescent_m1.pdf', trasparent=True)
 plt.show()
 
 plt.plot(lines_, jax.scipy.integrate.trapezoid(post, lines_, axis=0))
 plt.hist(uss[:, -1, 0], bins=50, density=True, alpha=0.5)
+plt.savefig('crescent_m2.pdf', trasparent=True)
 plt.show()

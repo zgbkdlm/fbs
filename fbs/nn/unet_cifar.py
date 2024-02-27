@@ -53,6 +53,7 @@ class Downsample(nn.Module):
 
 
 class Upsample(nn.Module):
+    method: str = 'resize'
     dim: Optional[int] = None
     dtype: Any = jnp.float32
 
@@ -60,8 +61,15 @@ class Upsample(nn.Module):
     def __call__(self, x):
         B, H, W, C = x.shape
         dim = self.dim if self.dim is not None else C
-        x = jax.image.resize(x, (B, H * 2, W * 2, C), 'nearest')
-        x = nn.Conv(dim, kernel_size=(3, 3), padding=1, dtype=self.dtype)(x)
+        if self.method == 'resize':
+            x = jax.image.resize(x, (B, H * 2, W * 2, C), 'nearest')
+            x = nn.Conv(dim, kernel_size=(3, 3), padding=1, dtype=self.dtype)(x)
+        elif self.method == 'pixel_shuffle':
+            x = nn.Conv(C * 4, kernel_size=(3, 3), padding=1, dtype=self.dtype)(x)
+            x = PixelShuffle(scale=2)(x)
+            x = nn.Conv(dim, kernel_size=(3, 3), padding=1, dtype=self.dtype)(x)
+        else:
+            raise ValueError(f'Unknown upsampling method: {self.method}')
         assert x.shape == (B, H * 2, W * 2, dim)
         return x
 
