@@ -20,7 +20,7 @@ from fbs.filters.csmc.resamplings import killing
 from functools import partial
 
 # General configs
-nparticles = 100
+nparticles = 200
 ngibbs = 5000
 burn_in = 100
 jax.config.update("jax_enable_x64", False)
@@ -69,7 +69,7 @@ plt.show()
 
 # Score matching training
 train_nsamples = 1024
-train_nsteps = 100
+train_nsteps = 128
 nn_dt = T / 200
 
 key, subkey = jax.random.split(key)
@@ -139,7 +139,7 @@ axes[0, 0].set_xlim(-4, 4)
 axes[0, 1].set_xlim(-4, 4)
 axes[1, 0].set_ylim(-5, 10)
 plt.tight_layout(pad=0.1)
-plt.savefig('crescent_approx.pdf', trasparent=True)
+plt.savefig('crescent_approx.pdf', transparent=True)
 plt.show()
 
 
@@ -244,13 +244,13 @@ uss = uss[burn_in:]
 
 # Check the joint
 fig, ax = plt.subplots()
-pcm = ax.pcolormesh(lines_, lines_, post)
+pcm = ax.contourf(lines_, lines_, post)
 ax.scatter(uss[:, -1, 0], uss[:, -1, 1], c='tab:red', s=1, alpha=0.2,
            label=f'Approx. samples p(x | y = {y0})')
 ax.legend()
 fig.colorbar(pcm, ax=ax)
 plt.tight_layout(pad=0.1)
-plt.savefig('crescent_joint.pdf', trasparent=True)
+plt.savefig('crescent_joint.pdf', transparent=True)
 plt.show()
 
 # Check the joint in terms of 2D hist
@@ -268,10 +268,10 @@ plt.show()
 # Check the marginal
 plt.plot(lines_, jax.scipy.integrate.trapezoid(post, lines_, axis=1))
 plt.hist(uss[:, -1, 1], bins=50, density=True, alpha=0.5)
-plt.savefig('crescent_m1.pdf', trasparent=True)
+plt.savefig('crescent_m1.pdf', transparent=True)
 plt.show()
 
 plt.plot(lines_, jax.scipy.integrate.trapezoid(post, lines_, axis=0))
 plt.hist(uss[:, -1, 0], bins=50, density=True, alpha=0.5)
-plt.savefig('crescent_m2.pdf', trasparent=True)
+plt.savefig('crescent_m2.pdf', transparent=True)
 plt.show()
