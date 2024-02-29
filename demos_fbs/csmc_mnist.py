@@ -236,7 +236,7 @@ def fwd_sampler(key_, x0_, y0_):
 gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, dataset=MNIST,
                                nparticles=nparticles, transition_sampler=transition_sampler,
                                transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf, doob=True))
-gibbs_init = jax.jit(partial(gibbs_init, x0_shape=(2,), ts=ts, fwd_sampler=fwd_sampler, dataset=MNIST,
+gibbs_init = jax.jit(partial(gibbs_init, x0_shape=(28, 28, 1), ts=ts, fwd_sampler=fwd_sampler, dataset=MNIST,
                              transition_sampler=transition_sampler, transition_logpdf=transition_logpdf,
                              likelihood_logpdf=likelihood_logpdf,
                              nparticles=nparticles, method='smoother'))
