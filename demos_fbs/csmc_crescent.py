@@ -17,6 +17,7 @@ from fbs.sdes import make_linear_sde, make_linear_sde_law_loss, StationaryLinLin
 from fbs.sdes.simulators import doob_bridge_simulator
 from fbs.samplers.csmc.csmc import csmc_kernel
 from fbs.samplers.csmc.resamplings import killing
+from fbs.samplers import gibbs_init, gibbs_kernel
 from functools import partial
 
 # General configs
@@ -181,52 +182,30 @@ def likelihood_logpdf(v, u_prev, v_prev, t_prev):
                                        math.sqrt(dt) * reverse_dispersion(t_prev))
 
 
-def fwd_sampler(key_, x0):
-    xy0 = jnp.hstack([x0, y0])
+def fwd_sampler(key_, x0_, y0_):
+    xy0 = jnp.hstack([x0_, y0_])
     return simulate_cond_forward(key_, xy0, ts)
 
 
-def bridge_sampler(key_, y0_, yT_):
-    return doob_bridge_simulator(key_, sde, y0_, yT_, ts, integration_nsteps=100, replace=True)
-
-
-@jax.jit
-def gibbs_kernel(key_, xs_, us_star_, bs_star_):
-    key_fwd, key_bridge, key_csmc = jax.random.split(key_, num=3)
-    path_xy = fwd_sampler(key_fwd, xs_[0])
-    # us, vs = path_xy[::-1, :2], path_xy[::-1, -1]
-    us, vs = path_xy[::-1, :2], bridge_sampler(key_bridge, path_xy[0, -1], path_xy[-1, -1])[::-1]
-
-    def init_sampler(*_):
-        return us[0] * jnp.ones((nparticles, us.shape[-1]))
-
-    def init_likelihood_logpdf(*_):
-        return -math.log(nparticles) * jnp.ones(nparticles)
-
-    us_star_next, bs_star_next = csmc_kernel(key_csmc,
-                                             us_star_, bs_star_,
-                                             vs, ts,
-                                             init_sampler, init_likelihood_logpdf,
-                                             transition_sampler, transition_logpdf,
-                                             likelihood_logpdf,
-                                             killing, nparticles,
-                                             backward=True)
-    xs_next = us_star_next[::-1]
-    return xs_next, us_star_next, bs_star_next, bs_star_next != bs_star_
-
+gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, dataset=crescent,
+                               nparticles=nparticles, transition_sampler=transition_sampler,
+                               transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf, doob=True))
+gibbs_init = jax.jit(partial(gibbs_init, x0_shape=(2,), ts=ts, fwd_sampler=fwd_sampler, dataset=crescent,
+                             transition_sampler=transition_sampler, transition_logpdf=transition_logpdf,
+                             likelihood_logpdf=likelihood_logpdf,
+                             nparticles=nparticles, method='smoother'))
 
 # Gibbs loop
 key, subkey = jax.random.split(key)
-xs = fwd_sampler(subkey, jnp.zeros((2,)))[:, :2]
-us_star = xs[::-1]
+x0, us_star = gibbs_init(subkey, y0)
 bs_star = jnp.zeros((nsteps + 1), dtype=int)
+key, _ = jax.random.split(key)
 
 uss = np.zeros((ngibbs, nsteps + 1, 2))
-xss = np.zeros((ngibbs, nsteps + 1, 2))
 for i in range(ngibbs):
     key, subkey = jax.random.split(key)
-    xs, us_star, bs_star, acc = gibbs_kernel(subkey, xs, us_star, bs_star)
-    xss[i], uss[i] = xs, us_star
+    x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, y0, us_star, bs_star)
+    uss[i] = us_star
     print(f'Gibbs iter: {i}, acc: {jnp.mean(acc)}')
 
 # Plot

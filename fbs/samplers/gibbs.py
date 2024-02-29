@@ -20,7 +20,7 @@ def bridge_sampler(key, y0, yT, ts, sde):
 
 def gibbs_init(key, y0, x0_shape, ts,
                fwd_sampler: Callable, dataset,
-               transition_sampler, likelihood_logpdf,
+               transition_sampler, transition_logpdf, likelihood_logpdf,
                nparticles, method: str = 'filter',
                x0=None):
     """Initialise the Gibbs sampler with a draw from a bootstrap filter.
@@ -31,7 +31,7 @@ def gibbs_init(key, y0, x0_shape, ts,
     by yourself and change this implementation. It also assumes that the terminal x and y are independent N(0, 1).
     """
     if x0 is None:
-        x0 = jnp.ones_like(x0_shape)
+        x0 = jnp.ones(x0_shape)
     key_fwd, key_u0, key_bf, key_fwd2, key_bwd = jax.random.split(key, num=5)
 
     path_xy = fwd_sampler(key_fwd, x0, y0)
@@ -45,13 +45,13 @@ def gibbs_init(key, y0, x0_shape, ts,
 
     if method == 'filter':
         approx_x0 = bootstrap_filter(transition_sampler, likelihood_logpdf, vs, ts, init_sampler, key_bf, nparticles,
-                                     stratified, log=True, return_last=True)[0]
+                                     stratified, log=True, return_last=True)[0][0]
         approx_us_star = dataset.unpack(fwd_sampler(key_fwd2, approx_x0, y0))[0][::-1]
     elif method == 'smoother':
         uss = bootstrap_filter(transition_sampler, likelihood_logpdf, vs, ts, init_sampler, key_bf, nparticles,
-                               stratified, log=True, return_last=False)
-        approx_x0 = uss[-1]
-        approx_us_star = bootstrap_backward_smoother(key_bwd, uss, vs, ts, transition_sampler)
+                               stratified, log=True, return_last=False)[0]
+        approx_x0 = uss[-1, 0]
+        approx_us_star = bootstrap_backward_smoother(key_bwd, uss, vs, ts, transition_logpdf)
     else:
         raise ValueError(f"Unknown method {method}")
     return approx_x0, approx_us_star
