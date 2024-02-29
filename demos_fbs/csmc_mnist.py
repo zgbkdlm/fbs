@@ -233,10 +233,10 @@ def fwd_sampler(key_, x0_, y0_):
     return simulate_cond_forward(key_, xy0, ts)
 
 
-gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, dataset=MNIST,
+gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, dataset=dataset,
                                nparticles=nparticles, transition_sampler=transition_sampler,
                                transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf, doob=True))
-gibbs_init = jax.jit(partial(gibbs_init, x0_shape=(28, 28, 1), ts=ts, fwd_sampler=fwd_sampler, dataset=MNIST,
+gibbs_init = jax.jit(partial(gibbs_init, x0_shape=(28, 28, 1), ts=ts, fwd_sampler=fwd_sampler, dataset=dataset,
                              transition_sampler=transition_sampler, transition_logpdf=transition_logpdf,
                              likelihood_logpdf=likelihood_logpdf,
                              nparticles=nparticles, method='smoother'))
