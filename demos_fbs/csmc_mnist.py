@@ -12,11 +12,9 @@ import optax
 from fbs.data import MNIST
 from fbs.sdes import make_linear_sde, make_linear_sde_law_loss, StationaryConstLinearSDE, \
     StationaryLinLinearSDE, StationaryExpLinearSDE, reverse_simulator
-from fbs.sdes.simulators import doob_bridge_simulator
-from fbs.samplers.csmc.csmc import csmc_kernel
-from fbs.samplers.csmc.resamplings import killing
+from fbs.samplers import gibbs_init, gibbs_kernel
 from fbs.nn.models import make_st_nn
-from fbs.nn.unet_cifar import UNet
+from fbs.nn.unet import UNet
 from fbs.nn.utils import make_optax_kernel
 from functools import partial
 
@@ -40,7 +38,8 @@ parser.add_argument('--test_epoch', type=int, default=12)
 parser.add_argument('--test_ema', action='store_true', default=False)
 parser.add_argument('--test_seed', type=int, default=666)
 parser.add_argument('--nparticles', type=int, default=100)
-parser.add_argument('--ngibbs', type=int, default=100)
+parser.add_argument('--ngibbs', type=int, default=10)
+parser.add_argument('--ny0s', type=int, default=10)
 parser.add_argument('--doob', action='store_true', default=False)
 
 args = parser.parse_args()
@@ -54,7 +53,7 @@ print(f'{"Train" if train else "Test"} {task} on MNIST')
 key = jax.random.PRNGKey(666)
 key, data_key = jax.random.split(key)
 
-T = 2
+T = 1
 nsteps = args.test_nsteps
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
@@ -229,76 +228,44 @@ def likelihood_logpdf(v, u_prev, v_prev, t_prev):
     return jnp.sum(jax.scipy.stats.norm.logpdf(v, cond_m, math.sqrt(dt) * reverse_dispersion(t_prev)))
 
 
-key, subkey = jax.random.split(key)
-test_xy0 = sampler(subkey, test=True)
-test_x0, test_y0 = test_xy0[:, :, :1], test_xy0[:, :, 1:]
-
-fig, axes = plt.subplots(ncols=2)
-axes[0].imshow(test_x0, cmap='gray')
-axes[1].imshow(test_y0, cmap='gray')
-plt.savefig(f'./tmp_figs/mnist_{task}_pair.png')
-plt.show()
-
-
-def fwd_sampler(key_, x0):
-    xy0 = dataset.concat(x0, test_y0)
+def fwd_sampler(key_, x0_, y0_):
+    xy0 = dataset.concat(x0_, y0_)
     return simulate_cond_forward(key_, xy0, ts)
 
 
-def bridge_sampler(key_, y0_, yT_):
-    return doob_bridge_simulator(key_, sde, y0_, yT_, ts, integration_nsteps=100, replace=True)
+gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, dataset=MNIST,
+                               nparticles=nparticles, transition_sampler=transition_sampler,
+                               transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf, doob=True))
+gibbs_init = jax.jit(partial(gibbs_init, x0_shape=(2,), ts=ts, fwd_sampler=fwd_sampler, dataset=MNIST,
+                             transition_sampler=transition_sampler, transition_logpdf=transition_logpdf,
+                             likelihood_logpdf=likelihood_logpdf,
+                             nparticles=nparticles, method='smoother'))
 
-
-@jax.jit
-def gibbs_kernel(key_, xs_, us_star_, bs_star_):
-    key_fwd, key_csmc, key_bridge = jax.random.split(key_, num=3)
-    path_xy = fwd_sampler(key_fwd, xs_[0])
-    path_x, path_y = dataset.unpack(path_xy)
-    us = path_x[::-1]
-    vs = bridge_sampler(key_fwd, path_y[0], path_y[-1])[::-1] if args.doob else path_y[::-1]
-
-    def init_sampler(*_):
-        return us[0] * jnp.ones((nparticles, *us.shape[1:]))
-
-    def init_likelihood_logpdf(*_):
-        return -math.log(nparticles) * jnp.ones(nparticles)
-
-    us_star_next, bs_star_next = csmc_kernel(key_csmc,
-                                             us_star_, bs_star_,
-                                             vs, ts,
-                                             init_sampler, init_likelihood_logpdf,
-                                             transition_sampler, transition_logpdf,
-                                             likelihood_logpdf,
-                                             killing, nparticles,
-                                             backward=True)
-    xs_next = us_star_next[::-1]
-    return xs_next, us_star_next, bs_star_next, bs_star_next != bs_star_
-
-
-# Gibbs loop
-key, subkey = jax.random.split(key)
-xs = dataset.unpack(fwd_sampler(subkey, jnp.zeros_like(test_y0)))[0]
-us_star = xs[::-1]
-bs_star = jnp.zeros((nsteps + 1), dtype=int)
-
-uss = np.zeros((ngibbs, nsteps + 1, 28, 28, 1))
-for i in range(ngibbs):
+for k in range(args.ny0s):
+    print(f'Running Gibbs sampler for {k}-th y0.')
     key, subkey = jax.random.split(key)
-    xs, us_star, bs_star, acc = gibbs_kernel(subkey, xs, us_star, bs_star)
-    uss[i] = us_star
+    test_xy0 = sampler(subkey, test=True)
+    test_x0, test_y0 = test_xy0[:, :, :1], test_xy0[:, :, 1:]
 
-    fig = plt.figure()
-    plt.imshow(us_star[-1, :, :, 0], cmap='gray')
-    plt.tight_layout(pad=0.1)
-    plt.savefig(f'./tmp_figs/mnist_{task}_uss_{i}{"_doob" if args.doob else ""}.png')
-    plt.close(fig)
+    fig, axes = plt.subplots(ncols=2)
+    axes[0].imshow(test_x0, cmap='gray')
+    axes[1].imshow(test_y0, cmap='gray')
+    plt.savefig(f'./tmp_figs/mnist_{task}_pair_{k}.png')
+    plt.show()
 
-    fig = plt.figure()
-    plt.plot(uss[:i, -1, 10, 10, 0])
-    plt.tight_layout(pad=0.1)
-    plt.savefig(f'./tmp_figs/mnist_{task}_trace_pixel{"_doob" if args.doob else ""}.png')
-    plt.close(fig)
+    # Gibbs loop
+    key, subkey = jax.random.split(key)
+    x0, us_star = gibbs_init(subkey, test_y0)
+    bs_star = jnp.zeros((nsteps + 1), dtype=int)
 
-    print(f'{task} | Gibbs iter: {i}, acc: {acc}')
+    for i in range(ngibbs):
+        key, subkey = jax.random.split(key)
+        x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, test_y0, us_star, bs_star)
 
-np.save(f'uss{"_doob" if args.doob else ""}', uss)
+        fig = plt.figure()
+        plt.imshow(us_star[-1, :, :, 0], cmap='gray')
+        plt.tight_layout(pad=0.1)
+        plt.savefig(f'./tmp_figs/mnist_{task}_uss_{i}{"_doob" if args.doob else ""}_{k}.png')
+        plt.close(fig)
+
+        print(f'{task} | Gibbs iter: {i}, acc: {acc}')
