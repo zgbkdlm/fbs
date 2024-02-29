@@ -6,7 +6,7 @@ import jax.numpy as jnp
 from fbs.sdes.simulators import doob_bridge_simulator
 from fbs.filters.csmc.csmc import csmc_kernel
 from fbs.filters.csmc.resamplings import killing
-from fbs.filters.smc import bootstrap_filter
+from fbs.filters.smc import bootstrap_filter, bootstrap_backward_smoother
 from fbs.filters.resampling import stratified
 from fbs.sdes.linear import StationaryLinLinearSDE
 from fbs.data.base import Dataset
@@ -32,7 +32,7 @@ def gibbs_init(key, y0, x0_shape, ts,
     """
     if x0 is None:
         x0 = jnp.ones_like(x0_shape)
-    key_fwd, key_u0, key_bf, key_fwd2 = jax.random.split(key, num=4)
+    key_fwd, key_u0, key_bf, key_fwd2, key_bwd = jax.random.split(key, num=5)
 
     path_xy = fwd_sampler(key_fwd, x0, y0)
     _, path_y = dataset.unpack(path_xy)
@@ -45,22 +45,16 @@ def gibbs_init(key, y0, x0_shape, ts,
 
     if method == 'filter':
         approx_x0 = bootstrap_filter(transition_sampler, likelihood_logpdf, vs, ts, init_sampler, key_bf, nparticles,
-                                     stratified, log=True, return_last=True)
+                                     stratified, log=True, return_last=True)[0]
         approx_us_star = dataset.unpack(fwd_sampler(key_fwd2, approx_x0, y0))[0][::-1]
     elif method == 'smoother':
         uss = bootstrap_filter(transition_sampler, likelihood_logpdf, vs, ts, init_sampler, key_bf, nparticles,
                                stratified, log=True, return_last=False)
         approx_x0 = uss[-1]
-        approx_us_star = smoother(uss, transition_logpdf)
+        approx_us_star = bootstrap_backward_smoother(key_bwd, uss, vs, ts, transition_sampler)
     else:
         raise ValueError(f"Unknown method {method}")
     return approx_x0, approx_us_star
-
-
-def gibbs_smoother_init():
-    """Compared to `gibbs_bootstrap_init`, this should give an initialisation closer to the stationary phase.
-    """
-    pass
 
 
 def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JArray,

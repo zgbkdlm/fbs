@@ -85,11 +85,31 @@ def bootstrap_filter(transition_sampler: Callable[[JArray, JArray, FloatScalar, 
                                                               (vs[1:], vs[:-1], ts[:-1], keys))
     if return_last:
         return last_samples, nell_ys
-    return filtering_samples, nell_ys
+    else:
+        filtering_samples = jnp.concatenate([jnp.expand_dims(init_samples, axis=0), filtering_samples], axis=0)
+        return filtering_samples, nell_ys
 
 
-def bootstrap_backward_smoother():
-    pass
+def bootstrap_backward_smoother(key: JKey,
+                                filter_us: JArray, vs: JArray, ts: JArray,
+                                transition_logpdf: Callable) -> JArray:
+    """Backward particle smoother by using the results from a bootstrap filter.
+    """
+    def scan_body(carry, elem):
+        u_kp1 = carry
+        uf_k, v_k, t_k, key_ = elem
+
+        log_ws = transition_logpdf(u_kp1, uf_k, v_k, t_k)
+        log_ws = log_ws - jax.scipy.special.logsumexp(log_ws)
+        u_k = jax.random.choice(key_, uf_k, axis=0, p=jnp.exp(log_ws))
+        return u_k, u_k
+
+    nsteps = filter_us.shape[0] - 1
+    key_last, key_smoother = jax.random.split(key, num=2)
+    uT = jax.random.choice(key, filter_us[-1], axis=0)
+    traj = jax.lax.scan(scan_body, uT, (filter_us[-2::-1], vs[-2::-1], ts[-2::-1],
+                                        jax.random.split(key_smoother, num=nsteps)))[1][::-1]
+    return jnp.concatenate([traj, jnp.expand_dims(uT, axis=0)], axis=0)
 
 
 def pf_temp(key: JKey,

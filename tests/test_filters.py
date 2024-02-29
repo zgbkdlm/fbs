@@ -3,12 +3,12 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import numpy.testing as npt
-from jax.config import config
-from fbs.filters.smc import bootstrap_filter
+from fbs.filters.smc import bootstrap_filter, bootstrap_backward_smoother
 from fbs.filters.resampling import stratified
+from fbs.utils import discretise_lti_sde
 
 np.random.seed(666)
-config.update("jax_enable_x64", True)
+jax.config.update("jax_enable_x64", True)
 
 
 def test_particle_filter():
@@ -91,3 +91,58 @@ def test_particle_filter():
     npt.assert_allclose(jnp.mean(pf_samples, axis=1), mfs, rtol=1e-2)
     npt.assert_allclose(jnp.var(pf_samples, axis=1), vfs, rtol=1e-1)
     npt.assert_allclose(pf_nell, kf_nell, rtol=1e-3)
+
+
+def test_particle_smoother():
+    def gp_cov(t1, t2):
+        return sigma ** 2 * jnp.exp(-jnp.abs(t1[None, :] - t2[:, None]) / ell)
+
+    ell, sigma = 1., 1.
+    a, b = -1 / ell, math.sqrt(2 / ell) * sigma
+
+    T = 1
+    nsteps = 100
+    dt = T / nsteps
+    ts = jnp.linspace(0, T, nsteps + 1)
+
+    F, Q = discretise_lti_sde(a * jnp.eye(1), b ** 2 * jnp.eye(1), dt)
+    F, Q = jnp.squeeze(F), jnp.squeeze(Q)
+    chol_Q = jnp.sqrt(Q)
+    R = 1.
+
+    key = jax.random.PRNGKey(666)
+    xs = jnp.linalg.cholesky(gp_cov(ts, ts)) @ jax.random.normal(key, (nsteps + 1,))
+
+    key, subkey = jax.random.split(key)
+    ys = xs + math.sqrt(R) * jax.random.normal(subkey, (nsteps + 1,))
+
+    # Solve GP regression
+    cov_ = gp_cov(ts, ts)
+    gain = cov_ + R * jnp.eye(nsteps + 1)
+    chol_gain = jax.scipy.linalg.cho_factor(gain)
+    posterior_mean = cov_ @ jax.scipy.linalg.cho_solve(chol_gain, ys)
+    posterior_cov = cov_ - cov_ @ jax.scipy.linalg.cho_solve(chol_gain, cov_)
+
+    def init_sampler(key_, _, nsamples_):
+        return posterior_mean[0] + jnp.sqrt(posterior_cov[0, 0]) * jax.random.normal(key_, (nsamples_,))
+
+    def transition_sampler(xs_prev, v_prev, t_prev, key_):
+        return xs_prev * F + jax.random.normal(key_, xs_prev.shape) * chol_Q
+
+    def transition_logpdf(x, x_prev, v_pref, t_prev):
+        return jax.scipy.stats.norm.logpdf(x, x_prev * F, chol_Q)
+
+    def likelihood_logpdf(y, x_prev, y_prev, t_prev):
+        return jax.scipy.stats.norm.logpdf(y, x_prev, math.sqrt(R))
+
+    key, subkey = jax.random.split(key)
+    filtering_samples = bootstrap_filter(transition_sampler, likelihood_logpdf, ys, ts,
+                                         init_sampler, subkey, 10_000, stratified,
+                                         log=True, return_last=False)[0]
+
+    def smoother(key_):
+        return bootstrap_backward_smoother(key_, filtering_samples, ys, ts, transition_logpdf)
+    key, subkey = jax.random.split(key)
+    trajs = jax.vmap(smoother)(jax.random.split(subkey, 100))
+
+    npt.assert_allclose(jnp.mean(trajs, axis=0), posterior_mean, rtol=1.5e-1)
