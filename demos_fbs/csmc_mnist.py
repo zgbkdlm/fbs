@@ -40,6 +40,7 @@ parser.add_argument('--test_seed', type=int, default=666)
 parser.add_argument('--nparticles', type=int, default=100)
 parser.add_argument('--ngibbs', type=int, default=10)
 parser.add_argument('--ny0s', type=int, default=5)
+parser.add_argument('--init_method', type=str, default='smoother')
 parser.add_argument('--doob', action='store_true', default=False)
 
 args = parser.parse_args()
@@ -239,7 +240,7 @@ gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde
 gibbs_init = jax.jit(partial(gibbs_init, x0_shape=(28, 28, 1), ts=ts, fwd_sampler=fwd_sampler, dataset=dataset,
                              transition_sampler=transition_sampler, transition_logpdf=transition_logpdf,
                              likelihood_logpdf=likelihood_logpdf,
-                             nparticles=nparticles, method='smoother'))
+                             nparticles=nparticles, method=args.init_method))
 
 for k in range(args.ny0s):
     print(f'Running Gibbs sampler for {k}-th y0.')
