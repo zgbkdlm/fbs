@@ -254,18 +254,13 @@ for k in range(args.ny0s):
     x0, us_star = gibbs_init(subkey, test_y0)
     bs_star = jnp.zeros((nsteps + 1), dtype=int)
 
-    plt.imsave(f'./tmp_figs/mnist_{task}_{k}_init.png', x0[:, :, 0], cmap='gray')
+    plt.imsave(f'./tmp_figs/mnist_{task}_{k}_init.png', normalise(x0)[:, :, 0], cmap='gray')
 
     for i in range(ngibbs):
         key, subkey = jax.random.split(key)
         x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, test_y0, us_star, bs_star)
 
-        fig = plt.figure()
-        plt.imshow(us_star[-1, :, :, 0], cmap='gray')
-        plt.tight_layout(pad=0.1)
-        plt.savefig(f'./tmp_figs/mnist_{task}_uss_{i}{"_doob" if args.doob else ""}_{k}.png')
-        plt.close(fig)
-
-        plt.imsave(f'./tmp_figs/mnist_{task}{"_doob" if args.doob else ""}_{k}_{i}.png')
+        plt.imsave(f'./tmp_figs/mnist_{task}{"_doob" if args.doob else ""}_{k}_{i}.png',
+                   normalise(us_star[-1, :, :])[:, :, 0], cmap='gray')
 
         print(f'{task} | Gibbs iter: {i}, acc: {acc}')
