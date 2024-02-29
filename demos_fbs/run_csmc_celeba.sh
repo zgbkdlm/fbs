@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -A Berzelius-2023-194
 #SBATCH --gpus=1
-#SBATCH -o celeba-sm.log
+#SBATCH -o celeba.log
 #SBATCH -t 01-12:00:00
 
 source ~/.bashrc
