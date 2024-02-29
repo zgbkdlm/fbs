@@ -15,8 +15,8 @@ from fbs.data import Crescent
 from fbs.nn.models import make_simple_st_nn, CrescentMLP
 from fbs.nn.utils import make_optax_kernel
 from fbs.sdes import make_linear_sde, make_linear_sde_law_loss, StationaryLinLinearSDE, reverse_simulator
-from fbs.filters.csmc.csmc import csmc_kernel
-from fbs.filters.csmc.resamplings import killing
+from fbs.samplers.csmc.csmc import csmc_kernel
+from fbs.samplers.csmc.resamplings import killing
 from fbs.sdes import euler_maruyama
 from functools import partial
 

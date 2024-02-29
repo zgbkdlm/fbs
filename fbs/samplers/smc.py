@@ -1,7 +1,7 @@
 import math
 import jax
 import jax.numpy as jnp
-from fbs.filters.common import MCMCState
+from fbs.samplers.common import MCMCState
 from fbs.typings import JArray, JFloat, JKey, FloatScalar
 from typing import Callable, Tuple, Optional
 

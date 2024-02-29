@@ -3,8 +3,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import numpy.testing as npt
-from fbs.filters.smc import bootstrap_filter, bootstrap_backward_smoother
-from fbs.filters.resampling import stratified
+from fbs.samplers.smc import bootstrap_filter, bootstrap_backward_smoother
+from fbs.samplers.resampling import stratified
 from fbs.utils import discretise_lti_sde
 
 np.random.seed(666)

@@ -4,10 +4,10 @@ import math
 import jax
 import jax.numpy as jnp
 from fbs.sdes.simulators import doob_bridge_simulator
-from fbs.filters.csmc.csmc import csmc_kernel
-from fbs.filters.csmc.resamplings import killing
-from fbs.filters.smc import bootstrap_filter, bootstrap_backward_smoother
-from fbs.filters.resampling import stratified
+from fbs.samplers.csmc.csmc import csmc_kernel
+from fbs.samplers.csmc.resamplings import killing
+from fbs.samplers.smc import bootstrap_filter, bootstrap_backward_smoother
+from fbs.samplers.resampling import stratified
 from fbs.sdes.linear import StationaryLinLinearSDE
 from fbs.data.base import Dataset
 from fbs.typings import JKey, JArray

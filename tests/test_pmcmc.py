@@ -7,8 +7,8 @@ import math
 import numpy as np
 import numpy.testing as npt
 from fbs.utils import discretise_lti_sde
-from fbs.filters.smc import pmcmc_kernel
-from fbs.filters import stratified
+from fbs.samplers.smc import pmcmc_kernel
+from fbs.samplers import stratified
 from functools import partial
 
 jax.config.update("jax_enable_x64", True)
