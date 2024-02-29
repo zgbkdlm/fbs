@@ -258,6 +258,12 @@ for k in range(args.ny0s):
     x0, us_star = gibbs_init(subkey, test_y0)
     bs_star = jnp.zeros((nsteps + 1), dtype=int)
 
+    fig = plt.figure()
+    plt.imshow(x0[:, :, 0], cmap='gray')
+    plt.tight_layout(pad=0.1)
+    plt.savefig(f'./tmp_figs/mnist_{task}_init_{k}.png')
+    plt.close(fig)
+
     for i in range(ngibbs):
         key, subkey = jax.random.split(key)
         x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, test_y0, us_star, bs_star)
