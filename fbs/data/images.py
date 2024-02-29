@@ -50,7 +50,7 @@ class Image(Dataset):
                                   (c, c, kernel_size, kernel_size))
         corrupted_img = jax.lax.conv_general_dilated(img, kernel, (1, 1), 'SAME',
                                                      dimension_numbers=('NHWC', 'IOHW', 'NHWC'))[0]
-        return normalise_rgb(corrupted_img, method='norm')
+        return normalise(corrupted_img, method='norm')
 
     def paint(self, key, img: Array, rectangle_size: int = 15) -> JArray:
         """Paint the image with a random rectangle.
@@ -202,7 +202,7 @@ class CelebAHQ(Image):
         self.image_shape = (resolution, resolution, 3)
 
 
-def normalise_rgb(img: JArray, method: str = 'clip') -> JArray:
+def normalise(img: JArray, method: str = 'clip') -> JArray:
     if method == 'clip':
         img = jnp.where(img < 0, 0., img)
         img = jnp.where(img > 1, 1., img)

@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import optax
 from fbs.data import CelebAHQ
-from fbs.data.images import normalise_rgb
+from fbs.data.images import normalise
 from fbs.sdes import make_linear_sde, make_linear_sde_law_loss, StationaryConstLinearSDE, \
     StationaryLinLinearSDE, StationaryExpLinearSDE, reverse_simulator
 from fbs.sdes.simulators import doob_bridge_simulator
@@ -81,7 +81,7 @@ if not train:
     fig, axes = plt.subplots(nrows=2, ncols=4)
     for row in range(2):
         for col in range(4):
-            axes[row, col].imshow(normalise_rgb(xys[col, :, :, row * 3:(row + 1) * 3]))
+            axes[row, col].imshow(normalise(xys[col, :, :, row * 3:(row + 1) * 3]))
     plt.tight_layout(pad=0.1)
     plt.show()
 
@@ -182,10 +182,10 @@ print(jnp.min(approx_init_samples), jnp.max(approx_init_samples))
 
 fig, axes = plt.subplots(nrows=2, ncols=7, sharey='row')
 for row in range(2):
-    axes[row, 0].imshow(normalise_rgb(test_sample0[:, :, row * 3:(row + 1) * 3]))
-    axes[row, 1].imshow(normalise_rgb(terminal_val[:, :, row * 3:(row + 1) * 3]))
+    axes[row, 0].imshow(normalise(test_sample0[:, :, row * 3:(row + 1) * 3]))
+    axes[row, 1].imshow(normalise(terminal_val[:, :, row * 3:(row + 1) * 3]))
     for i in range(2, 7):
-        axes[row, i].imshow(normalise_rgb(approx_init_samples[i - 2][:, :, row * 3:(row + 1) * 3]))
+        axes[row, i].imshow(normalise(approx_init_samples[i - 2][:, :, row * 3:(row + 1) * 3]))
 plt.tight_layout(pad=0.1)
 plt.savefig(f'./tmp_figs/celeba{resolution}_{task}_backward_test.png')
 plt.show()
@@ -290,7 +290,7 @@ for i in range(ngibbs):
     uss[i] = us_star
 
     fig = plt.figure()
-    plt.imshow(normalise_rgb(us_star[-1]))
+    plt.imshow(normalise(us_star[-1]))
     plt.tight_layout(pad=0.1)
     plt.savefig(f'./tmp_figs/celeba{resolution}_{task}_uss_{i}{"_doob" if args.doob else ""}.png')
     plt.close(fig)

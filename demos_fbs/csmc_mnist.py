@@ -1,7 +1,6 @@
 r"""
 Conditional sampling on MNIST
 """
-import os
 import math
 import argparse
 import jax
@@ -16,6 +15,7 @@ from fbs.samplers import gibbs_init, gibbs_kernel
 from fbs.nn.models import make_st_nn
 from fbs.nn.unet import UNet
 from fbs.nn.utils import make_optax_kernel
+from fbs.data.images import normalise
 from functools import partial
 
 # Parse arguments
@@ -39,7 +39,7 @@ parser.add_argument('--test_ema', action='store_true', default=False)
 parser.add_argument('--test_seed', type=int, default=666)
 parser.add_argument('--nparticles', type=int, default=100)
 parser.add_argument('--ngibbs', type=int, default=10)
-parser.add_argument('--ny0s', type=int, default=10)
+parser.add_argument('--ny0s', type=int, default=5)
 parser.add_argument('--doob', action='store_true', default=False)
 
 args = parser.parse_args()
@@ -53,7 +53,7 @@ print(f'{"Train" if train else "Test"} {task} on MNIST')
 key = jax.random.PRNGKey(666)
 key, data_key = jax.random.split(key)
 
-T = 1
+T = 2
 nsteps = args.test_nsteps
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
@@ -246,23 +246,15 @@ for k in range(args.ny0s):
     key, subkey = jax.random.split(key)
     test_xy0 = sampler(subkey, test=True)
     test_x0, test_y0 = test_xy0[:, :, :1], test_xy0[:, :, 1:]
-
-    fig, axes = plt.subplots(ncols=2)
-    axes[0].imshow(test_x0, cmap='gray')
-    axes[1].imshow(test_y0, cmap='gray')
-    plt.savefig(f'./tmp_figs/mnist_{task}_pair_{k}.png')
-    plt.show()
+    plt.imsave(f'./tmp_figs/mnist_{task}_{k}_pair_true.png', test_x0, cmap='gray')
+    plt.imsave(f'./tmp_figs/mnist_{task}_{k}_pair_corrupt.png', test_y0, cmap='gray')
 
     # Gibbs loop
     key, subkey = jax.random.split(key)
     x0, us_star = gibbs_init(subkey, test_y0)
     bs_star = jnp.zeros((nsteps + 1), dtype=int)
 
-    fig = plt.figure()
-    plt.imshow(x0[:, :, 0], cmap='gray')
-    plt.tight_layout(pad=0.1)
-    plt.savefig(f'./tmp_figs/mnist_{task}_init_{k}.png')
-    plt.close(fig)
+    plt.imsave(f'./tmp_figs/mnist_{task}_{k}_init.png', x0[:, :, 0], cmap='gray')
 
     for i in range(ngibbs):
         key, subkey = jax.random.split(key)
@@ -273,5 +265,7 @@ for k in range(args.ny0s):
         plt.tight_layout(pad=0.1)
         plt.savefig(f'./tmp_figs/mnist_{task}_uss_{i}{"_doob" if args.doob else ""}_{k}.png')
         plt.close(fig)
+
+        plt.imsave(f'./tmp_figs/mnist_{task}{"_doob" if args.doob else ""}_{k}_{i}.png')
 
         print(f'{task} | Gibbs iter: {i}, acc: {acc}')
