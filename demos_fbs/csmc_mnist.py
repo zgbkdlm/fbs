@@ -247,8 +247,8 @@ for k in range(args.ny0s):
     key, subkey = jax.random.split(key)
     test_xy0 = sampler(subkey, test=True)
     test_x0, test_y0 = test_xy0[:, :, :1], test_xy0[:, :, 1:]
-    plt.imsave(f'./tmp_figs/mnist_{task}_{k}_pair_true.png', test_x0, cmap='gray')
-    plt.imsave(f'./tmp_figs/mnist_{task}_{k}_pair_corrupt.png', test_y0, cmap='gray')
+    plt.imsave(f'./tmp_figs/mnist_{task}_{k}_pair_true.png', test_x0[:, :, 0], cmap='gray')
+    plt.imsave(f'./tmp_figs/mnist_{task}_{k}_pair_corrupt.png', test_y0[:, :, 0], cmap='gray')
 
     # Gibbs loop
     key, subkey = jax.random.split(key)
