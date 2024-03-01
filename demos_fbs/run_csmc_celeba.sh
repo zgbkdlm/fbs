@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH -A Berzelius-2023-194
+#SBATCH -A Berzelius-2024-58
 #SBATCH --gpus=1
 #SBATCH -o celeba.log
-#SBATCH -t 01-12:00:00
+#SBATCH -t 01-15:00:00
 
 source ~/.bashrc
 export XLA_PYTHON_CLIENT_PREALLOCATE=false

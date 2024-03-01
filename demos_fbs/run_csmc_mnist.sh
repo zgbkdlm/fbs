@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -A Berzelius-2024-28
+#SBATCH -A Berzelius-2024-58
 #SBATCH --gpus=1
 #SBATCH -o mnist.log
 #SBATCH -t 11:00:00
