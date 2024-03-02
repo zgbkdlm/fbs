@@ -103,9 +103,11 @@ class Image(Dataset):
             perm_inds = self.perm_inds
         inds = perm_inds[i]
 
+        jitted_corrupt = jax.jit(jax.vmap(self.corrupt, in_axes=[0, 0]))
+
         xs = self.xs[inds]
         keys = jax.random.split(key, num=inds.shape[0])
-        ys = jax.vmap(self.corrupt, in_axes=[0, 0])(keys, xs)
+        ys = jitted_corrupt(keys, xs)
         return xs, ys
 
     @staticmethod
