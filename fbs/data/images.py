@@ -3,6 +3,7 @@ import jax.numpy as jnp
 import itertools
 from .base import Dataset
 from fbs.typings import JKey, Array, JArray
+from functools import partial
 from typing import Tuple, Sequence
 
 
@@ -98,17 +99,18 @@ class Image(Dataset):
         y = self.corrupt(key_corrupt, x)
         return x, y
 
+    @partial(jax.jit, static_argnums=0)
+    def _enumerate_jit(self, inds, key):
+        xs = self.xs[inds]
+        keys = jax.random.split(key, num=inds.shape[0])
+        ys = jax.vmap(self.corrupt, in_axes=[0, 0])(keys, xs)
+        return xs, ys
+
     def enumerate_subset(self, i: int, perm_inds=None, key=None) -> Tuple[JArray, JArray]:
         if perm_inds is None:
             perm_inds = self.perm_inds
         inds = perm_inds[i]
-
-        jitted_corrupt = jax.jit(jax.vmap(self.corrupt, in_axes=[0, 0]))
-
-        xs = self.xs[inds]
-        keys = jax.random.split(key, num=inds.shape[0])
-        ys = jitted_corrupt(keys, xs)
-        return xs, ys
+        return self._enumerate_jit(inds, key)
 
     @staticmethod
     def concat(x: JArray, y: JArray, expand: bool = False) -> JArray:
