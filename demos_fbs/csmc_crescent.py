@@ -27,7 +27,7 @@ y0 = 4.
 use_pretrained = True
 use_ema = True
 
-T = 2
+T = 2.
 nsteps = 200
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
@@ -98,7 +98,7 @@ else:
         samples = jax.vmap(sampler_xy, in_axes=[0])(keys)
         key, subkey = jax.random.split(key)
         param, opt_state, loss = optax_kernel(param, opt_state, subkey, samples)
-        ema_param = ema_kernel(ema_param, param, i, 100, 0.99)
+        ema_param = ema_kernel(ema_param, param, i, 100, 2, 0.99)
         print(f'i: {i}, loss: {loss}')
     np.savez('./crescent.npz', param=param, ema_param=ema_param)
 
