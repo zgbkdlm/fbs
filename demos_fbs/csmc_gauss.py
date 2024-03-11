@@ -7,8 +7,8 @@ import math
 import matplotlib.pyplot as plt
 import numpy as np
 from fbs.utils import discretise_lti_sde
-from fbs.filters.csmc.csmc import csmc_kernel
-from fbs.filters.csmc.resamplings import killing
+from fbs.samplers.csmc.csmc import csmc_kernel
+from fbs.samplers.csmc.resamplings import killing
 from functools import partial
 
 # General configs

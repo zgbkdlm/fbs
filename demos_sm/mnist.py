@@ -11,7 +11,7 @@ from fbs.data import MNIST
 from fbs.sdes import make_linear_sde, make_linear_sde_law_loss, StationaryConstLinearSDE, \
     StationaryLinLinearSDE, StationaryExpLinearSDE, reverse_simulator
 from fbs.nn.models import make_simple_st_nn
-from fbs.nn.unet_z import MNISTUNet
+from fbs.nn.unet_mnist import MNISTUNet
 from fbs.nn.utils import make_optax_kernel
 
 # Parse arguments

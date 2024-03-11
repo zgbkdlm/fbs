@@ -55,3 +55,7 @@ class Crescent(Dataset):
         z = jax.scipy.integrate.trapezoid(jax.scipy.integrate.trapezoid(evals, phi_mesh[0, :, 0], axis=0),
                                           phi_mesh[:, 0, 1])
         return evals / z
+
+    @staticmethod
+    def unpack(xy):
+        return xy[..., :2], xy[..., -1]

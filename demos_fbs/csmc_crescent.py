@@ -11,25 +11,23 @@ import matplotlib.pyplot as plt
 import numpy as np
 import optax
 from fbs.data import Crescent
-from fbs.nn.models import make_simple_st_nn, CrescentMLP
+from fbs.nn.models import make_st_nn, CrescentMLP
 from fbs.nn.utils import make_optax_kernel
 from fbs.sdes import make_linear_sde, make_linear_sde_law_loss, StationaryLinLinearSDE, reverse_simulator
-from fbs.sdes.simulators import doob_bridge_simulator
-from fbs.filters.csmc.csmc import csmc_kernel
-from fbs.filters.csmc.resamplings import killing
+from fbs.samplers import gibbs_init, gibbs_kernel
 from functools import partial
 
 # General configs
-nparticles = 50
-ngibbs = 10000
+nparticles = 100
+ngibbs = 5000
 burn_in = 100
 jax.config.update("jax_enable_x64", False)
 key = jax.random.PRNGKey(666)
-y0 = 2.
+y0 = 4.
 use_pretrained = True
 use_ema = True
 
-T = 2
+T = 2.
 nsteps = 200
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
@@ -68,22 +66,21 @@ plt.scatter(terminal_vals[:, 0], terminal_vals[:, 2], s=1, alpha=0.5)
 plt.show()
 
 # Score matching training
-train_nsamples = 128
-train_nsteps = 100
+train_nsamples = 1024
+train_nsteps = 128
 nn_dt = T / 200
 
 key, subkey = jax.random.split(key)
-_, _, array_param, _, nn_score = make_simple_st_nn(subkey,
-                                                   dim_in=3, batch_size=train_nsamples,
-                                                   nn_model=CrescentMLP(nn_dt))
+array_param, _, nn_score = make_st_nn(subkey, CrescentMLP(nn_dt),
+                                      dim_in=(3,), batch_size=train_nsamples)
 
 loss_type = 'score'
 loss_fn = make_linear_sde_law_loss(sde, nn_score,
                                    t0=0., T=T, nsteps=train_nsteps,
-                                   random_times=True, loss_type=loss_type)
+                                   random_times=True, loss_type=loss_type, save_mem=False)
 
 # schedule = optax.constant_schedule(1e-3)
-schedule = optax.cosine_decay_schedule(1e-3, 50, .95)
+schedule = optax.cosine_decay_schedule(1e-3, 10000, 1e-2)
 optimiser = optax.chain(optax.clip_by_global_norm(1.),
                         optax.adam(learning_rate=schedule))
 optax_kernel, ema_kernel = make_optax_kernel(optimiser, loss_fn, jit=True)
@@ -101,7 +98,7 @@ else:
         samples = jax.vmap(sampler_xy, in_axes=[0])(keys)
         key, subkey = jax.random.split(key)
         param, opt_state, loss = optax_kernel(param, opt_state, subkey, samples)
-        ema_param = ema_kernel(ema_param, param, i, 100, 0.99)
+        ema_param = ema_kernel(ema_param, param, i, 100, 2, 0.99)
         print(f'i: {i}, loss: {loss}')
     np.savez('./crescent.npz', param=param, ema_param=ema_param)
 
@@ -140,6 +137,7 @@ axes[0, 0].set_xlim(-4, 4)
 axes[0, 1].set_xlim(-4, 4)
 axes[1, 0].set_ylim(-5, 10)
 plt.tight_layout(pad=0.1)
+plt.savefig('crescent_approx.pdf', transparent=True)
 plt.show()
 
 
@@ -181,55 +179,39 @@ def likelihood_logpdf(v, u_prev, v_prev, t_prev):
                                        math.sqrt(dt) * reverse_dispersion(t_prev))
 
 
-def fwd_sampler(key_, x0):
-    xy0 = jnp.hstack([x0, y0])
+def fwd_sampler(key_, x0_, y0_):
+    xy0 = jnp.hstack([x0_, y0_])
     return simulate_cond_forward(key_, xy0, ts)
 
 
-def bridge_sampler(key_, y0_, yT_):
-    return doob_bridge_simulator(key_, sde, y0_, yT_, ts, integration_nsteps=100, replace=True)
-
-
-@jax.jit
-def gibbs_kernel(key_, xs_, us_star_, bs_star_):
-    key_fwd, key_bridge, key_csmc = jax.random.split(key_, num=3)
-    path_xy = fwd_sampler(key_fwd, xs_[0])
-    # us, vs = path_xy[::-1, :2], path_xy[::-1, -1]
-    us, vs = path_xy[::-1, :2], bridge_sampler(key_bridge, path_xy[0, -1], path_xy[-1, -1])[::-1]
-
-    def init_sampler(*_):
-        return us[0] * jnp.ones((nparticles, us.shape[-1]))
-
-    def init_likelihood_logpdf(*_):
-        return -math.log(nparticles) * jnp.ones(nparticles)
-
-    us_star_next, bs_star_next = csmc_kernel(key_csmc,
-                                             us_star_, bs_star_,
-                                             vs, ts,
-                                             init_sampler, init_likelihood_logpdf,
-                                             transition_sampler, transition_logpdf,
-                                             likelihood_logpdf,
-                                             killing, nparticles,
-                                             backward=True)
-    xs_next = us_star_next[::-1]
-    return xs_next, us_star_next, bs_star_next, bs_star_next != bs_star_
-
+gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, dataset=crescent,
+                               nparticles=nparticles, transition_sampler=transition_sampler,
+                               transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf, doob=True))
+gibbs_init = jax.jit(partial(gibbs_init, x0_shape=(2,), ts=ts, fwd_sampler=fwd_sampler, dataset=crescent,
+                             transition_sampler=transition_sampler, transition_logpdf=transition_logpdf,
+                             likelihood_logpdf=likelihood_logpdf,
+                             nparticles=nparticles, method='smoother'))
 
 # Gibbs loop
 key, subkey = jax.random.split(key)
-xs = fwd_sampler(subkey, jnp.zeros((2,)))[:, :2]
-us_star = xs[::-1]
+x0, us_star = gibbs_init(subkey, y0)
 bs_star = jnp.zeros((nsteps + 1), dtype=int)
+key, _ = jax.random.split(key)
 
 uss = np.zeros((ngibbs, nsteps + 1, 2))
-xss = np.zeros((ngibbs, nsteps + 1, 2))
 for i in range(ngibbs):
     key, subkey = jax.random.split(key)
-    xs, us_star, bs_star, acc = gibbs_kernel(subkey, xs, us_star, bs_star)
-    xss[i], uss[i] = xs, us_star
+    x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, y0, us_star, bs_star)
+    uss[i] = us_star
     print(f'Gibbs iter: {i}, acc: {jnp.mean(acc)}')
 
 # Plot
+plt.rcParams.update({
+    'text.usetex': True,
+    'font.family': "serif",
+    'text.latex.preamble': r'\usepackage{amsmath,amsfonts}',
+    'font.size': 17})
+
 plt.plot(uss[:, -1, 0])
 plt.plot(uss[:, -1, 1])
 plt.show()
@@ -237,12 +219,14 @@ plt.show()
 uss = uss[burn_in:]
 
 # Check the joint
-fig, ax = plt.subplots()
-pcm = ax.pcolormesh(lines_, lines_, post)
-ax.scatter(uss[:, -1, 0], uss[:, -1, 1], c='tab:red', s=1, alpha=0.5, label=f'Approx. p(x | y = {y0})')
+fig, ax = plt.subplots(figsize=(8, 4.8))
+pcm = ax.contourf(lines_, lines_, post, levels=20, cmap='Greys')
+ax.scatter(uss[:, -1, 0], uss[:, -1, 1], c='tab:blue', s=1, alpha=0.4, edgecolor='none',
+           label=rf'Approx. samples $p(x \mid y = {y0})$')
 ax.legend()
 fig.colorbar(pcm, ax=ax)
 plt.tight_layout(pad=0.1)
+plt.savefig('crescent_joint.pdf', transparent=True)
 plt.show()
 
 # Check the joint in terms of 2D hist
@@ -260,8 +244,10 @@ plt.show()
 # Check the marginal
 plt.plot(lines_, jax.scipy.integrate.trapezoid(post, lines_, axis=1))
 plt.hist(uss[:, -1, 1], bins=50, density=True, alpha=0.5)
+plt.savefig('crescent_m1.pdf', transparent=True)
 plt.show()
 
 plt.plot(lines_, jax.scipy.integrate.trapezoid(post, lines_, axis=0))
 plt.hist(uss[:, -1, 0], bins=50, density=True, alpha=0.5)
+plt.savefig('crescent_m2.pdf', transparent=True)
 plt.show()

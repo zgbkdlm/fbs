@@ -15,8 +15,8 @@ from fbs.data import Crescent
 from fbs.nn.models import make_simple_st_nn, CrescentMLP
 from fbs.nn.utils import make_optax_kernel
 from fbs.sdes import make_linear_sde, make_linear_sde_law_loss, StationaryLinLinearSDE, reverse_simulator
-from fbs.filters.smc import pf_temp
-from fbs.filters.resampling import stratified
+from fbs.samplers.smc import pf_temp
+from fbs.samplers.resampling import stratified
 from functools import partial
 
 # General configs

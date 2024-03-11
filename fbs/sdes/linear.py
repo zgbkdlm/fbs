@@ -63,6 +63,7 @@ class StationaryLinLinearSDE(LinearSDE):
         def log_h(a, b): return jnp.sum(jax.scipy.stats.norm.logpdf(a,
                                                                     self.mean(T, t, b),
                                                                     jnp.sqrt(self.variance(T, t))))
+
         score_h = jax.grad(log_h, argnums=1)(target, x)
         return self.drift(x, t) + self.dispersion(t) ** 2 * score_h
 
@@ -160,7 +161,7 @@ def make_linear_sde(sde: LinearSDE):
         F, Q = discretise_linear_sde(t, s)
         return -(x - F * x0) / Q
 
-    def simulate_cond_forward(key: JKey, x0: JArray, ts: JArray, keep_path: bool = True) -> JArray:
+    def simulate_cond_forward(key: JKey, x0: JArray, ts: JArray, t0: float = None, keep_path: bool = True) -> JArray:
         """Simulate a path of the OU process at ts starting from x0.
 
         Parameters
@@ -172,6 +173,8 @@ def make_linear_sde(sde: LinearSDE):
         keep_path : bool, default=True
             Let it be true will make the returned sample a valid sample path from the SDE. Othwerwise, the return are
             independent samples at each time point marginally.
+        t0: float, default=None
+            The initial time. If None, the initial time is given by ts[0].
 
         Returns
         -------
@@ -191,9 +194,9 @@ def make_linear_sde(sde: LinearSDE):
             rnds = jax.random.normal(key, (ts.shape[0] - 1, *x0.shape))
             return jnp.concatenate([x0[jnp.newaxis], jax.lax.scan(scan_body, x0, (ts[1:], ts[:-1], rnds))[1]], axis=0)
         else:
-            Fs, Qs = discretise_linear_sde(ts, ts[0])
-            rnds = jax.random.normal(key, (ts.shape[0], *x0.shape))
-            return Fs[:, None] * x0[jnp.newaxis] + jnp.sqrt(Qs)[:, None] * rnds
+            Fs, Qs = discretise_linear_sde(ts, t0)
+            rnds = jax.random.normal(key, (*ts.shape, *x0.shape))
+            return Fs * x0 + jnp.sqrt(Qs) * rnds
 
     return discretise_linear_sde, cond_score_t_0, simulate_cond_forward
 
@@ -201,11 +204,9 @@ def make_linear_sde(sde: LinearSDE):
 def make_linear_sde_law_loss(sde: LinearSDE, nn_fn,
                              t0=0., T=2., nsteps: int = 100,
                              random_times: bool = True,
-                             keep_path: bool = True,
                              loss_type: str = 'score',
                              save_mem: bool = False):
     discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(sde)
-    simulate_cond_forward = partial(simulate_cond_forward, keep_path=keep_path)
     eps = 1e-5
 
     def score_scale(t, s):
@@ -225,7 +226,8 @@ def make_linear_sde_law_loss(sde: LinearSDE, nn_fn,
         scales = score_scale(ts[1:], ts[0])
 
         keys = jax.random.split(key_fwd, num=nsamples)
-        fwd_paths = jax.vmap(simulate_cond_forward, in_axes=[0, 0, None])(keys, x0s, ts)  # (n, nsteps + 1, ...)
+        fwd_paths = jax.vmap(partial(simulate_cond_forward, keep_path=True),
+                             in_axes=[0, 0, None])(keys, x0s, ts)  # (n, nsteps + 1, ...)
         nn_evals = jax.vmap(nn_fn,
                             in_axes=[1, 0, None],
                             out_axes=1)(fwd_paths[:, 1:], ts[1:], param)  # (n, nsteps, ...)
@@ -260,7 +262,53 @@ def make_linear_sde_law_loss(sde: LinearSDE, nn_fn,
         else:
             raise NotImplementedError(f'Loss {loss_type} not implemented.')
 
-    return loss_fn
+    def loss_fn_save_mem(param, key, x0s):
+        nsamples = x0s.shape[0]
+        state_shape = x0s.shape[1:]
+        key_ts, key_fwd = jax.random.split(key, num=2)
+
+        if random_times:
+            ts = jnp.hstack([jnp.sort(jax.random.uniform(key_ts, (nsamples - 1,), minval=t0 + eps, maxval=T)),
+                             T])  # (n, )
+        else:
+            dt = (T - t0) / nsamples
+            ts = jnp.linspace(t0 + dt, T, nsamples)
+        scales = score_scale(ts, t0)
+
+        keys = jax.random.split(key_fwd, num=nsamples)
+        fwd_paths = jax.vmap(partial(simulate_cond_forward, t0=t0, keep_path=False),
+                             in_axes=[0, 0, 0])(keys, x0s, ts)  # (n, ...)
+        nn_evals = nn_fn(fwd_paths, ts, param)  # (n, ...)
+
+        if loss_type == 'score':
+            cond_score_evals = jax.vmap(cond_score_t_0, in_axes=[0, 0, 0, None])(fwd_paths, ts, x0s, t0)  # (n, ...)
+            return jnp.mean(jnp.mean((nn_evals - cond_score_evals) ** 2,
+                                     axis=list(range(1, 1 + len(state_shape)))) * scales)
+        elif loss_type == 'ipf':
+            @partial(jax.vmap, in_axes=[1, 0, 0], out_axes=1)
+            def fwd_transition(x, t, s):
+                return discretise_linear_sde(t, s)[0] * x
+
+            fwd_evals1 = fwd_transition(fwd_paths[:, :-1], ts[1:], ts[:-1])
+            fwd_evals2 = fwd_transition(fwd_paths[:, 1:], ts[1:], ts[:-1])
+            return jnp.mean((nn_evals - (fwd_paths[:, 1:] + fwd_evals1 - fwd_evals2)) ** 2)
+        elif loss_type == 'ipf-score':
+            # @partial(jax.vmap, in_axes=[1, 0, 0], out_axes=1)
+            # def f(x, t, t_prev):
+            #     return discretise_linear_sde(t, t_prev)[0] * x
+            #
+            # return jnp.mean(((nn_evals - f(fwd_paths[:, :-1], ts[1:], ts[:-1])) * (ts[None, 1:, None] - ts[None, :-1, None])
+            #                  + fwd_paths[:, 1:] - fwd_paths[:, :-1]) ** 2)
+            # return jnp.mean((nn_evals - (f(fwd_paths[:, :-1], ts[1:], ts[:-1]) - fwd_paths[:, 1:]) / (
+            #             ts[None, 1:, None] - ts[None, :-1, None])) ** 2)
+            cond_score_evals = jax.vmap(cond_score_t_0,
+                                        in_axes=[1, 0, 1, 0],
+                                        out_axes=1)(fwd_paths[:, 1:], ts[1:], fwd_paths[:, :-1], ts[:-1])
+            return jnp.mean((nn_evals - cond_score_evals) ** 2)
+        else:
+            raise NotImplementedError(f'Loss {loss_type} not implemented.')
+
+    return loss_fn_save_mem if save_mem else loss_fn
 
 
 def make_ou_score_matching_loss(a, b, nn_score, t0=0., T=2., nsteps: int = 100, random_times: bool = True):

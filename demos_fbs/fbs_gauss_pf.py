@@ -6,7 +6,7 @@ import jax.numpy as jnp
 import math
 import matplotlib.pyplot as plt
 from fbs.utils import discretise_lti_sde
-from fbs.filters import bootstrap_filter, stratified, killing
+from fbs.samplers import bootstrap_filter, stratified, killing
 from functools import partial
 
 # General configs

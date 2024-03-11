@@ -5,8 +5,8 @@ import math
 import jax
 import jax.numpy as jnp
 import numpy.testing as npt
-from fbs.filters.csmc.csmc import csmc, csmc_kernel
-from fbs.filters.csmc.resamplings import killing, multinomial
+from fbs.samplers.csmc.csmc import csmc, csmc_kernel
+from fbs.samplers.csmc.resamplings import killing, multinomial
 from fbs.utils import discretise_lti_sde
 from functools import partial
 

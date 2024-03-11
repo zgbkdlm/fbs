@@ -68,11 +68,16 @@ def make_optax_kernel(optimiser, loss_fn: Callable, jit: bool = True) -> Tuple[C
     def ema_update(param: JArray, ema_param: JArray, decay: float) -> JArray:
         return decay * ema_param + (1 - decay) * param
 
-    def ema_kernel(ema_param: JArray, param: JArray, count: int, count_threshold: int, decay: float) -> JArray:
-        if count < count_threshold:
+    def ema_kernel(ema_param: JArray, param: JArray,
+                   count: int, count_start: int, count_every: int,
+                   decay: float) -> JArray:
+        if count < count_start:
             ema_param = param
         else:
-            ema_param = ema_update(param, ema_param, decay)
+            if count % count_every == 0:
+                ema_param = ema_update(param, ema_param, decay)
+            else:
+                ema_param = ema_param
         return ema_param
 
     return jax.jit(optax_kernel) if jit else optax_kernel, ema_kernel

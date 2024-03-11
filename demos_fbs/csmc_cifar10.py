@@ -1,5 +1,5 @@
 r"""
-Conditional sampling on MNIST
+Conditional sampling on CIFAR10
 """
 import math
 import argparse
@@ -8,20 +8,22 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 import optax
-from fbs.data import MNIST
+from fbs.data import CIFAR10
+from fbs.data.images import normalise
 from fbs.sdes import make_linear_sde, make_linear_sde_law_loss, StationaryConstLinearSDE, \
     StationaryLinLinearSDE, StationaryExpLinearSDE, reverse_simulator
-from fbs.samplers import gibbs_init, gibbs_kernel
+from fbs.sdes.simulators import doob_bridge_simulator
+from fbs.samplers.csmc.csmc import csmc_kernel
+from fbs.samplers.csmc.resamplings import killing
 from fbs.nn.models import make_st_nn
 from fbs.nn.unet import UNet
 from fbs.nn.utils import make_optax_kernel
-from fbs.data.images import normalise
 from functools import partial
 
 # Parse arguments
-parser = argparse.ArgumentParser(description='MNIST test.')
+parser = argparse.ArgumentParser(description='CIFAR10 test.')
 parser.add_argument('--train', action='store_true', default=False, help='Whether train or not.')
-parser.add_argument('--task', type=str, default='deconv-10')
+parser.add_argument('--task', type=str, default='supr')
 parser.add_argument('--sde', type=str, default='lin')
 parser.add_argument('--upsampling', type=str, default='pixel_shuffle')
 parser.add_argument('--loss_type', type=str, default='score')
@@ -29,25 +31,23 @@ parser.add_argument('--lr', type=float, default=2e-4)
 parser.add_argument('--batch_size', type=int, default=2)
 parser.add_argument('--nsteps', type=int, default=2)
 parser.add_argument('--schedule', type=str, default='cos')
-parser.add_argument('--nepochs', type=int, default=30)
+parser.add_argument('--nepochs', type=int, default=40)
 parser.add_argument('--save_mem', action='store_true', default=False,
                     help='Save memory by sharing the batch of x and t')
 parser.add_argument('--grad_clip', action='store_true', default=False)
 parser.add_argument('--test_nsteps', type=int, default=500)
-parser.add_argument('--test_epoch', type=int, default=1000)
+parser.add_argument('--test_epoch', type=int, default=39)
 parser.add_argument('--test_ema', action='store_true', default=False)
 parser.add_argument('--test_seed', type=int, default=666)
 parser.add_argument('--nparticles', type=int, default=100)
-parser.add_argument('--ngibbs', type=int, default=10)
-parser.add_argument('--ny0s', type=int, default=5)
-parser.add_argument('--init_method', type=str, default='smoother')
+parser.add_argument('--ngibbs', type=int, default=100)
 parser.add_argument('--doob', action='store_true', default=False)
 
 args = parser.parse_args()
 train = args.train
 task = args.task
 
-print(f'{"Train" if train else "Test"} {task} on MNIST')
+print(f'{"Train" if train else "Test"} {task} on CIFAR10')
 
 # General configs
 # jax.config.update("jax_enable_x64", True)
@@ -59,11 +59,11 @@ nsteps = args.test_nsteps
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
 
-# MNIST
-d = (28, 28, 2)
+# CIFAR10
+d = (32, 32, 6)
 key, subkey = jax.random.split(key)
-dataset = MNIST(subkey, '../datasets/mnist.npz', task=task)
-dataset_test = MNIST(subkey, '../datasets/mnist.npz', task=task, test=True)
+dataset = CIFAR10(subkey, '../datasets/cifar10.npz', task=task)
+dataset_test = CIFAR10(subkey, '../datasets/cifar10.npz', task=task, test=True)
 
 
 def sampler(key_, test: bool = False):
@@ -79,7 +79,7 @@ if not train:
     fig, axes = plt.subplots(nrows=2, ncols=4)
     for row in range(2):
         for col in range(4):
-            axes[row, col].imshow(xys[col, :, :, row], cmap='gray')
+            axes[row, col].imshow(normalise(xys[col, :, :, row * 3:(row + 1) * 3]))
     plt.tight_layout(pad=0.1)
     plt.show()
 
@@ -108,7 +108,7 @@ nepochs = args.nepochs
 data_size = dataset.n
 
 key, subkey = jax.random.split(key)
-my_nn = UNet(dt=nn_dt, dim=32, upsampling=args.upsampling)
+my_nn = UNet(dt=nn_dt, dim=64, upsampling=args.upsampling)
 array_param, _, nn_score = make_st_nn(subkey,
                                       nn=my_nn, dim_in=d, batch_size=train_nsamples)
 
@@ -141,19 +141,19 @@ if train:
     for i in range(nepochs):
         data_key, subkey = jax.random.split(data_key)
         perm_inds = dataset.init_enumeration(subkey, train_nsamples)
-        for j in range(data_size // train_nsamples):
+        for j in range(nsteps_per_epoch):
             subkey, subkey2 = jax.random.split(subkey)
             x0s, y0s = dataset.enumerate_subset(j, perm_inds, subkey)
             xy0s = dataset.concat(x0s, y0s)
             param, opt_state, loss = optax_kernel(param, opt_state, subkey2, xy0s)
-            ema_param = ema_kernel(ema_param, param, j, 500, 2, 0.99)
-            print(f'MNIST | {task} | {args.upsampling} | {args.sde} | {loss_type} | {args.schedule} | '
+            ema_param = ema_kernel(ema_param, param, j, 200, 2, 0.99)
+            print(f'CIFAR10 | {task} | {args.upsampling} | {args.sde} | {loss_type} | {args.schedule} | '
                   f'Epoch: {i} / {nepochs}, iter: {j} / {data_size // train_nsamples}, loss: {loss:.4f}')
-        filename = f'./mnist_{task}_{args.sde}_{args.schedule}_{i}.npz'
-        if (i + 1) % 100 == 0:
+        filename = f'./cifar10_{task}_{args.sde}_{args.schedule}_{i}.npz'
+        if (i + 1) % 50 == 0:
             np.savez(filename, param=param, ema_param=ema_param)
 else:
-    param = np.load(f'./mnist_{task}_{args.sde}_{args.schedule}_'
+    param = np.load(f'./cifar10_{task}_{args.sde}_{args.schedule}_'
                     f'{args.test_epoch}.npz')['ema_param' if args.test_ema else 'param']
 
 
@@ -166,11 +166,11 @@ def rev_sim(key_, u0):
 
 
 # Simulate the backward and verify if it matches the target distribution
-kkk = jax.random.PRNGKey(args.test_seed)
-key, subkey = jax.random.split(kkk)
-test_x0 = sampler(subkey, test=True)
+key = jax.random.PRNGKey(args.test_seed)
 key, subkey = jax.random.split(key)
-traj = simulate_cond_forward(subkey, test_x0, ts)
+test_sample0 = sampler(subkey, test=True)
+key, subkey = jax.random.split(key)
+traj = simulate_cond_forward(subkey, test_sample0, ts)
 terminal_val = traj[-1]
 
 key, subkey = jax.random.split(key)
@@ -180,12 +180,12 @@ print(jnp.min(approx_init_samples), jnp.max(approx_init_samples))
 
 fig, axes = plt.subplots(nrows=2, ncols=7, sharey='row')
 for row in range(2):
-    axes[row, 0].imshow(test_x0[:, :, row], cmap='gray')
-    axes[row, 1].imshow(terminal_val[:, :, row], cmap='gray')
+    axes[row, 0].imshow(normalise(test_sample0[:, :, row * 3:(row + 1) * 3]))
+    axes[row, 1].imshow(normalise(terminal_val[:, :, row * 3:(row + 1) * 3]))
     for i in range(2, 7):
-        axes[row, i].imshow(approx_init_samples[i - 2][:, :, row], cmap='gray')
+        axes[row, i].imshow(normalise(approx_init_samples[i - 2][:, :, row * 3:(row + 1) * 3]))
 plt.tight_layout(pad=0.1)
-plt.savefig(f'./tmp_figs/mnist_{task}_backward_test.png')
+plt.savefig(f'./tmp_figs/cifar10_{task}_backward_test.png')
 plt.show()
 
 # Now conditional sampling
@@ -229,39 +229,76 @@ def likelihood_logpdf(v, u_prev, v_prev, t_prev):
     return jnp.sum(jax.scipy.stats.norm.logpdf(v, cond_m, math.sqrt(dt) * reverse_dispersion(t_prev)))
 
 
-def fwd_sampler(key_, x0_, y0_):
-    xy0 = dataset.concat(x0_, y0_)
+key, subkey = jax.random.split(key)
+test_xy0 = sampler(subkey, test=True)
+test_x0, test_y0 = test_xy0[:, :, :3], test_xy0[:, :, 3:]
+
+fig, axes = plt.subplots(ncols=2)
+axes[0].imshow(test_x0)
+axes[1].imshow(test_y0)
+plt.savefig(f'./tmp_figs/cifar10_{task}_pair.png')
+plt.show()
+
+
+def fwd_sampler(key_, x0):
+    xy0 = dataset.concat(x0, test_y0)
     return simulate_cond_forward(key_, xy0, ts)
 
 
-gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, dataset=dataset,
-                               nparticles=nparticles, transition_sampler=transition_sampler,
-                               transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf, doob=True))
-gibbs_init = jax.jit(partial(gibbs_init, x0_shape=(28, 28, 1), ts=ts, fwd_sampler=fwd_sampler, dataset=dataset,
-                             transition_sampler=transition_sampler, transition_logpdf=transition_logpdf,
-                             likelihood_logpdf=likelihood_logpdf,
-                             nparticles=nparticles, method=args.init_method))
+def bridge_sampler(key_, y0_, yT_):
+    return doob_bridge_simulator(key_, sde, y0_, yT_, ts, integration_nsteps=100, replace=True)
 
-for k in range(args.ny0s):
-    print(f'Running Gibbs sampler for {k}-th y0.')
+
+@jax.jit
+def gibbs_kernel(key_, xs_, us_star_, bs_star_):
+    key_fwd, key_csmc, key_bridge = jax.random.split(key_, num=3)
+    path_xy = fwd_sampler(key_fwd, xs_[0])
+    path_x, path_y = dataset.unpack(path_xy)
+    us = path_x[::-1]
+    vs = bridge_sampler(key_fwd, path_y[0], path_y[-1])[::-1] if args.doob else path_y[::-1]
+
+    def init_sampler(*_):
+        return us[0] * jnp.ones((nparticles, *us.shape[1:]))
+
+    def init_likelihood_logpdf(*_):
+        return -math.log(nparticles) * jnp.ones(nparticles)
+
+    us_star_next, bs_star_next = csmc_kernel(key_csmc,
+                                             us_star_, bs_star_,
+                                             vs, ts,
+                                             init_sampler, init_likelihood_logpdf,
+                                             transition_sampler, transition_logpdf,
+                                             likelihood_logpdf,
+                                             killing, nparticles,
+                                             backward=True)
+    xs_next = us_star_next[::-1]
+    return xs_next, us_star_next, bs_star_next, bs_star_next != bs_star_
+
+
+# Gibbs loop
+key, subkey = jax.random.split(key)
+xs = dataset.unpack(fwd_sampler(subkey, jnp.zeros_like(test_y0)))[0]
+us_star = xs[::-1]
+bs_star = jnp.zeros((nsteps + 1), dtype=int)
+
+uss = np.zeros((ngibbs, nsteps + 1, 32, 32, 3))
+for i in range(ngibbs):
     key, subkey = jax.random.split(key)
-    test_xy0 = sampler(subkey, test=True)
-    test_x0, test_y0 = test_xy0[:, :, :1], test_xy0[:, :, 1:]
-    plt.imsave(f'./tmp_figs/mnist_{task}_{k}_pair_true.png', test_x0[:, :, 0], cmap='gray')
-    plt.imsave(f'./tmp_figs/mnist_{task}_{k}_pair_corrupt.png', test_y0[:, :, 0], cmap='gray')
+    xs, us_star, bs_star, acc = gibbs_kernel(subkey, xs, us_star, bs_star)
+    uss[i] = us_star
 
-    # Gibbs loop
-    key, subkey = jax.random.split(key)
-    x0, us_star = gibbs_init(subkey, test_y0)
-    bs_star = jnp.zeros((nsteps + 1), dtype=int)
+    fig = plt.figure()
+    plt.imshow(normalise(us_star[-1]))
+    plt.tight_layout(pad=0.1)
+    plt.savefig(f'./tmp_figs/cifar10_{task}_uss_{i}{"_doob" if args.doob else ""}.png')
+    plt.close(fig)
 
-    plt.imsave(f'./tmp_figs/mnist_{task}_{k}_init.png', normalise(x0)[:, :, 0], cmap='gray')
+    fig = plt.figure()
+    plt.plot(uss[:i, -1, 10, 10, 0])
+    plt.tight_layout(pad=0.1)
+    plt.savefig(f'./tmp_figs/cifar10_{task}_trace_pixel{"_doob" if args.doob else ""}.png')
+    plt.close(fig)
 
-    for i in range(ngibbs):
-        key, subkey = jax.random.split(key)
-        x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, test_y0, us_star, bs_star)
+    print(f'{task} | Gibbs iter: {i}, acc: {acc}')
 
-        plt.imsave(f'./tmp_figs/mnist_{task}{"_doob" if args.doob else ""}_{k}_{i}.png',
-                   normalise(us_star[-1, :, :])[:, :, 0], cmap='gray')
-
-        print(f'{task} | Gibbs iter: {i}, acc: {acc}')
+np.save(f'uss{"_doob" if args.doob else ""}', uss)

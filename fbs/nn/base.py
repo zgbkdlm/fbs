@@ -26,7 +26,7 @@ def make_st_nn(key: JKey, nn: linen.Module, dim_in: Sequence[int], batch_size: i
     JArray, Callable[[JArray], dict], Callable (..., d), (p, ) -> (..., d)
         The initial parameter array, the array-to-dict ravel function, and the NN forward pass evaluation function.
     """
-    dict_param = nn.init(key, jnp.ones((batch_size, *dim_in)), jnp.array(1.))
+    dict_param = nn.init(key, jnp.ones((batch_size, *dim_in)), jnp.ones((batch_size, )))
     array_param, array_to_dict = ravel_pytree(dict_param)
 
     def forward_pass(x: JArray, t: FloatScalar, param: JArray) -> JArray:
