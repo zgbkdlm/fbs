@@ -14,7 +14,7 @@ schedule=$6
 loss_type=$7
 grad_clip=$8
 
-
+g
 source ~/.bashrc
 export XLA_PYTHON_CLIENT_PREALLOCATE=true
 
