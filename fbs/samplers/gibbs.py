@@ -31,7 +31,7 @@ def gibbs_init(key, y0, x0_shape, ts,
     by yourself and change this implementation. It also assumes that the terminal x and y are independent N(0, 1).
     """
     if x0 is None:
-        x0 = jnp.ones(x0_shape)
+        x0 = jnp.zeros(x0_shape)
     key_fwd, key_u0, key_bf, key_fwd2, key_bwd = jax.random.split(key, num=5)
 
     path_xy = fwd_sampler(key_fwd, x0, y0)
