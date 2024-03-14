@@ -135,3 +135,53 @@ optax_kernel, ema_kernel = make_optax_kernel(optimiser, loss_fn, jit=True)
 param = array_param
 ema_param = param
 opt_state = optimiser.init(param)
+
+if train:
+    for i in range(nepochs):
+        data_key, subkey = jax.random.split(data_key)
+        perm_inds = dataset.init_enumeration(subkey, train_nsamples)
+        for j in range(data_size // train_nsamples):
+            subkey, subkey2 = jax.random.split(subkey)
+            x0s, y0s = dataset.enumerate_subset(j, perm_inds, subkey)
+            xy0s = dataset.concat(x0s, y0s)
+            param, opt_state, loss = optax_kernel(param, opt_state, subkey2, xy0s)
+            ema_param = ema_kernel(ema_param, param, j, 500, 2, 0.99)
+            print(f'MNIST | {task} | {args.upsampling} | {args.sde} | {loss_type} | {args.schedule} | '
+                  f'Epoch: {i} / {nepochs}, iter: {j} / {data_size // train_nsamples}, loss: {loss:.4f}')
+        filename = f'./mnist_{task}_{args.sde}_{args.schedule}_{i}.npz'
+        if (i + 1) % 100 == 0:
+            np.savez(filename, param=param, ema_param=ema_param)
+else:
+    param = np.load(f'./mnist_{task}_{args.sde}_{args.schedule}_'
+                    f'{args.test_epoch}.npz')['ema_param' if args.test_ema else 'param']
+
+
+# Verify if the score function is learnt properly
+def rev_sim(key_, u0):
+    def learnt_score(x, t):
+        return nn_score(x, t, param)
+
+    return reverse_simulator(key_, u0, ts, learnt_score, sde.drift, sde.dispersion, integrator='euler-maruyama')
+
+
+# Simulate the backward and verify if it matches the target distribution
+kkk = jax.random.PRNGKey(args.test_seed)
+key, subkey = jax.random.split(kkk)
+test_x0 = sampler(subkey, test=True)
+key, subkey = jax.random.split(key)
+traj = simulate_cond_forward(subkey, test_x0, ts)
+terminal_val = traj[-1]
+
+key, subkey = jax.random.split(key)
+keys = jax.random.split(subkey, num=5)
+approx_init_samples = jax.vmap(rev_sim, in_axes=[0, None])(keys, terminal_val)
+print(jnp.min(approx_init_samples), jnp.max(approx_init_samples))
+
+fig, axes = plt.subplots(nrows=2, ncols=7, sharey='row')
+axes[0].imshow(test_x0, cmap='gray')
+axes[1].imshow(terminal_val, cmap='gray')
+for i in range(2, 7):
+    axes[i].imshow(approx_init_samples[i - 2], cmap='gray')
+plt.tight_layout(pad=0.1)
+plt.savefig(f'./tmp_figs/mnist_{task}_backward_test.png')
+plt.show()
