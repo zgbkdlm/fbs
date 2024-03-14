@@ -142,9 +142,8 @@ if train:
         perm_inds = dataset.init_enumeration(subkey, train_nsamples)
         for j in range(data_size // train_nsamples):
             subkey, subkey2 = jax.random.split(subkey)
-            x0s, y0s = dataset.enumerate_subset(j, perm_inds, subkey)
-            xy0s = dataset.concat(x0s, y0s)
-            param, opt_state, loss = optax_kernel(param, opt_state, subkey2, xy0s)
+            x0s, _ = dataset.enumerate_subset(j, perm_inds, subkey)
+            param, opt_state, loss = optax_kernel(param, opt_state, subkey2, x0s)
             ema_param = ema_kernel(ema_param, param, j, 500, 2, 0.99)
             print(f'MNIST | {task} | {args.upsampling} | {args.sde} | {loss_type} | {args.schedule} | '
                   f'Epoch: {i} / {nepochs}, iter: {j} / {data_size // train_nsamples}, loss: {loss:.4f}')
