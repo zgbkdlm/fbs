@@ -137,6 +137,8 @@ def csmc_kernel(key: JKey,
                                    vs, ts,
                                    init_sampler, init_likelihood_logpdf,
                                    transition_sampler, measurement_cond_logpdf, cond_resampling, nsamples)
+    ess = 1 / jnp.sum(jnp.exp(log_ws * 2), axis=-1)
+    jax.debug.print('ESS: {}', ess)
     if backward:
         xs_star, bs_star = backward_sampling_pass(key_bwd, transition_logpdf, vs, ts, xss, log_ws)
     else:
