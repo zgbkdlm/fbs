@@ -281,7 +281,7 @@ def backward_sampling_pass(key, transition_logpdf, vs, ts, uss, log_ws):
     # xs[-2::-1] is the reversed list of xs[:-1], I know, not readable... Same for log_ws.
     # vs[-1:0:-1] means the reverse of vs[1:]
     # inps = keys[:-1], uss[-2::-1], log_ws[-2::-1], vs[-1:0:-1], ts[-1:0:-1]
-    inps = keys[:-1], uss[-2::-1], log_ws[-2::-1], vs[-2::-1], ts[-2::-1]
+    inps = keys[:-1], uss[-2::-1], log_ws[-2::-1], vs[-1:0:-1], ts[-2::-1]
 
     # Run backward pass
     _, (uss, Bs, Ws) = jax.lax.scan(body, x_T, inps)
