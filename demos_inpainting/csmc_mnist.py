@@ -176,7 +176,7 @@ keys = jax.random.split(subkey, num=5)
 approx_init_samples = jax.vmap(rev_sim, in_axes=[0, None])(keys, terminal_val)
 print(jnp.min(approx_init_samples), jnp.max(approx_init_samples))
 
-fig, axes = plt.subplots(nrows=2, ncols=7, sharey='row')
+fig, axes = plt.subplots(ncols=7, sharey='row')
 axes[0].imshow(test_x0, cmap='gray')
 axes[1].imshow(terminal_val, cmap='gray')
 for i in range(2, 7):
