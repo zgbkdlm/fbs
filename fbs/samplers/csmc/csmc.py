@@ -277,7 +277,7 @@ def backward_sampling_pass(key, transition_logpdf, vs, ts, uss, log_ws):
         w = normalise(log_w)
         B_t_m_1 = jax.random.choice(op_key, w.shape[0], p=w, shape=())
         x_t_m_1 = xs_t_m_1[B_t_m_1]
-        return x_t_m_1, (x_t_m_1, B_t_m_1)
+        return x_t_m_1, (x_t_m_1, B_t_m_1, w)
 
     # Reverse arrays, ideally, should use jax.lax.scan(reverse=True) but it is simpler this way due to insertions.
     # xs[-2::-1] is the reversed list of xs[:-1], I know, not readable... Same for log_ws.
@@ -286,7 +286,8 @@ def backward_sampling_pass(key, transition_logpdf, vs, ts, uss, log_ws):
     inps = keys[:-1], uss[-2::-1], log_ws[-2::-1], vs[-2::-1], ts[-2::-1]
 
     # Run backward pass
-    _, (uss, Bs) = jax.lax.scan(body, x_T, inps)
+    _, (uss, Bs, Ws) = jax.lax.scan(body, x_T, inps)
+    jax.debug.print('Ws: {}', 1 / jnp.sum(Ws ** 2, axis=-1))
 
     # Insert last ancestor and particle
     uss = jnp.insert(uss, 0, x_T, axis=0)
