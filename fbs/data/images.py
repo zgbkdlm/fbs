@@ -215,6 +215,41 @@ class CelebAHQInpaint(CelebAHQ):
         split = 14
         return xy[..., :, :split, :], xy[..., :, split:, :]
 
+    def unpack2(self, xy: JArray) -> Tuple[JArray, JArray]:
+        """Decompose an image into two parts, viz., the painted and original parts.
+
+        Parameters
+        ----------
+        xy : JArray (..., h, w, c)
+            The image to be decomposed.
+
+        Returns
+        -------
+        JArray (..., p, c), JArray (..., q, c)
+            The painted and original parts.
+        """
+        resolution = self.image_shape[0]
+        width, height = 15, 15
+        inds = [i for i in range(width)]
+        mask = jnp.asarray(list(itertools.product(inds, inds))).T
+        shift = 20  # Random
+        mask_ravelled = jnp.ravel_multi_index(mask + shift, (resolution, resolution))
+
+        xy_ravelled = jnp.reshape(xy, (*xy.shape[:-3], resolution ** 2, 3))
+        x = xy_ravelled[..., mask_ravelled, :]
+        y_masks = jnp.ones(resolution ** 2, dtype=bool)
+        y_masks = y_masks.at[mask_ravelled].set(False)
+        y = xy_ravelled[..., y_masks, :]
+        return x, y
+
+    def concat2(self, x: JArray, y: JArray) -> JArray:
+        """The reverse operation of `unpack2`."""
+        resolution = self.image_shape[0]
+        img = jnp.zeros((x.shape[:-2], resolution ** 2, 3))
+        img = img.at[..., mask_x, :].set(x)
+        img = img.at[..., mask_y, :].set(y)
+        return img
+
 
 def normalise(img: JArray, method: str = 'clip') -> JArray:
     if method == 'clip':
