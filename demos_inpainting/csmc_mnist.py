@@ -76,7 +76,7 @@ keys = jax.random.split(subkey, 4)
 xys = jax.vmap(sampler, in_axes=[0])(keys)
 
 if not train:
-    fig, axes = plt.subplots(nrows=2, ncols=4)
+    fig, axes = plt.subplots(ncols=4)
     for col in range(4):
         axes[col].imshow(xys[col], cmap='gray')
     plt.tight_layout(pad=0.1)
