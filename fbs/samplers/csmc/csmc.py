@@ -263,7 +263,7 @@ def backward_sampling_pass(key, transition_logpdf, vs, ts, uss, log_ws):
     #        BACKWARD PASS        #
     ###############################
     # Select last ancestor
-    W_T = normalise(log_ws[-1], )
+    W_T = normalise(log_ws[-1])
     B_T = barker_move(keys[-1], W_T)
     x_T = uss[-1, B_T]
 
@@ -275,7 +275,7 @@ def backward_sampling_pass(key, transition_logpdf, vs, ts, uss, log_ws):
         w = normalise(log_w)
         B_t_m_1 = jax.random.choice(op_key, w.shape[0], p=w, shape=())
         x_t_m_1 = xs_t_m_1[B_t_m_1]
-        return x_t_m_1, (x_t_m_1, B_t_m_1, w)
+        return x_t_m_1, (x_t_m_1, B_t_m_1, normalise(Gamma_log_w))
 
     # Reverse arrays, ideally, should use jax.lax.scan(reverse=True) but it is simpler this way due to insertions.
     # xs[-2::-1] is the reversed list of xs[:-1], I know, not readable... Same for log_ws.
