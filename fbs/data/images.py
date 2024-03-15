@@ -206,6 +206,16 @@ class CelebAHQ(Image):
         self.image_shape = (resolution, resolution, 3)
 
 
+class MNISTInpaint(MNIST):
+    @staticmethod
+    def concat(x: JArray, y: JArray) -> JArray:
+        return jnp.concatenate([x, y], axis=-2)
+
+    def unpack(self, xy: JArray) -> Tuple[JArray, JArray]:
+        split = 14
+        return xy[..., :, :split, :], xy[..., :, split:, :]
+
+
 class CelebAHQInpaint(CelebAHQ):
     @staticmethod
     def concat(x: JArray, y: JArray) -> JArray:

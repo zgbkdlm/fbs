@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 import optax
-from fbs.data import MNIST
+from fbs.data import MNISTInpaint
 from fbs.sdes import make_linear_sde, make_linear_sde_law_loss, StationaryConstLinearSDE, \
     StationaryLinLinearSDE, StationaryExpLinearSDE, reverse_simulator
 from fbs.samplers import gibbs_init, gibbs_kernel
@@ -62,8 +62,8 @@ ts = jnp.linspace(0, T, nsteps + 1)
 # MNIST
 d = (28, 28, 1)
 key, subkey = jax.random.split(key)
-dataset = MNIST(subkey, '../datasets/mnist.npz', task=task)
-dataset_test = MNIST(subkey, '../datasets/mnist.npz', task=task, test=True)
+dataset = MNISTInpaint(subkey, '../datasets/mnist.npz', task=task)
+dataset_test = MNISTInpaint(subkey, '../datasets/mnist.npz', task=task, test=True)
 
 
 def sampler(key_, test: bool = False):
