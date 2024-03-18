@@ -186,3 +186,85 @@ for i in range(2, 7):
 plt.tight_layout(pad=0.1)
 plt.savefig(f'./tmp_figs/celeba{resolution}_{task}_backward_test.png')
 plt.show()
+
+# Now conditional sampling
+nparticles = args.nparticles
+ngibbs = args.ngibbs
+split = 20
+
+
+def reverse_drift(uv, t):
+    return -sde.drift(uv, T - t) + sde.dispersion(T - t) ** 2 * nn_score(uv, T - t, param)
+
+
+def reverse_drift_u(u, v, t):
+    drift = reverse_drift(jnp.concatenate([u, v], axis=-2), t)
+    rdu, rdv = drift[..., :, :split, :], drift[..., :, split:, :]
+    return rdu
+
+
+def reverse_drift_v(v, u, t):
+    drift = reverse_drift(jnp.concatenate([u, v], axis=-2), t)
+    rdu, rdv = drift[..., :, :split, :], drift[..., :, split:, :]
+    return rdv
+
+
+def reverse_dispersion(t):
+    return sde.dispersion(T - t)
+
+
+def transition_sampler(us_prev, v_prev, t_prev, key_):
+    return (us_prev + jax.vmap(reverse_drift_u, in_axes=[0, None, None])(us_prev, v_prev, t_prev) * dt
+            + math.sqrt(dt) * reverse_dispersion(t_prev) * jax.random.normal(key_, us_prev.shape))
+
+
+@partial(jax.vmap, in_axes=[None, 0, None, None])
+def transition_logpdf(u, u_prev, v_prev, t_prev):
+    return jnp.sum(jax.scipy.stats.norm.logpdf(u,
+                                               u_prev + reverse_drift_u(u_prev, v_prev, t_prev) * dt,
+                                               math.sqrt(dt) * reverse_dispersion(t_prev)))
+
+
+@partial(jax.vmap, in_axes=[None, 0, None, None])
+def likelihood_logpdf(v, u_prev, v_prev, t_prev):
+    cond_m = v_prev + reverse_drift_v(v_prev, u_prev, t_prev) * dt
+    return jnp.sum(jax.scipy.stats.norm.logpdf(v, cond_m, math.sqrt(dt) * reverse_dispersion(t_prev)))
+
+
+def fwd_sampler(key_, x0_, y0_):
+    xy0 = jnp.concatenate([x0_, y0_], axis=-2)
+    return simulate_cond_forward(key_, xy0, ts)
+
+
+gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, dataset=dataset,
+                               nparticles=nparticles, transition_sampler=transition_sampler,
+                               transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf, doob=True))
+gibbs_init = jax.jit(partial(gibbs_init, x0_shape=(64, split, 1), ts=ts, fwd_sampler=fwd_sampler, dataset=dataset,
+                             transition_sampler=transition_sampler, transition_logpdf=transition_logpdf,
+                             likelihood_logpdf=likelihood_logpdf,
+                             nparticles=nparticles, method=args.init_method))
+
+for k in range(args.ny0s):
+    print(f'Running Gibbs sampler for {k}-th y0.')
+    key, subkey = jax.random.split(key)
+    test_xy0 = sampler(subkey, test=True)
+    test_y0 = test_xy0[..., :, split:, :]
+
+    plt.imsave(f'./tmp_figs/celeba_{task}_{k}_pair_true.png', test_xy0[:, :, 0], cmap='gray')
+    plt.imsave(f'./tmp_figs/celeba_{task}_{k}_pair_corrupt.png', test_y0[:, :, 0], cmap='gray')
+
+    # Gibbs loop
+    key, subkey = jax.random.split(key)
+    x0, us_star = gibbs_init(subkey, test_y0)
+    bs_star = jnp.zeros((nsteps + 1), dtype=int)
+
+    plt.imsave(f'./tmp_figs/celeba_{task}_{k}_init.png', normalise(dataset.concat(x0, test_y0))[:, :, 0], cmap='gray')
+
+    for i in range(ngibbs):
+        key, subkey = jax.random.split(key)
+        x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, test_y0, us_star, bs_star)
+
+        plt.imsave(f'./tmp_figs/celeba_{task}{"_doob" if args.doob else ""}_{k}_{i}.png',
+                   normalise(dataset.concat(us_star[-1, :, :], test_y0))[:, :, 0], cmap='gray')
+
+        print(f'{task} | Gibbs iter: {i}, acc: {acc}')

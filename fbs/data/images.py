@@ -222,7 +222,7 @@ class CelebAHQInpaint(CelebAHQ):
         return jnp.concatenate([x, y], axis=-2)
 
     def unpack(self, xy: JArray) -> Tuple[JArray, JArray]:
-        split = 14
+        split = 20
         return xy[..., :, :split, :], xy[..., :, split:, :]
 
     def unpack2(self, xy: JArray) -> Tuple[JArray, JArray]:
