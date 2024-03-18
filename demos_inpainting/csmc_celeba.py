@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 import optax
-from fbs.data import CelebAHQ
+from fbs.data import CelebAHQInpaint
 from fbs.data.images import normalise
 from fbs.sdes import make_linear_sde, make_linear_sde_law_loss, StationaryConstLinearSDE, \
     StationaryLinLinearSDE, StationaryExpLinearSDE, reverse_simulator
@@ -64,8 +64,8 @@ ts = jnp.linspace(0, T, nsteps + 1)
 # CIFAR10
 d = (resolution, resolution, 3)
 key, subkey = jax.random.split(key)
-dataset = CelebAHQ(subkey, f'../datasets/celeba_hq{resolution}.npy', task=task, resolution=resolution)
-dataset_test = CelebAHQ(subkey, f'../datasets/celeba_hq{resolution}.npy', task=task, resolution=resolution, test=True)
+dataset = CelebAHQInpaint(subkey, f'../datasets/celeba_hq{resolution}.npy', task=task, resolution=resolution)
+dataset_test = CelebAHQInpaint(subkey, f'../datasets/celeba_hq{resolution}.npy', task=task, resolution=resolution, test=True)
 
 
 def sampler(key_, test: bool = False):
@@ -250,21 +250,21 @@ for k in range(args.ny0s):
     test_xy0 = sampler(subkey, test=True)
     test_y0 = test_xy0[..., :, split:, :]
 
-    plt.imsave(f'./tmp_figs/celeba_{task}_{k}_pair_true.png', test_xy0[:, :, 0], cmap='gray')
-    plt.imsave(f'./tmp_figs/celeba_{task}_{k}_pair_corrupt.png', test_y0[:, :, 0], cmap='gray')
+    plt.imsave(f'./tmp_figs/celeba_{task}_{k}_pair_true.png', test_xy0)
+    plt.imsave(f'./tmp_figs/celeba_{task}_{k}_pair_corrupt.png', test_y0)
 
     # Gibbs loop
     key, subkey = jax.random.split(key)
     x0, us_star = gibbs_init(subkey, test_y0)
     bs_star = jnp.zeros((nsteps + 1), dtype=int)
 
-    plt.imsave(f'./tmp_figs/celeba_{task}_{k}_init.png', normalise(dataset.concat(x0, test_y0))[:, :, 0], cmap='gray')
+    plt.imsave(f'./tmp_figs/celeba_{task}_{k}_init.png', normalise(dataset.concat(x0, test_y0)))
 
     for i in range(ngibbs):
         key, subkey = jax.random.split(key)
         x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, test_y0, us_star, bs_star)
 
         plt.imsave(f'./tmp_figs/celeba_{task}{"_doob" if args.doob else ""}_{k}_{i}.png',
-                   normalise(dataset.concat(us_star[-1, :, :], test_y0))[:, :, 0], cmap='gray')
+                   normalise(dataset.concat(us_star[-1, :, :], test_y0)))
 
         print(f'{task} | Gibbs iter: {i}, acc: {acc}')
