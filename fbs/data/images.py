@@ -102,9 +102,12 @@ class Image(Dataset):
     @partial(jax.jit, static_argnums=0)
     def _enumerate_jit(self, inds, key):
         xs = self.xs[inds]
-        keys = jax.random.split(key, num=inds.shape[0])
-        ys = jax.vmap(self.corrupt, in_axes=[0, 0])(keys, xs)
-        return xs, ys
+        if self.task == 'none':
+            return xs, None
+        else:
+            keys = jax.random.split(key, num=inds.shape[0])
+            ys = jax.vmap(self.corrupt, in_axes=[0, 0])(keys, xs)
+            return xs, ys
 
     def enumerate_subset(self, i: int, perm_inds=None, key=None) -> Tuple[JArray, JArray]:
         if perm_inds is None:
@@ -258,7 +261,7 @@ class CelebAHQInpaint(CelebAHQ):
         img = jnp.zeros((x.shape[:-2], resolution ** 2, 3))
         img = img.at[..., mask_x, :].set(x)
         img = img.at[..., mask_y, :].set(y)
-        return img
+        return img.reshape(*img.shape[:-3], resolution, resolution, 3)
 
 
 def normalise(img: JArray, method: str = 'clip') -> JArray:

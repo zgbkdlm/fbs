@@ -199,13 +199,13 @@ def reverse_drift(uv, t):
 
 def reverse_drift_u(u, v, t):
     drift = reverse_drift(jnp.concatenate([u, v], axis=-2), t)
-    rdu, rdv = drift[..., :, :split, :], drift[..., :, split:, :]
+    rdu, rdv = dataset.unpack(drift)
     return rdu
 
 
 def reverse_drift_v(v, u, t):
     drift = reverse_drift(jnp.concatenate([u, v], axis=-2), t)
-    rdu, rdv = drift[..., :, :split, :], drift[..., :, split:, :]
+    rdu, rdv = dataset.unpack(drift)
     return rdv
 
 
