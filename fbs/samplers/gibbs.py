@@ -119,7 +119,7 @@ def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JA
                                              transition_sampler, transition_logpdf,
                                              likelihood_logpdf,
                                              killing, nparticles,
-                                             backward=False,
+                                             backward=True,
                                              dataset_param=dataset_param)
     x0_next = us_star_next[-1]
     return x0_next, us_star_next, bs_star_next, bs_star_next != bs_star
