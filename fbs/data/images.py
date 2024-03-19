@@ -253,7 +253,7 @@ class ImageInpainting(Dataset):
     def _gen_supr_mask(self, key: JKey, rate: int) -> SRMask:
         img_w, img_h = self.image_shape[:2]
         nblocks = int(img_w * img_h / rate ** 2)
-        shifts = jax.random.randint(key, (nblocks, 2), 0, rate)
+        shifts = jax.random.randint(key, (nblocks, 2), 0, rate) * 0
 
         inds_w, inds_h = [i for i in range(0, img_w, rate)], [i for i in range(0, img_h, rate)]
         inds_wa, inds_ha = [i for i in range(img_w)], [i for i in range(img_h)]
@@ -313,8 +313,8 @@ class ImageInpainting(Dataset):
         x = self.xs[jax.random.choice(key_choice, self.n)]
 
         mask = self.gen_mask(key_corrupt)
-        # _, y = self.unpack(x, mask)
-        y = jax.image.resize(x, (16, 16, 3), 'nearest').reshape(256, 3)
+        _, y = self.unpack(x, mask)
+        # y = jax.image.resize(x, (16, 16, 3), 'nearest').reshape(256, 3)
         return x, y, mask
 
     def unpack(self, xy: JArray, mask: InpaintingMask) -> Tuple[JArray, JArray]:
