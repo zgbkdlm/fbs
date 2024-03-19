@@ -3,10 +3,10 @@ import jax.numpy as jnp
 import numpy as np
 from fbs.typings import Array, JArray, JKey
 from abc import ABCMeta
-from typing import List, Tuple
+from typing import List, Tuple, Protocol
 
 
-class Dataset(metaclass=ABCMeta):
+class Dataset(Protocol):
     """
     An abstract class for datasets.
 
@@ -48,10 +48,10 @@ class Dataset(metaclass=ABCMeta):
         self.perm_inds = perm_inds
         return perm_inds
 
-    def enumerate_subset(self, i: int, perm_inds=None, key=None) -> Tuple[JArray, JArray]:
+    def enumerate_subset(self, i: int, perm_inds=None, key=None):
         """Enumerate all the randomly split chunks of data for i = 0, 1, ...
         """
-        raise NotImplementedError('Not implemented.')
 
-    def sampler(self, key: JKey) -> Tuple[JArray, JArray]:
-        raise NotImplementedError('Not implemented.')
+    def sampler(self, key: JKey):
+        """Sampler
+        """

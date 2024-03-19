@@ -21,7 +21,7 @@ from functools import partial
 # Parse arguments
 parser = argparse.ArgumentParser(description='CelebA test.')
 parser.add_argument('--train', action='store_true', default=False, help='Whether train or not.')
-parser.add_argument('--task', type=str, default='inpaint-32')
+parser.add_argument('--task', type=str, default='supr-4')
 parser.add_argument('--resolution', type=int, default=64)
 parser.add_argument('--sde', type=str, default='lin')
 parser.add_argument('--upsampling', type=str, default='pixel_shuffle')
@@ -154,8 +154,7 @@ if train:
         if (i + 1) % 100 == 0:
             np.savez(filename, param=param, ema_param=ema_param)
 else:
-    param = np.load(f'./celeba{resolution}_{task}_{args.sde}_{args.schedule}_'
-                    f'{args.test_epoch}.npz')['ema_param' if args.test_ema else 'param']
+    param = np.load(f'./celeba64_inpaint-15_lin_cos_2999.npz')['ema_param' if args.test_ema else 'param']
 
 
 # Verify if the score function is learnt properly
@@ -191,7 +190,8 @@ plt.show()
 # Now conditional sampling
 nparticles = args.nparticles
 ngibbs = args.ngibbs
-rect_w, rect_h = 32, 32
+rate = int(dataset.task.split('-')[-1])
+low_res = resolution // rate
 
 
 def reverse_drift(uv, t):
@@ -254,7 +254,7 @@ def sampler_test(key_):
 gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, dataset=dataset,
                                nparticles=nparticles, transition_sampler=transition_sampler,
                                transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf, doob=True))
-gibbs_init = jax.jit(partial(gibbs_init, x0_shape=(rect_w * rect_h, 3), ts=ts, fwd_sampler=fwd_sampler, dataset=dataset,
+gibbs_init = jax.jit(partial(gibbs_init, x0_shape=dataset.unobs_shape, ts=ts, fwd_sampler=fwd_sampler, dataset=dataset,
                              transition_sampler=transition_sampler, transition_logpdf=transition_logpdf,
                              likelihood_logpdf=likelihood_logpdf,
                              nparticles=nparticles, method=args.init_method))
@@ -266,7 +266,7 @@ for k in range(args.ny0s):
 
     plt.imsave(f'./tmp_figs/celeba_{task}_{k}_pair_true.png', test_img)
     plt.imsave(f'./tmp_figs/celeba_{task}_{k}_pair_corrupt.png',
-               dataset.concat(jnp.zeros((resolution ** 2 - test_y0.shape[0], 3)), test_y0, mask))
+               jnp.reshape(test_y0, (low_res, low_res, 3)))
 
     # Gibbs loop
     key, subkey = jax.random.split(key)

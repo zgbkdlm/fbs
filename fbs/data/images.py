@@ -4,7 +4,7 @@ import itertools
 from .base import Dataset
 from fbs.typings import JKey, Array, JArray
 from functools import partial
-from typing import Tuple, NamedTuple
+from typing import Tuple, NamedTuple, Union
 
 
 class Image(Dataset):
@@ -215,27 +215,59 @@ class InpaintingMask(NamedTuple):
     width: int
     height: int
     shift: JArray
-    rect_inds_ravelled: JArray
+    unobs_inds_ravelled: JArray
     obs_inds_ravelled: JArray
 
 
 class SRMask(NamedTuple):
-    pass
+    rate: int
+    unobs_inds_ravelled: JArray
+    obs_inds_ravelled: JArray
 
 
-class MNISTInpaint(MNIST):
+class ImageInpainting(Dataset):
+    image_shape: Tuple[int, int, int]
+    task: str
+    unobs_shape: Tuple[int, int]
+
+    def __init__(self, task: str):
+        w, h, c = self.image_shape
+        s = int(self.task.split('-')[-1])
+        if 'inpaint' in task:
+            self.unobs_shape = (s ** 2, c)
+        elif 'supr' in task:
+            self.unobs_shape = (int(w * h * (s ** 2 - 1) / s ** 2), c)
+        else:
+            raise ValueError(f'Unknown task {task}.')
+
     @staticmethod
-    def concat(x: JArray, y: JArray) -> JArray:
-        return jnp.concatenate([x, y], axis=-2)
+    def standardise(array: Array) -> JArray:
+        return array
 
-    def unpack(self, xy: JArray) -> Tuple[JArray, JArray]:
-        split = 14
-        return xy[..., :, :split, :], xy[..., :, split:, :]
+    def enumerate_subset(self, i: int, perm_inds=None, key=None) -> JArray:
+        if perm_inds is None:
+            perm_inds = self.perm_inds
+        inds = perm_inds[i]
+        return self.xs[inds]
 
+    def _gen_supr_mask(self, key: JKey, rate: int) -> SRMask:
+        img_w, img_h = self.image_shape[:2]
+        nblocks = int(img_w * img_h / rate ** 2)
+        shifts = jax.random.randint(key, (nblocks, 2), 0, rate)
 
-class CelebAHQInpaint(CelebAHQ):
+        inds_w, inds_h = [i for i in range(0, img_w, rate)], [i for i in range(0, img_h, rate)]
+        inds_wa, inds_ha = [i for i in range(img_w)], [i for i in range(img_h)]
+        block_inds = jnp.asarray(list(itertools.product(inds_w, inds_h)))
+        all_inds = jnp.asarray(list(itertools.product(inds_wa, inds_ha)))
 
-    def gen_mask(self, key: JKey, width: int, height: int) -> InpaintingMask:
+        block_inds_ravelled = jnp.ravel_multi_index([block_inds[:, 0] + shifts[:, 0], block_inds[:, 1] + shifts[:, 1]],
+                                                    (img_w, img_h), mode='clip')
+        all_inds_ravelled = jnp.ravel_multi_index([all_inds[:, 0], all_inds[:, 1]], (img_w, img_h), mode='clip')
+        unobs_inds_ravelled = jnp.setdiff1d(all_inds_ravelled, block_inds_ravelled, assume_unique=True,
+                                            size=img_w * img_h - nblocks)
+        return SRMask(rate, unobs_inds_ravelled=unobs_inds_ravelled, obs_inds_ravelled=block_inds_ravelled)
+
+    def _gen_inpaint_mask(self, key: JKey, width: int, height: int) -> InpaintingMask:
         """Note that this might not be jitted due to `setdiff1d`.
         """
         img_w, img_h = self.image_shape[:2]
@@ -250,12 +282,22 @@ class CelebAHQInpaint(CelebAHQ):
         rect_inds_ravelled = jnp.ravel_multi_index([rect_inds[:, 0] + shift, rect_inds[:, 1] + shift],
                                                    (img_w, img_h), mode='clip')
         all_inds_ravelled = jnp.ravel_multi_index([all_inds[:, 0], all_inds[:, 1]], (img_w, img_h), mode='clip')
-
         obs_inds_ravelled = jnp.setdiff1d(all_inds_ravelled, rect_inds_ravelled, assume_unique=True,
                                           size=img_w * img_h - width * height)
-        return InpaintingMask(width, height, shift, rect_inds_ravelled, obs_inds_ravelled)
+        return InpaintingMask(width, height, shift,
+                              unobs_inds_ravelled=rect_inds_ravelled, obs_inds_ravelled=obs_inds_ravelled)
 
-    def sampler(self, key: JKey) -> Tuple[JArray, JArray, InpaintingMask]:
+    def gen_mask(self, key: JKey):
+        if 'inpaint' in self.task:
+            s = int(self.task.split('-')[-1])
+            return self._gen_inpaint_mask(key, s, s)
+        elif 'supr' in self.task:
+            rate = int(self.task.split('-')[-1])
+            return self._gen_supr_mask(key, rate)
+        else:
+            raise ValueError(f'Unknown task {self.task}.')
+
+    def sampler(self, key: JKey) -> Tuple[JArray, JArray, Union[InpaintingMask, SRMask]]:
         """
 
         Parameters
@@ -270,7 +312,7 @@ class CelebAHQInpaint(CelebAHQ):
         key_choice, key_corrupt = jax.random.split(key)
         x = self.xs[jax.random.choice(key_choice, self.n)]
 
-        mask = self.gen_mask(key_corrupt, 32, 32)
+        mask = self.gen_mask(key_corrupt)
         _, y = self.unpack(x, mask)
         return x, y, mask
 
@@ -289,7 +331,7 @@ class CelebAHQInpaint(CelebAHQ):
             The painted and original parts.
         """
         img_w, img_h = self.image_shape[:2]
-        rect_inds_ravelled, obs_inds_ravelled = mask.rect_inds_ravelled, mask.obs_inds_ravelled
+        rect_inds_ravelled, obs_inds_ravelled = mask.unobs_inds_ravelled, mask.obs_inds_ravelled
 
         xy_ravelled = jnp.reshape(xy, (*xy.shape[:-3], img_w * img_h, 3))
         x = xy_ravelled[..., rect_inds_ravelled, :]
@@ -299,12 +341,61 @@ class CelebAHQInpaint(CelebAHQ):
     def concat(self, x: JArray, y: JArray, mask: InpaintingMask) -> JArray:
         """The reverse operation of `unpack2`."""
         img_w, img_h = self.image_shape[:2]
-        rect_inds_ravelled, obs_inds_ravelled = mask.rect_inds_ravelled, mask.obs_inds_ravelled
+        rect_inds_ravelled, obs_inds_ravelled = mask.unobs_inds_ravelled, mask.obs_inds_ravelled
 
         img = jnp.zeros((*x.shape[:-3], img_w * img_h, 3))
         img = img.at[..., rect_inds_ravelled, :].set(x)
         img = img.at[..., obs_inds_ravelled, :].set(y)
         return img.reshape(*img.shape[:-3], img_w, img_h, 3)
+
+
+class MNISTInpaint(ImageInpainting):
+    def __init__(self,
+                 key: JKey,
+                 data_path: str,
+                 task: str = 'inpaint-32',
+                 test: bool = False):
+        data_dict = jnp.load(data_path)
+        self.task = task
+
+        if test:
+            self.n = 10000
+            xs = data_dict['X_test']
+            xs = jax.random.permutation(key, xs, axis=0)
+            xs = jnp.reshape(xs, (10000, 28, 28, 1))
+        else:
+            self.n = 60000
+            xs = data_dict['X']
+            xs = jax.random.permutation(key, xs, axis=0)
+            xs = jnp.reshape(xs, (60000, 28, 28, 1))
+
+        self.xs = self.standardise(xs).astype('float32')
+        self.image_shape = (28, 28, 1)
+        super().__init__(task)
+
+
+class CelebAHQInpaint(ImageInpainting):
+
+    def __init__(self,
+                 key: JKey,
+                 data_path: str,
+                 resolution: int = 64,
+                 task: str = 'supr-4',
+                 test: bool = False):
+        self.task = task
+        data = jnp.load(data_path)
+        data = jax.random.permutation(key, data, axis=0)
+        data = self.standardise(data)
+
+        if test:
+            self.n = 1000
+            self.xs = data[:1000]
+        else:
+            self.n = 29000
+            self.xs = data[1000:]
+
+        self.image_shape = (resolution, resolution, 3)
+        super().__init__(task)
 
 
 def normalise(img: JArray, method: str = 'clip') -> JArray:
