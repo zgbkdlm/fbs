@@ -331,23 +331,23 @@ class ImageInpainting(Dataset):
         JArray (..., p, c), JArray (..., q, c)
             The painted and original parts.
         """
-        img_w, img_h = self.image_shape[:2]
+        img_w, img_h, img_c = self.image_shape
         rect_inds_ravelled, obs_inds_ravelled = mask.unobs_inds_ravelled, mask.obs_inds_ravelled
 
-        xy_ravelled = jnp.reshape(xy, (*xy.shape[:-3], img_w * img_h, 3))
+        xy_ravelled = jnp.reshape(xy, (*xy.shape[:-3], img_w * img_h, img_c))
         x = xy_ravelled[..., rect_inds_ravelled, :]
         y = xy_ravelled[..., obs_inds_ravelled, :]
         return x, y
 
     def concat(self, x: JArray, y: JArray, mask: InpaintingMask) -> JArray:
         """The reverse operation of `unpack2`."""
-        img_w, img_h = self.image_shape[:2]
-        rect_inds_ravelled, obs_inds_ravelled = mask.unobs_inds_ravelled, mask.obs_inds_ravelled
+        img_w, img_h, img_c = self.image_shape
+        unobs_inds_ravelled, obs_inds_ravelled = mask.unobs_inds_ravelled, mask.obs_inds_ravelled
 
-        img = jnp.zeros((*x.shape[:-3], img_w * img_h, 3))
-        img = img.at[..., rect_inds_ravelled, :].set(x)
+        img = jnp.zeros((*x.shape[:-3], img_w * img_h, img_c))
+        img = img.at[..., unobs_inds_ravelled, :].set(x)
         img = img.at[..., obs_inds_ravelled, :].set(y)
-        return img.reshape(*img.shape[:-3], img_w, img_h, 3)
+        return img.reshape(*img.shape[:-3], img_w, img_h, img_c)
 
 
 class MNISTInpaint(ImageInpainting):

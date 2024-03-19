@@ -279,9 +279,10 @@ for k in range(args.ny0s):
 
         key_mask, key_other = jax.random.split(subkey)
         _, _, mask = sampler_test(key_mask)
-        x0, us_star, bs_star, acc = gibbs_kernel(key_other, x0, test_y0, us_star, bs_star, dataset_param=mask)
+        # x0, us_star, bs_star, acc = gibbs_kernel(key_other, x0, test_y0, us_star, bs_star, dataset_param=mask)
+        x0, us_star = gibbs_init(key_other, test_y0, dataset_param=mask)
 
         plt.imsave(f'./tmp_figs/celeba_{task}{"_doob" if args.doob else ""}_{k}_{i}.png',
                    normalise(dataset.concat(us_star[-1], test_y0, mask)))
 
-        print(f'{task} | Gibbs iter: {i}, acc: {acc}')
+        print(f'{task} | Gibbs iter: {i})
