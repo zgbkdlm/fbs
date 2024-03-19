@@ -4,7 +4,7 @@ import itertools
 from .base import Dataset
 from fbs.typings import JKey, Array, JArray
 from functools import partial
-from typing import Tuple, Sequence
+from typing import Tuple, NamedTuple
 
 
 class Image(Dataset):
@@ -209,6 +209,20 @@ class CelebAHQ(Image):
         self.image_shape = (resolution, resolution, 3)
 
 
+class InpaintingMask(NamedTuple):
+    """The mask that selects the hollow part.
+    """
+    width: int
+    height: int
+    shift: JArray
+    rect_inds_ravelled: JArray
+    obs_inds_ravelled: JArray
+
+
+class SRMask(NamedTuple):
+    pass
+
+
 class MNISTInpaint(MNIST):
     @staticmethod
     def concat(x: JArray, y: JArray) -> JArray:
@@ -220,48 +234,77 @@ class MNISTInpaint(MNIST):
 
 
 class CelebAHQInpaint(CelebAHQ):
-    @staticmethod
-    def concat(x: JArray, y: JArray) -> JArray:
-        return jnp.concatenate([x, y], axis=-2)
 
-    def unpack(self, xy: JArray) -> Tuple[JArray, JArray]:
-        split = 20
-        return xy[..., :, :split, :], xy[..., :, split:, :]
+    def gen_mask(self, key: JKey, width: int, height: int) -> InpaintingMask:
+        """Note that this cannot be jitted due to `ravel_multi_index` and `setdiff1d`.
+        """
+        img_w, img_h = self.image_shape[:2]
+        width, height = min(width, img_w), min(height, img_h)
+        inds_w, inds_h = [i for i in range(width)], [i for i in range(height)]
+        inds_wa, inds_ha = [i for i in range(img_w)], [i for i in range(img_h)]
+        rect_inds = jnp.asarray(list(itertools.product(inds_w, inds_h)))
+        all_inds = jnp.asarray(list(itertools.product(inds_wa, inds_ha)))
 
-    def unpack2(self, xy: JArray) -> Tuple[JArray, JArray]:
+        max_shift = min(img_w, img_h) - max(width, height)
+        shift = jax.random.randint(key, (), 0, max_shift)
+        rect_inds_ravelled = jnp.ravel_multi_index([rect_inds[:, 0] + shift, rect_inds[:, 1] + shift],
+                                                   (img_w, img_h))
+        all_inds_ravelled = jnp.ravel_multi_index([all_inds[:, 0], all_inds[:, 1]], (img_w, img_h))
+
+        obs_inds_ravelled = jnp.setdiff1d(all_inds_ravelled, rect_inds_ravelled, assume_unique=True,
+                                          size=img_w * img_h - width * height)
+        return InpaintingMask(width, height, shift, rect_inds_ravelled, obs_inds_ravelled)
+
+    def sampler(self, key: JKey) -> Tuple[JArray, JArray, InpaintingMask]:
+        """
+
+        Parameters
+        ----------
+        key
+
+        Returns
+        -------
+        JArray (w, h, c), JArray (q, c), InpaintingMask
+            True image, observed part of the image, and the inpainting mask.
+        """
+        key_choice, key_corrupt = jax.random.split(key)
+        x = self.xs[jax.random.choice(key_choice, self.n)]
+
+        mask = self.gen_mask(key_corrupt, 25, 25)
+        _, y = self.unpack(x, mask)
+        return x, y, mask
+
+    def unpack(self, xy: JArray, mask: InpaintingMask) -> Tuple[JArray, JArray]:
         """Decompose an image into two parts, viz., the painted and original parts.
 
         Parameters
         ----------
         xy : JArray (..., h, w, c)
             The image to be decomposed.
+        mask : InpaintingMask
 
         Returns
         -------
         JArray (..., p, c), JArray (..., q, c)
             The painted and original parts.
         """
-        resolution = self.image_shape[0]
-        width, height = 15, 15
-        inds = [i for i in range(width)]
-        mask = jnp.asarray(list(itertools.product(inds, inds))).T
-        shift = 20  # Random
-        mask_ravelled = jnp.ravel_multi_index(mask + shift, (resolution, resolution))
+        img_w, img_h = self.image_shape[:2]
+        rect_inds_ravelled, obs_inds_ravelled = mask.rect_inds_ravelled, mask.obs_inds_ravelled
 
-        xy_ravelled = jnp.reshape(xy, (*xy.shape[:-3], resolution ** 2, 3))
-        x = xy_ravelled[..., mask_ravelled, :]
-        y_masks = jnp.ones(resolution ** 2, dtype=bool)
-        y_masks = y_masks.at[mask_ravelled].set(False)
-        y = xy_ravelled[..., y_masks, :]
+        xy_ravelled = jnp.reshape(xy, (*xy.shape[:-3], img_w * img_h, 3))
+        x = xy_ravelled[..., rect_inds_ravelled, :]
+        y = xy_ravelled[..., obs_inds_ravelled, :]
         return x, y
 
-    def concat2(self, x: JArray, y: JArray) -> JArray:
+    def concat(self, x: JArray, y: JArray, mask: InpaintingMask) -> JArray:
         """The reverse operation of `unpack2`."""
-        resolution = self.image_shape[0]
-        img = jnp.zeros((x.shape[:-2], resolution ** 2, 3))
-        img = img.at[..., mask_x, :].set(x)
-        img = img.at[..., mask_y, :].set(y)
-        return img.reshape(*img.shape[:-3], resolution, resolution, 3)
+        img_w, img_h = self.image_shape[:2]
+        rect_inds_ravelled, obs_inds_ravelled = mask.rect_inds_ravelled, mask.obs_inds_ravelled
+
+        img = jnp.zeros((*x.shape[:-3], img_w * img_h, 3))
+        img = img.at[..., rect_inds_ravelled, :].set(x)
+        img = img.at[..., obs_inds_ravelled, :].set(y)
+        return img.reshape(*img.shape[:-3], img_w, img_h, 3)
 
 
 def normalise(img: JArray, method: str = 'clip') -> JArray:

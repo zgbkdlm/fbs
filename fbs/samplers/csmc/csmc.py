@@ -90,7 +90,8 @@ def csmc_kernel(key: JKey,
                 measurement_cond_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
                 cond_resampling: Callable,
                 nsamples: int,
-                backward: bool = False):
+                backward: bool = False,
+                *args, **kwargs) -> Tuple[JArray, JArray]:
     """
     Generic cSMC kernel.
 
@@ -136,9 +137,11 @@ def csmc_kernel(key: JKey,
                                    us_star, bs_star,
                                    vs, ts,
                                    init_sampler, init_likelihood_logpdf,
-                                   transition_sampler, measurement_cond_logpdf, cond_resampling, nsamples)
+                                   transition_sampler, measurement_cond_logpdf, cond_resampling, nsamples,
+                                   *args, **kwargs)
     if backward:
-        xs_star, bs_star = backward_sampling_pass(key_bwd, transition_logpdf, vs, ts, xss, log_ws)
+        xs_star, bs_star = backward_sampling_pass(key_bwd, transition_logpdf, vs, ts, xss, log_ws,
+                                                  *args, **kwargs)
     else:
         xs_star, bs_star = backward_scanning_pass(key_bwd, As, xss, log_ws[-1])
     return xs_star, bs_star
@@ -152,7 +155,8 @@ def forward_pass(key: JKey,
                  transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
                  likelihood_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
                  cond_resampling: Callable,
-                 nsamples: int) -> Tuple[JArray, JArray, JArray]:
+                 nsamples: int,
+                 *args, **kwargs) -> Tuple[JArray, JArray, JArray]:
     r"""
     Forward pass of the cSMC kernel.
 
@@ -205,10 +209,10 @@ def forward_pass(key: JKey,
         A = cond_resampling(key_resampling, jnp.exp(log_ws), b_star_prev, b_star, True)
         us_prev = jnp.take(us_prev, A, axis=0)
 
-        us = transition_sampler(us_prev, v_prev, t_prev, key_transition)
+        us = transition_sampler(us_prev, v_prev, t_prev, key_transition, *args, **kwargs)
         us = us.at[b_star].set(u_star)
 
-        log_ws = likelihood_logpdf(v, us_prev, v_prev, t_prev)
+        log_ws = likelihood_logpdf(v, us_prev, v_prev, t_prev, *args, **kwargs)
         log_ws = normalise(log_ws, log_space=True)
 
         return (log_ws, us), (log_ws, A, us)
@@ -230,7 +234,7 @@ def forward_pass(key: JKey,
     return As, log_wss, uss
 
 
-def backward_sampling_pass(key, transition_logpdf, vs, ts, uss, log_ws):
+def backward_sampling_pass(key, transition_logpdf, vs, ts, uss, log_ws, *args, **kwargs):
     """
     Backward sampling pass for the cSMC kernel.
 
@@ -269,7 +273,7 @@ def backward_sampling_pass(key, transition_logpdf, vs, ts, uss, log_ws):
 
     def body(x_t, inp):
         op_key, xs_t_m_1, log_w_t_m_1, v_t_m_1, t_m_1 = inp
-        Gamma_log_w = transition_logpdf(x_t, xs_t_m_1, v_t_m_1, t_m_1)  # I swapped the order
+        Gamma_log_w = transition_logpdf(x_t, xs_t_m_1, v_t_m_1, t_m_1, *args, **kwargs)  # I swapped the order
         Gamma_log_w -= jnp.max(Gamma_log_w)
         log_w = Gamma_log_w + log_w_t_m_1
         w = normalise(log_w)

@@ -3,7 +3,7 @@ import jax.random
 import numpy.testing as npt
 import scipy
 from fbs.data.base import Dataset
-from fbs.data import Crescent
+from fbs.data import Crescent, CelebAHQInpaint
 from fbs.sdes import euler_maruyama
 
 

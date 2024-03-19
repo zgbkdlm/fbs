@@ -19,7 +19,7 @@ def bridge_sampler(key, y0, yT, ts, sde):
 
 
 def gibbs_init(key, y0, x0_shape, ts,
-               fwd_sampler: Callable, dataset,
+               fwd_sampler: Callable, dataset, dataset_param,
                transition_sampler, transition_logpdf, likelihood_logpdf,
                nparticles, method: str = 'filter',
                x0=None):
@@ -34,8 +34,8 @@ def gibbs_init(key, y0, x0_shape, ts,
         x0 = jnp.zeros(x0_shape)
     key_fwd, key_u0, key_bf, key_fwd2, key_bwd = jax.random.split(key, num=5)
 
-    path_xy = fwd_sampler(key_fwd, x0, y0)
-    _, path_y = dataset.unpack(path_xy)
+    path_xy = fwd_sampler(key_fwd, x0, y0, dataset_param)
+    _, path_y = dataset.unpack(path_xy, dataset_param)
 
     vs = path_y[::-1]
 
@@ -45,20 +45,21 @@ def gibbs_init(key, y0, x0_shape, ts,
 
     if method == 'filter':
         approx_x0 = bootstrap_filter(transition_sampler, likelihood_logpdf, vs, ts, init_sampler, key_bf, nparticles,
-                                     stratified, log=True, return_last=True)[0][0]
-        approx_us_star = dataset.unpack(fwd_sampler(key_fwd2, approx_x0, y0))[0][::-1]
+                                     stratified, log=True, return_last=True, dataset_param=dataset_param)[0][0]
+        approx_us_star = dataset.unpack(fwd_sampler(key_fwd2, approx_x0, y0, dataset_param), dataset_param)[0][::-1]
     elif method == 'smoother':
         uss = bootstrap_filter(transition_sampler, likelihood_logpdf, vs, ts, init_sampler, key_bf, nparticles,
-                               stratified, log=True, return_last=False)[0]
+                               stratified, log=True, return_last=False, dataset_param=dataset_param)[0]
         approx_x0 = uss[-1, 0]
-        approx_us_star = bootstrap_backward_smoother(key_bwd, uss, vs, ts, transition_logpdf)
+        approx_us_star = bootstrap_backward_smoother(key_bwd, uss, vs, ts, transition_logpdf,
+                                                     dataset_param=dataset_param)
     else:
         raise ValueError(f"Unknown method {method}")
     return approx_x0, approx_us_star
 
 
 def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JArray,
-                 ts: JArray, fwd_sampler: Callable, sde: StationaryLinLinearSDE, dataset: Dataset,
+                 ts: JArray, fwd_sampler: Callable, sde: StationaryLinLinearSDE, dataset: Dataset, dataset_param,
                  nparticles: int,
                  transition_sampler: Callable, transition_logpdf: Callable, likelihood_logpdf: Callable,
                  doob: bool = True) -> Tuple[JArray, JArray, JArray, JArray]:
@@ -85,6 +86,7 @@ def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JA
         A linear SDE instance.
     dataset: Dataset
         The dataset.
+    dataset_param: Any
     nparticles: int
         The number of particles.
     transition_sampler
@@ -99,8 +101,8 @@ def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JA
         The new x0, us_star, bs_star, and bools.
     """
     key_fwd, key_csmc, key_bridge = jax.random.split(key, num=3)
-    path_xy = fwd_sampler(key_fwd, x0, y0)
-    path_x, path_y = dataset.unpack(path_xy)
+    path_xy = fwd_sampler(key_fwd, x0, y0, dataset_param)
+    path_x, path_y = dataset.unpack(path_xy, dataset_param)
     us = path_x[::-1]
     vs = bridge_sampler(key_fwd, path_y[0], path_y[-1], ts, sde)[::-1] if doob else path_y[::-1]
 
@@ -117,6 +119,7 @@ def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JA
                                              transition_sampler, transition_logpdf,
                                              likelihood_logpdf,
                                              killing, nparticles,
-                                             backward=True)
+                                             backward=True,
+                                             dataset_param=dataset_param)
     x0_next = us_star_next[-1]
     return x0_next, us_star_next, bs_star_next, bs_star_next != bs_star

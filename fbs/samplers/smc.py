@@ -15,7 +15,8 @@ def bootstrap_filter(transition_sampler: Callable[[JArray, JArray, FloatScalar, 
                      nparticles: int,
                      resampling: Callable[[JArray, JArray], JArray],
                      log: bool = True,
-                     return_last: bool = True) -> Tuple[JArray, JFloat]:
+                     return_last: bool = True,
+                     **kwargs) -> Tuple[JArray, JFloat]:
     r"""Bootstrap particle filter, using the notations in the paper.
 
     Parameters
@@ -58,16 +59,16 @@ def bootstrap_filter(transition_sampler: Callable[[JArray, JArray, FloatScalar, 
         us_prev, log_nell = carry
         v, v_prev, t_prev, key_ = elem
 
-        us = transition_sampler(us_prev, v_prev, t_prev, key_)
+        us = transition_sampler(us_prev, v_prev, t_prev, key_, **kwargs)
 
         if log:
-            log_weights = measurement_cond_pdf(v, us_prev, v_prev, t_prev)
+            log_weights = measurement_cond_pdf(v, us_prev, v_prev, t_prev, **kwargs)
             _c = jax.scipy.special.logsumexp(log_weights)
             log_nell -= _c - math.log(nparticles)
             log_weights = log_weights - _c
             weights = jnp.exp(log_weights)
         else:
-            weights = measurement_cond_pdf(v, us_prev, v_prev, t_prev)
+            weights = measurement_cond_pdf(v, us_prev, v_prev, t_prev, **kwargs)
             log_nell -= jnp.log(jnp.mean(weights))
             weights = weights / jnp.sum(weights)
 
@@ -92,14 +93,15 @@ def bootstrap_filter(transition_sampler: Callable[[JArray, JArray, FloatScalar, 
 
 def bootstrap_backward_smoother(key: JKey,
                                 filter_us: JArray, vs: JArray, ts: JArray,
-                                transition_logpdf: Callable) -> JArray:
+                                transition_logpdf: Callable,
+                                *args, **kwargs) -> JArray:
     """Backward particle smoother by using the results from a bootstrap filter.
     """
     def scan_body(carry, elem):
         u_kp1 = carry
         uf_k, v_k, t_k, key_ = elem
 
-        log_ws = transition_logpdf(u_kp1, uf_k, v_k, t_k)
+        log_ws = transition_logpdf(u_kp1, uf_k, v_k, t_k, *args, **kwargs)
         log_ws = log_ws - jax.scipy.special.logsumexp(log_ws)
         u_k = jax.random.choice(key_, uf_k, axis=0, p=jnp.exp(log_ws))
         return u_k, u_k

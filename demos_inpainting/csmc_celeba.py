@@ -65,22 +65,22 @@ ts = jnp.linspace(0, T, nsteps + 1)
 d = (resolution, resolution, 3)
 key, subkey = jax.random.split(key)
 dataset = CelebAHQInpaint(subkey, f'../datasets/celeba_hq{resolution}.npy', task=task, resolution=resolution)
-dataset_test = CelebAHQInpaint(subkey, f'../datasets/celeba_hq{resolution}.npy', task=task, resolution=resolution, test=True)
+dataset_test = CelebAHQInpaint(subkey, f'../datasets/celeba_hq{resolution}.npy', task=task, resolution=resolution,
+                               test=True)
 
 
-def sampler(key_, test: bool = False):
-    x, _ = dataset_test.sampler(key_) if test else dataset.sampler(key_)
+def sampler(key_):
+    x, _, _ = dataset.sampler(key_)
     return x
 
 
 key, subkey = jax.random.split(key)
 keys = jax.random.split(subkey, 4)
-xys = jax.vmap(sampler, in_axes=[0])(keys)
 
 if not train:
     fig, axes = plt.subplots(ncols=4)
     for col in range(4):
-        axes[col].imshow(normalise(xys[col]))
+        axes[col].imshow(normalise(sampler(keys[col])))
     plt.tight_layout(pad=0.1)
     plt.show()
 
@@ -168,7 +168,7 @@ def rev_sim(key_, u0):
 # Simulate the backward and verify if it matches the target distribution
 key = jax.random.PRNGKey(args.test_seed)
 key, subkey = jax.random.split(key)
-test_sample0 = sampler(subkey, test=True)
+test_sample0 = sampler(subkey)
 key, subkey = jax.random.split(key)
 traj = simulate_cond_forward(subkey, test_sample0, ts)
 terminal_val = traj[-1]
@@ -190,22 +190,22 @@ plt.show()
 # Now conditional sampling
 nparticles = args.nparticles
 ngibbs = args.ngibbs
-split = 20
+rect_w, rect_h = 25, 25
 
 
 def reverse_drift(uv, t):
     return -sde.drift(uv, T - t) + sde.dispersion(T - t) ** 2 * nn_score(uv, T - t, param)
 
 
-def reverse_drift_u(u, v, t):
-    drift = reverse_drift(jnp.concatenate([u, v], axis=-2), t)
-    rdu, rdv = dataset.unpack(drift)
+def reverse_drift_u(u, v, t, mask_):
+    drift = reverse_drift(dataset.concat(u, v, mask_), t)
+    rdu, rdv = dataset.unpack(drift, mask_)
     return rdu
 
 
-def reverse_drift_v(v, u, t):
-    drift = reverse_drift(jnp.concatenate([u, v], axis=-2), t)
-    rdu, rdv = dataset.unpack(drift)
+def reverse_drift_v(v, u, t, mask_):
+    drift = reverse_drift(dataset.concat(u, v, mask_), t)
+    rdu, rdv = dataset.unpack(drift, mask_)
     return rdv
 
 
@@ -213,33 +213,47 @@ def reverse_dispersion(t):
     return sde.dispersion(T - t)
 
 
-def transition_sampler(us_prev, v_prev, t_prev, key_):
-    return (us_prev + jax.vmap(reverse_drift_u, in_axes=[0, None, None])(us_prev, v_prev, t_prev) * dt
+def transition_sampler(us_prev, v_prev, t_prev, key_, dataset_param):
+    @partial(jax.vmap, in_axes=[0, None, None])
+    def f(u, v, t):
+        return reverse_drift_u(u, v, t, dataset_param)
+
+    return (us_prev + f(us_prev, v_prev, t_prev) * dt
             + math.sqrt(dt) * reverse_dispersion(t_prev) * jax.random.normal(key_, us_prev.shape))
 
 
-@partial(jax.vmap, in_axes=[None, 0, None, None])
-def transition_logpdf(u, u_prev, v_prev, t_prev):
-    return jnp.sum(jax.scipy.stats.norm.logpdf(u,
-                                               u_prev + reverse_drift_u(u_prev, v_prev, t_prev) * dt,
-                                               math.sqrt(dt) * reverse_dispersion(t_prev)))
+def transition_logpdf(u, u_prev, v_prev, t_prev, dataset_param):
+    @partial(jax.vmap, in_axes=[None, 0, None, None])
+    def f(u, u_prev, v_prev, t_prev):
+        return jnp.sum(jax.scipy.stats.norm.logpdf(u,
+                                                   u_prev + reverse_drift_u(u_prev, v_prev, t_prev, dataset_param) * dt,
+                                                   math.sqrt(dt) * reverse_dispersion(t_prev)))
+
+    return f(u, u_prev, v_prev, t_prev)
 
 
-@partial(jax.vmap, in_axes=[None, 0, None, None])
-def likelihood_logpdf(v, u_prev, v_prev, t_prev):
-    cond_m = v_prev + reverse_drift_v(v_prev, u_prev, t_prev) * dt
-    return jnp.sum(jax.scipy.stats.norm.logpdf(v, cond_m, math.sqrt(dt) * reverse_dispersion(t_prev)))
+def likelihood_logpdf(v, u_prev, v_prev, t_prev, dataset_param):
+    @partial(jax.vmap, in_axes=[None, 0, None, None])
+    def f(v, u_prev, v_prev, t_prev):
+        cond_m = v_prev + reverse_drift_v(v_prev, u_prev, t_prev, dataset_param) * dt
+        return jnp.sum(jax.scipy.stats.norm.logpdf(v, cond_m, math.sqrt(dt) * reverse_dispersion(t_prev)))
+
+    return f(v, u_prev, v_prev, t_prev)
 
 
-def fwd_sampler(key_, x0_, y0_):
-    xy0 = jnp.concatenate([x0_, y0_], axis=-2)
+def fwd_sampler(key_, x0_, y0_, mask_):
+    xy0 = dataset.concat(x0_, y0_, mask_)
     return simulate_cond_forward(key_, xy0, ts)
+
+
+def sampler_test(key_):
+    return dataset_test.sampler(key_)
 
 
 gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, dataset=dataset,
                                nparticles=nparticles, transition_sampler=transition_sampler,
                                transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf, doob=True))
-gibbs_init = jax.jit(partial(gibbs_init, x0_shape=(64, split, 3), ts=ts, fwd_sampler=fwd_sampler, dataset=dataset,
+gibbs_init = jax.jit(partial(gibbs_init, x0_shape=(rect_w * rect_h, 3), ts=ts, fwd_sampler=fwd_sampler, dataset=dataset,
                              transition_sampler=transition_sampler, transition_logpdf=transition_logpdf,
                              likelihood_logpdf=likelihood_logpdf,
                              nparticles=nparticles, method=args.init_method))
@@ -247,24 +261,24 @@ gibbs_init = jax.jit(partial(gibbs_init, x0_shape=(64, split, 3), ts=ts, fwd_sam
 for k in range(args.ny0s):
     print(f'Running Gibbs sampler for {k}-th y0.')
     key, subkey = jax.random.split(key)
-    test_xy0 = sampler(subkey, test=True)
-    test_y0 = test_xy0[..., :, split:, :]
+    test_img, test_y0, mask = sampler_test(subkey)
 
-    plt.imsave(f'./tmp_figs/celeba_{task}_{k}_pair_true.png', test_xy0)
-    plt.imsave(f'./tmp_figs/celeba_{task}_{k}_pair_corrupt.png', test_y0)
+    plt.imsave(f'./tmp_figs/celeba_{task}_{k}_pair_true.png', test_img)
+    plt.imsave(f'./tmp_figs/celeba_{task}_{k}_pair_corrupt.png',
+               dataset.concat(jnp.zeros((resolution ** 2 - test_y0.shape[0], 3)), test_y0, mask))
 
     # Gibbs loop
     key, subkey = jax.random.split(key)
-    x0, us_star = gibbs_init(subkey, test_y0)
+    x0, us_star = gibbs_init(subkey, test_y0, dataset_param=mask)
     bs_star = jnp.zeros((nsteps + 1), dtype=int)
 
-    plt.imsave(f'./tmp_figs/celeba_{task}_{k}_init.png', normalise(dataset.concat(x0, test_y0)))
+    plt.imsave(f'./tmp_figs/celeba_{task}_{k}_init.png', normalise(dataset.concat(x0, test_y0, mask)))
 
     for i in range(ngibbs):
         key, subkey = jax.random.split(key)
-        x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, test_y0, us_star, bs_star)
+        x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, test_y0, us_star, bs_star, dataset_param=mask)
 
         plt.imsave(f'./tmp_figs/celeba_{task}{"_doob" if args.doob else ""}_{k}_{i}.png',
-                   normalise(dataset.concat(us_star[-1, :, :], test_y0)))
+                   normalise(dataset.concat(us_star[-1], test_y0, mask)))
 
         print(f'{task} | Gibbs iter: {i}, acc: {acc}')
