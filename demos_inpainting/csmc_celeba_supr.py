@@ -285,4 +285,4 @@ for k in range(args.ny0s):
         plt.imsave(f'./tmp_figs/celeba_{task}{"_doob" if args.doob else ""}_{k}_{i}.png',
                    normalise(dataset.concat(us_star[-1], test_y0, mask)))
 
-        print(f'{task} | Gibbs iter: {i})
+        print(f'{task} | Gibbs iter: {i}')
