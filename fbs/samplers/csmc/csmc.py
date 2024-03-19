@@ -289,7 +289,7 @@ def backward_sampling_pass(key, transition_logpdf, vs, ts, uss, log_ws, *args, *
 
     # Run backward pass
     _, (uss, Bs, Ws) = jax.lax.scan(body, x_T, inps)
-    # jax.debug.print('Ws: {}', 1 / jnp.sum(Ws ** 2, axis=-1))
+    jax.debug.print('Ws: {}', Ws)
 
     # Insert last ancestor and particle
     uss = jnp.insert(uss, 0, x_T, axis=0)

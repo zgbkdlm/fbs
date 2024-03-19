@@ -103,6 +103,7 @@ def bootstrap_backward_smoother(key: JKey,
 
         log_ws = transition_logpdf(u_kp1, uf_k, v_k, t_k, *args, **kwargs)
         log_ws = log_ws - jax.scipy.special.logsumexp(log_ws)
+        jax.debug.print('{}', jnp.exp(log_ws))
         u_k = jax.random.choice(key_, uf_k, axis=0, p=jnp.exp(log_ws))
         return u_k, u_k
 
