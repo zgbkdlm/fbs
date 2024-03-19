@@ -59,7 +59,7 @@ def gibbs_init(key, y0, x0_shape, ts,
 
 
 def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JArray,
-                 ts: JArray, fwd_sampler: Callable, sde: StationaryLinLinearSDE, dataset: Dataset, dataset_param,
+                 ts: JArray, fwd_sampler: Callable, sde: StationaryLinLinearSDE, dataset, dataset_param,
                  nparticles: int,
                  transition_sampler: Callable, transition_logpdf: Callable, likelihood_logpdf: Callable,
                  doob: bool = True) -> Tuple[JArray, JArray, JArray, JArray]:
@@ -84,7 +84,7 @@ def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JA
         The forward noising sampler.
     sde: StationaryLinLinearSDE
         A linear SDE instance.
-    dataset: Dataset
+    dataset
         The dataset.
     dataset_param: Any
     nparticles: int
@@ -119,7 +119,7 @@ def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JA
                                              transition_sampler, transition_logpdf,
                                              likelihood_logpdf,
                                              killing, nparticles,
-                                             backward=True,
+                                             backward=False,
                                              dataset_param=dataset_param)
     x0_next = us_star_next[-1]
     return x0_next, us_star_next, bs_star_next, bs_star_next != bs_star
