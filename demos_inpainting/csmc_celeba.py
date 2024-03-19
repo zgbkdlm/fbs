@@ -76,11 +76,12 @@ def sampler(key_):
 
 key, subkey = jax.random.split(key)
 keys = jax.random.split(subkey, 4)
+xys = jax.vmap(sampler, in_axes=[0])(keys)
 
 if not train:
     fig, axes = plt.subplots(ncols=4)
     for col in range(4):
-        axes[col].imshow(normalise(sampler(keys[col])))
+        axes[col].imshow(normalise(xys[col]))
     plt.tight_layout(pad=0.1)
     plt.show()
 
@@ -190,7 +191,7 @@ plt.show()
 # Now conditional sampling
 nparticles = args.nparticles
 ngibbs = args.ngibbs
-rect_w, rect_h = 25, 25
+rect_w, rect_h = 32, 32
 
 
 def reverse_drift(uv, t):

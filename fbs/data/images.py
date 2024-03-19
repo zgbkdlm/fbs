@@ -236,7 +236,7 @@ class MNISTInpaint(MNIST):
 class CelebAHQInpaint(CelebAHQ):
 
     def gen_mask(self, key: JKey, width: int, height: int) -> InpaintingMask:
-        """Note that this cannot be jitted due to `ravel_multi_index` and `setdiff1d`.
+        """Note that this might not be jitted due to `setdiff1d`.
         """
         img_w, img_h = self.image_shape[:2]
         width, height = min(width, img_w), min(height, img_h)
@@ -248,8 +248,8 @@ class CelebAHQInpaint(CelebAHQ):
         max_shift = min(img_w, img_h) - max(width, height)
         shift = jax.random.randint(key, (), 0, max_shift)
         rect_inds_ravelled = jnp.ravel_multi_index([rect_inds[:, 0] + shift, rect_inds[:, 1] + shift],
-                                                   (img_w, img_h))
-        all_inds_ravelled = jnp.ravel_multi_index([all_inds[:, 0], all_inds[:, 1]], (img_w, img_h))
+                                                   (img_w, img_h), mode='clip')
+        all_inds_ravelled = jnp.ravel_multi_index([all_inds[:, 0], all_inds[:, 1]], (img_w, img_h), mode='clip')
 
         obs_inds_ravelled = jnp.setdiff1d(all_inds_ravelled, rect_inds_ravelled, assume_unique=True,
                                           size=img_w * img_h - width * height)
@@ -270,7 +270,7 @@ class CelebAHQInpaint(CelebAHQ):
         key_choice, key_corrupt = jax.random.split(key)
         x = self.xs[jax.random.choice(key_choice, self.n)]
 
-        mask = self.gen_mask(key_corrupt, 25, 25)
+        mask = self.gen_mask(key_corrupt, 32, 32)
         _, y = self.unpack(x, mask)
         return x, y, mask
 
