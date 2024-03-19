@@ -314,7 +314,7 @@ class ImageInpainting(Dataset):
 
         mask = self.gen_mask(key_corrupt)
         # _, y = self.unpack(x, mask)
-        y = jax.image.resize(x, (16, 16), 'nearest')
+        y = jax.image.resize(x, (16, 16, 3), 'nearest')
         return x, y, mask
 
     def unpack(self, xy: JArray, mask: InpaintingMask) -> Tuple[JArray, JArray]:
