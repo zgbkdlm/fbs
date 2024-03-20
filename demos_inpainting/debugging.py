@@ -154,7 +154,7 @@ if train:
         if (i + 1) % 100 == 0:
             np.savez(filename, param=param, ema_param=ema_param)
 else:
-    param = np.load(f'./celeba{resolution}_{task}_{args.sde}_{args.schedule}_'
+    param = np.load(f'./celeba{resolution}_inpaint-32_{args.sde}_{args.schedule}_'
                     f'{args.test_epoch}.npz')['ema_param' if args.test_ema else 'param']
 
 
