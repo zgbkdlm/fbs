@@ -277,7 +277,10 @@ for k in range(args.ny0s):
 
     for i in range(ngibbs):
         key, subkey = jax.random.split(key)
-        x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, test_y0, us_star, bs_star, dataset_param=mask)
+        key_csmc, key_us, key_bs = jax.random.split(subkey, num=3)
+        x0, _, _, acc = gibbs_kernel(key_csmc, x0, test_y0, us_star, bs_star, dataset_param=mask)
+        us_star = dataset.unpack(fwd_sampler(key_us, x0, test_y0, mask), mask)[0][::-1]
+        bs_star = jax.random.randint(key_bs, (nsteps + 1,), minval=0, maxval=nparticles)
 
         plt.imsave(f'./tmp_figs/celeba_{task}{"_doob" if args.doob else ""}_{k}_{i}.png',
                    normalise(dataset.concat(us_star[-1], test_y0, mask)))
