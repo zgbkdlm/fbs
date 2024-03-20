@@ -25,6 +25,9 @@ class StationaryConstLinearSDE(LinearSDE):
     def dispersion(self, t):
         return self.b
 
+    def variance(self, t, s):
+        return self.b ** 2 / (2 * self.a) * (jnp.exp(2 * self.a * (t - s)) - 1)
+
 
 class StationaryLinLinearSDE(LinearSDE):
     r"""dX(t) = -0.5 \beta(t) X(t) dt + \sqrt{\beta(t)} dW(t), where

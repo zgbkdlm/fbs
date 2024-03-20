@@ -21,7 +21,7 @@ def bridge_sampler(key, y0, yT, ts, sde):
 def gibbs_init(key, y0, x0_shape, ts,
                fwd_sampler: Callable, dataset, dataset_param,
                transition_sampler, transition_logpdf, likelihood_logpdf,
-               nparticles, method: str = 'filter',
+               nparticles, method: str = 'smoother',
                x0=None):
     """Initialise the Gibbs sampler with a draw from a bootstrap filter.
 
@@ -50,7 +50,7 @@ def gibbs_init(key, y0, x0_shape, ts,
     elif method == 'smoother':
         uss = bootstrap_filter(transition_sampler, likelihood_logpdf, vs, ts, init_sampler, key_bf, nparticles,
                                stratified, log=True, return_last=False, dataset_param=dataset_param)[0]
-        approx_x0 = uss[-1]
+        approx_x0 = uss  # !
         approx_us_star = bootstrap_backward_smoother(key_bwd, uss, vs, ts, transition_logpdf,
                                                      dataset_param=dataset_param)
     else:

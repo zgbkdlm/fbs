@@ -78,8 +78,9 @@ def bootstrap_filter(transition_sampler: Callable[[JArray, JArray, FloatScalar, 
         return (us, log_nell), None if return_last else us
 
     nsteps = vs.shape[0] - 1
-    init_samples = init_sampler(key, vs[0], nparticles)
-    keys = jax.random.split(key, num=nsteps)
+    key_init, key_steps = jax.random.split(key)
+    init_samples = init_sampler(key_init, vs[0], nparticles)
+    keys = jax.random.split(key_steps, num=nsteps)
 
     (last_samples, nell_ys), filtering_samples = jax.lax.scan(scan_body,
                                                               (init_samples, 0.),

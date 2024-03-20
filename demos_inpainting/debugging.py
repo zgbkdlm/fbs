@@ -271,6 +271,7 @@ for k in range(args.ny0s):
     # Gibbs loop
     key, subkey = jax.random.split(key)
     x0s, us_star = gibbs_init(subkey, test_y0, dataset_param=mask)
+    np.save('debug', x0s)
     bs_star = jnp.zeros((nsteps + 1), dtype=int)
 
     for j in range(nparticles):
