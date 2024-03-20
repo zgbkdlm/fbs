@@ -191,7 +191,7 @@ plt.show()
 # Now conditional sampling
 nparticles = args.nparticles
 ngibbs = args.ngibbs
-rect_w, rect_h = 32, 32
+rect_w, rect_h = int(args.task.split('-')[-1]), int(args.task.split('-')[-1])
 
 
 def reverse_drift(uv, t):
