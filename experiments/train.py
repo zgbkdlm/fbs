@@ -37,7 +37,6 @@ parser.add_argument('--save_mem', action='store_true', default=False,
 parser.add_argument('--grad_clip', action='store_true', default=False)
 
 args = parser.parse_args()
-train = args.train
 dataset_name = args.dataset
 resolution = 28 if dataset_name == 'mnist' else int(dataset_name.split('-')[-1])
 
@@ -49,7 +48,7 @@ key = jax.random.PRNGKey(666)
 key, data_key = jax.random.split(key)
 
 T = 2
-nsteps = args.test_nsteps
+nsteps = 500
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
 
