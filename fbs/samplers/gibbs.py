@@ -112,7 +112,7 @@ def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JA
     def init_likelihood_logpdf(*_):
         return -math.log(nparticles) * jnp.ones(nparticles)
 
-    uss, us_star_next, bs_star_next = csmc_kernel(key_csmc,
+    us_star_next, bs_star_next = csmc_kernel(key_csmc,
                                              us_star, bs_star,
                                              vs, ts,
                                              init_sampler, init_likelihood_logpdf,
@@ -121,5 +121,5 @@ def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JA
                                              killing, nparticles,
                                              backward=True,
                                              dataset_param=dataset_param)
-    x0_next = jax.random.choice(key, uss[-1], axis=0)
+    x0_next = us_star_next[-1]
     return x0_next, us_star_next, bs_star_next, bs_star_next != bs_star

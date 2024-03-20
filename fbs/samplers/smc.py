@@ -67,6 +67,7 @@ def bootstrap_filter(transition_sampler: Callable[[JArray, JArray, FloatScalar, 
             log_nell -= _c - math.log(nparticles)
             log_weights = log_weights - _c
             weights = jnp.exp(log_weights)
+            jax.debug.print('{}', weights)
         else:
             weights = measurement_cond_pdf(v, us_prev, v_prev, t_prev, **kwargs)
             log_nell -= jnp.log(jnp.mean(weights))

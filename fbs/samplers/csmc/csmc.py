@@ -144,7 +144,7 @@ def csmc_kernel(key: JKey,
                                                   *args, **kwargs)
     else:
         xs_star, bs_star = backward_scanning_pass(key_bwd, As, xss, log_ws[-1])
-    return xss, xs_star, bs_star
+    return xs_star, bs_star
 
 
 def forward_pass(key: JKey,
