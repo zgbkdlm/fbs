@@ -225,7 +225,7 @@ class SRMask(NamedTuple):
     obs_inds_ravelled: JArray
 
 
-class ImageInpainting(Dataset):
+class ImageRestore(Dataset):
     image_shape: Tuple[int, int, int]
     task: str
     unobs_shape: Tuple[int, int]
@@ -314,7 +314,6 @@ class ImageInpainting(Dataset):
 
         mask = self.gen_mask(key_corrupt)
         _, y = self.unpack(x, mask)
-        # y = jax.image.resize(x, (16, 16, 3), 'nearest').reshape(256, 3)
         return x, y, mask
 
     def unpack(self, xy: JArray, mask: InpaintingMask) -> Tuple[JArray, JArray]:
@@ -350,11 +349,11 @@ class ImageInpainting(Dataset):
         return img.reshape(*img.shape[:-3], img_w, img_h, img_c)
 
 
-class MNISTInpaint(ImageInpainting):
+class MNISTRestore(ImageRestore):
     def __init__(self,
                  key: JKey,
                  data_path: str,
-                 task: str = 'inpaint-32',
+                 task: str = 'inpaint-15',
                  test: bool = False):
         data_dict = jnp.load(data_path)
         self.task = task
@@ -375,7 +374,7 @@ class MNISTInpaint(ImageInpainting):
         super().__init__(task)
 
 
-class CelebAHQInpaint(ImageInpainting):
+class CelebAHQRestore(ImageRestore):
 
     def __init__(self,
                  key: JKey,

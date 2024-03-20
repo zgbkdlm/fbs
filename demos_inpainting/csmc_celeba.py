@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 import optax
-from fbs.data import CelebAHQInpaint
+from fbs.data import CelebAHQRestore
 from fbs.data.images import normalise
 from fbs.sdes import make_linear_sde, make_linear_sde_law_loss, StationaryConstLinearSDE, \
     StationaryLinLinearSDE, StationaryExpLinearSDE, reverse_simulator
@@ -64,8 +64,8 @@ ts = jnp.linspace(0, T, nsteps + 1)
 # CIFAR10
 d = (resolution, resolution, 3)
 key, subkey = jax.random.split(key)
-dataset = CelebAHQInpaint(subkey, f'../datasets/celeba_hq{resolution}.npy', task=task, resolution=resolution)
-dataset_test = CelebAHQInpaint(subkey, f'../datasets/celeba_hq{resolution}.npy', task=task, resolution=resolution,
+dataset = CelebAHQRestore(subkey, f'../datasets/celeba_hq{resolution}.npy', task=task, resolution=resolution)
+dataset_test = CelebAHQRestore(subkey, f'../datasets/celeba_hq{resolution}.npy', task=task, resolution=resolution,
                                test=True)
 
 
