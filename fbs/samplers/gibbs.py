@@ -50,7 +50,7 @@ def gibbs_init(key, y0, x0_shape, ts,
     elif method == 'smoother':
         uss = bootstrap_filter(transition_sampler, likelihood_logpdf, vs, ts, init_sampler, key_bf, nparticles,
                                stratified, log=True, return_last=False, dataset_param=dataset_param)[0]
-        approx_x0 = uss[-1, 0]
+        approx_x0 = uss[-1]
         approx_us_star = bootstrap_backward_smoother(key_bwd, uss, vs, ts, transition_logpdf,
                                                      dataset_param=dataset_param)
     else:
