@@ -121,5 +121,5 @@ def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JA
                                              killing, nparticles,
                                              backward=True,
                                              dataset_param=dataset_param)
-    x0_next = uss[-1, 0]
+    x0_next = jax.random.choice(key, uss[-1], axis=0)
     return x0_next, us_star_next, bs_star_next, bs_star_next != bs_star
