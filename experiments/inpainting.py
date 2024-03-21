@@ -142,10 +142,6 @@ def fwd_sampler(key_, x0_, y0_, mask_):
     return simulate_cond_forward(key_, xy0, ts)
 
 
-def sampler_test(key_):
-    return dataset.sampler(key_)
-
-
 gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, dataset=dataset,
                                nparticles=nparticles, transition_sampler=transition_sampler,
                                transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf,
@@ -164,7 +160,7 @@ def to_imsave(img):
 for k in range(args.ny0s):
     print(f'Running Gibbs sampler for {k}-th y0.')
     key, subkey = jax.random.split(key)
-    test_img, test_y0, mask = sampler_test(subkey)
+    test_img, test_y0, mask = dataset.sampler(subkey)
 
     plt.imsave(f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_{k}_true.png', to_imsave(test_img),
                cmap='gray' if nchannels == 1 else 'viridis')
@@ -178,13 +174,15 @@ for k in range(args.ny0s):
     bs_star = jnp.zeros((nsteps + 1), dtype=int)
 
     plt.imsave(f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_{k}_init.png',
-               to_imsave(dataset.concat(x0, test_y0, mask)))
+               to_imsave(dataset.concat(x0, test_y0, mask)),
+               cmap='gray' if nchannels == 1 else 'viridis')
 
     for i in range(ngibbs):
         key, subkey = jax.random.split(key)
         x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, test_y0, us_star, bs_star, dataset_param=mask)
 
-        plt.imsave(f'./tmp_figs/{dataset_name}_inpainting{"_doob" if args.doob else ""}_{k}_{i}.png',
-                   to_imsave(dataset.concat(us_star[-1], test_y0, mask)))
+        plt.imsave(f'./tmp_figs/{dataset_name}_inpainting{"_marg" if args.marg else ""}_{k}_{i}.png',
+                   to_imsave(dataset.concat(us_star[-1], test_y0, mask)),
+                   cmap='gray' if nchannels == 1 else 'viridis')
 
         print(f'Inpainting-{rect_size} | Gibbs iter: {i}, acc: {acc}')
