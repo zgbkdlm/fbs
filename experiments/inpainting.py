@@ -144,6 +144,11 @@ def fwd_sampler(key_, x0_, y0_, mask_):
     return simulate_cond_forward(key_, xy0, ts)
 
 
+pf = jax.jit(partial(gibbs_init, x0_shape=(rect_size ** 2, nchannels), ts=ts, fwd_sampler=fwd_sampler,
+                     sde=sde, dataset=dataset,
+                     transition_sampler=transition_sampler, transition_logpdf=transition_logpdf,
+                     likelihood_logpdf=likelihood_logpdf,
+                     nparticles=nparticles, method='filter', marg_y=args.marg))
 gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, dataset=dataset,
                                nparticles=nparticles, transition_sampler=transition_sampler,
                                transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf,
@@ -153,11 +158,6 @@ gibbs_init = jax.jit(partial(gibbs_init, x0_shape=(rect_size ** 2, nchannels), t
                              transition_sampler=transition_sampler, transition_logpdf=transition_logpdf,
                              likelihood_logpdf=likelihood_logpdf,
                              nparticles=nparticles, method=args.init_method, marg_y=args.marg))
-pf = jax.jit(partial(gibbs_init, x0_shape=(rect_size ** 2, nchannels), ts=ts, fwd_sampler=fwd_sampler,
-                     sde=sde, dataset=dataset,
-                     transition_sampler=transition_sampler, transition_logpdf=transition_logpdf,
-                     likelihood_logpdf=likelihood_logpdf,
-                     nparticles=nparticles, method='filter', marg_y=args.marg))
 
 
 def to_imsave(img):
