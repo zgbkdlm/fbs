@@ -199,7 +199,7 @@ for k in range(args.ny0s):
 
     log_ells = np.zeros((100, ))
     for n in range(100):
-        _, log_ell = pmcmc_filter_step(key_filter, vs, u0s, ts, dataset_param=mask)
+        _, log_ell = pmcmc_filter_step(key_filter, vs, u0s, dataset_param=mask)
         print(log_ell)
         log_ells[n] = log_ell
 
