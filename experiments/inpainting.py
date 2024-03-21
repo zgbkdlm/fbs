@@ -234,7 +234,8 @@ for k in range(args.ny0s):
 
             print(f'Inpainting-{rect_size} | Gibbs | iter: {i}, acc: {acc}')
     elif 'pmcmc' in args.method:
-        x0, log_ell, ys, xT = jnp.zeros(x_shape), 0., jnp.zeros((nsteps + 1, *y_shape)), jnp.zeros(x_shape)
+        key, subkey = jax.random.split(key)
+        x0, log_ell, ys, xT = jnp.zeros(x_shape), 0., fwd_ys_sampler(subkey, test_y0), jnp.zeros(x_shape)
         for i in range(nsamples):
             key, subkey = jax.random.split(key)
             x0, log_ell, ys, xT, mcmc_state = pmcmc_kernel(subkey, x0, log_ell, ys, xT, test_y0, dataset_param=mask)
