@@ -228,12 +228,15 @@ for k in range(args.ny0s):
             print(f'Inpainting-{rect_size} | Gibbs | iter: {i}, acc: {acc}')
     elif args.method == 'pmcmc':
         x0, log_ell, yT, xT = jnp.zeros(x_shape), 0., jnp.zeros(y_shape), jnp.zeros(x_shape)
+        log_ell_history = np.zeros(())
         for i in range(nsamples):
             key, subkey = jax.random.split(key)
             x0, log_ell, yT, xT, mcmc_state = pmcmc_kernel(subkey, x0, log_ell, yT, xT, test_y0, dataset_param=mask)
+            log_ell_history = np.append(log_ell_history, log_ell)
             plt.imsave(
                 f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_pmcmc_{k}_{i}.png',
                 to_imsave(dataset.concat(x0, test_y0, mask)), cmap='gray' if nchannels == 1 else 'viridis')
-            print(f'Inpainting-{rect_size} | pMCMC | iter: {i}, acc_prob: {mcmc_state.acceptance_prob}')
+            print(f'Inpainting-{rect_size} | pMCMC | iter: {i}, acc_prob: {mcmc_state.acceptance_prob} | '
+                  f'log_ell_var: {np.var(log_ell_history)}')
     else:
         raise ValueError(f"Unknown method {args.method}")
