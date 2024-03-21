@@ -233,7 +233,7 @@ for k in range(args.ny0s):
                 cmap='gray' if nchannels == 1 else 'viridis')
 
             print(f'Inpainting-{rect_size} | Gibbs | iter: {i}, acc: {acc}')
-    elif args.method == 'pmcmc':
+    elif 'pmcmc' in args.method:
         x0, log_ell, ys, xT = jnp.zeros(x_shape), 0., jnp.zeros((nsteps + 1, *y_shape)), jnp.zeros(x_shape)
         for i in range(nsamples):
             key, subkey = jax.random.split(key)
