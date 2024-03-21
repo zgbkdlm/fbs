@@ -283,8 +283,8 @@ def pmcmc_kernel(key: JKey,
     if delta is None:
         prop_ys = fwd_ys_sampler(key_prop, y0)
     else:
-        prop_ys = pcn_proposal(key_prop, delta, ys, sde.mean(ts, ts[0], y0),
-                               lambda key_: fwd_ys_sampler(key_, y0))
+        mean = jax.vmap(sde.mean, in_axes=[0, None, None])(ts, ts[0], y0)
+        prop_ys = pcn_proposal(key_prop, delta, ys, mean, lambda key_: fwd_ys_sampler(key_, y0))
 
     vs = prop_ys[::-1]
 
