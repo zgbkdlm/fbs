@@ -57,7 +57,7 @@ def gibbs_init(key, y0, x0_shape, ts,
     elif method == 'debug':
         approx_x0 = bootstrap_filter(transition_sampler, likelihood_logpdf, vs, ts, init_sampler, key_bf, nparticles,
                                      stratified, log=True, return_last=True, dataset_param=dataset_param)[0]
-        approx_us_star = dataset.unpack(fwd_sampler(key_fwd2, approx_x0[0], y0, dataset_param), dataset_param)[0][::-1]
+        approx_us_star = None
     else:
         raise ValueError(f"Unknown method {method}")
     return approx_x0, approx_us_star

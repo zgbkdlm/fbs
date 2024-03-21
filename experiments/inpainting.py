@@ -149,6 +149,11 @@ pf = jax.jit(partial(gibbs_init, x0_shape=(rect_size ** 2, nchannels), ts=ts, fw
                      transition_sampler=transition_sampler, transition_logpdf=transition_logpdf,
                      likelihood_logpdf=likelihood_logpdf,
                      nparticles=nparticles, method='filter', marg_y=args.marg))
+debug = jax.jit(partial(gibbs_init, x0_shape=(rect_size ** 2, nchannels), ts=ts, fwd_sampler=fwd_sampler,
+                        sde=sde, dataset=dataset,
+                        transition_sampler=transition_sampler, transition_logpdf=transition_logpdf,
+                        likelihood_logpdf=likelihood_logpdf,
+                        nparticles=nparticles, method='debug', marg_y=args.marg))
 gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, dataset=dataset,
                                nparticles=nparticles, transition_sampler=transition_sampler,
                                transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf,
@@ -179,10 +184,15 @@ for k in range(args.ny0s):
         for i in range(nsamples):
             key, subkey = jax.random.split(key)
             x0, _ = pf(subkey, test_y0, dataset_param=mask)
-            plt.imsave(f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_filter{"_marg" if args.marg else ""}_{k}_{i}.png',
+            plt.imsave(f'./tmp_figs/{dataset_name}_inpainting-{rect_size}'
+                       f'_filter{"_marg" if args.marg else ""}_{k}_{i}.png',
                        to_imsave(dataset.concat(x0, test_y0, mask)),
                        cmap='gray' if nchannels == 1 else 'viridis')
             print(f'Inpainting-{rect_size} | filter | iter: {i}')
+    elif args.method == 'debug':
+        key, subkey = jax.random.split(key)
+        x0s, _ = pf(subkey, test_y0, dataset_param=mask)
+        np.save('x0s-filter', x0s)
     elif args.method == 'gibbs':
         key, subkey = jax.random.split(key)
         x0, us_star = gibbs_init(subkey, test_y0, dataset_param=mask)
