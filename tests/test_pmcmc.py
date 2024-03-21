@@ -6,12 +6,44 @@ import jax.numpy as jnp
 import math
 import numpy as np
 import numpy.testing as npt
+from fbs.sdes import make_linear_sde, StationaryConstLinearSDE, StationaryLinLinearSDE
 from fbs.utils import discretise_lti_sde
-from fbs.samplers.smc import pmcmc_kernel
+from fbs.samplers.smc import pmcmc_kernel, pcn_proposal
 from fbs.samplers import stratified
 from functools import partial
 
 jax.config.update("jax_enable_x64", True)
+
+
+def test_pcn_proposal():
+    T = 2
+    nsteps = 200
+    ts = jnp.linspace(0, T, nsteps + 1)
+
+    for sde in (StationaryConstLinearSDE(a=-0.5, b=1.),
+                StationaryLinLinearSDE(beta_min=0.02, beta_max=5., t0=0., T=T)):
+
+        discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(sde)
+
+        delta = 0.5
+        y0 = jnp.array(2.)
+
+        def fwd_sampler(key_):
+            return simulate_cond_forward(key_, y0, ts)
+
+        def proposal(key_, ys):
+            return pcn_proposal(key_, delta, ys, sde.mean(ts, ts[0], y0), fwd_sampler)
+
+        key = jax.random.PRNGKey(666)
+        keys = jax.random.split(key, num=10000)
+        yss = jax.vmap(fwd_sampler)(keys)
+
+        key, _ = jax.random.split(key)
+        keys = jax.random.split(key, num=10000)
+        prop_yss = jax.vmap(proposal, in_axes=[0, 0])(keys, yss)
+
+        npt.assert_allclose(jnp.mean(prop_yss, axis=0), jnp.mean(yss, axis=0), rtol=2e-2)
+        npt.assert_allclose(jnp.var(prop_yss, axis=0), jnp.var(yss, axis=0), rtol=2e-2)
 
 
 def test_pmcmc():

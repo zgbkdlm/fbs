@@ -88,6 +88,28 @@ def test_linlin_sde():
     npt.assert_allclose(disc_lin(ts, 0.)[1], true_var)
 
 
+def test_linlin_sde_statistics():
+    T = 2
+    nsteps = 200
+    ts = jnp.linspace(0, T, nsteps + 1)
+
+    sde = StationaryLinLinearSDE(beta_min=0.02, beta_max=5, t0=0., T=T)
+    _, _, simulate_cond_forward = make_linear_sde(sde)
+
+    x0 = jnp.array(2.)
+
+    key = jax.random.PRNGKey(666)
+    keys = jax.random.split(key, num=10000)
+
+    def fwd_sampler(key_):
+        return simulate_cond_forward(key_, x0, ts)
+
+    paths = jax.vmap(fwd_sampler)(keys)
+
+    npt.assert_allclose(jnp.mean(paths, axis=0), sde.mean(ts, ts[0], x0), rtol=6e-2)
+    npt.assert_allclose(jnp.var(paths, axis=0), sde.variance(ts, ts[0]), rtol=6e-2)
+
+
 def test_linlin_sde_bridge():
     T = 1
     nsteps = 100

@@ -148,6 +148,10 @@ def fwd_sampler(key_, x0_, y0_, mask_):
     return simulate_cond_forward(key_, xy0, ts)
 
 
+def fwd_ys_sampler(key_, y0_):
+    return simulate_cond_forward(key_, y0_, ts)
+
+
 def ref_sampler(key_, n):
     return jax.random.normal(key_, (n, *x_shape))
 
@@ -175,9 +179,10 @@ gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde
                                nparticles=nparticles, transition_sampler=transition_sampler,
                                transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf,
                                marg_y=args.marg, explicit_backward=True if args.method == 'gibbs-eb' else False))
-pmcmc_kernel = jax.jit(partial(pmcmc_kernel, ts=ts, fwd_sampler=fwd_sampler, dataset=dataset,
+pmcmc_kernel = jax.jit(partial(pmcmc_kernel, ts=ts, fwd_ys_sampler=fwd_ys_sampler, sde=sde,
                                ref_sampler=ref_sampler, ref_logpdf=ref_logpdf, transition_sampler=transition_sampler,
-                               likelihood_logpdf=likelihood_logpdf, resampling=stratified, nparticles=nparticles))
+                               likelihood_logpdf=likelihood_logpdf, resampling=stratified,
+                               nparticles=nparticles, delta=0.5))
 
 
 def to_imsave(img):

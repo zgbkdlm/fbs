@@ -209,13 +209,20 @@ def pmcmc_filter_step(key: JKey, vs_bridge: JArray, u0s: JArray, ts: JArray,
     return uT, log_ellT
 
 
+def pcn_proposal(key, delta: float, x: JArray, mean: JArray, sampler):
+    beta = 2 / (2 + delta)
+    key_rnds = jax.random.split(key, num=2)
+    rnds = jax.vmap(sampler)(key_rnds)
+    p = x + math.sqrt(delta / 2) * (rnds[0] - mean)
+    return beta * p + (1 - beta) * mean + math.sqrt(1 - beta) * (rnds[1] - mean)
+
+
 def pmcmc_kernel(key: JKey,
                  uT, log_ell, ys, xT,
                  y0: JArray,
                  ts: JArray,
-                 fwd_sampler,
+                 fwd_ys_sampler,
                  sde,
-                 dataset,
                  dataset_param,
                  ref_sampler: Callable,
                  ref_logpdf,
@@ -223,7 +230,7 @@ def pmcmc_kernel(key: JKey,
                  likelihood_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
                  resampling: Callable,
                  nparticles: int,
-                 proposal_type: str = 'ind',
+                 delta: float = None,
                  which_u: int = 0) -> Tuple[JArray, JFloat, JArray, JArray, MCMCState]:
     r"""A particle MCMC kernel for variables (uT, log_ell, yT, xT) targeting at p(uT | vT = y0)
 
@@ -242,7 +249,7 @@ def pmcmc_kernel(key: JKey,
     ts : JArray (K + 1, )
         Time steps :math`t_0, t_1, \ldots, t_K`.
     y0 : JArray (dv, )
-    fwd_sampler : JKey, (dv, ), (K + 1, ) -> (K + 1, dv)
+    fwd_ys_sampler : JKey, (dv, ), (K + 1, ) -> (K + 1, dv)
         A sampler for the forward process :math:`y_0, y_1, \ldots, y_K`.
     ref_sampler : JKey, int -> (n, du)
         Sampling the reference distribution for xT (or u0). This should return a Dirac.
@@ -271,26 +278,15 @@ def pmcmc_kernel(key: JKey,
     For the time being, let's assume that we can store the trajectory of Y. Implementing its online backward bridge is
     annoying.
     """
-    key_fwd, key_u0, key_pmcmc, key_mh = jax.random.split(key, num=4)
+    key_prop, key_u0, key_pmcmc, key_mh = jax.random.split(key, num=4)
 
-    def fwd_ys_sampler(key_):
-        path_xy = fwd_sampler(key_, uT, y0, dataset_param)
-        return dataset.unpack(path_xy, dataset_param)[1]
-
-    if proposal_type == 'ind':
-        prop_ys = fwd_ys_sampler(key_fwd)
-    elif proposal_type == 'pcn':
-        delta = 0.2
-        beta = 2 / (2 + delta)
-        mean = sde.mean(ts[-1], ts[0], y0)
-        key_rnds = jax.random.split(key_fwd, num=2)
-        rnds = jax.vmap(fwd_ys_sampler)(key_rnds)
-        p = ys + math.sqrt(delta / 2) * (rnds[0] - mean)
-        prop_ys = beta * p + (1 - beta) * mean + math.sqrt(1 - beta) * (rnds[1] - mean)
+    if delta is None:
+        prop_ys = fwd_ys_sampler(key_prop, y0)
     else:
-        raise ValueError(f'Unknown proposal type: {proposal_type}')
+        prop_ys = pcn_proposal(key_prop, delta, ys, sde.mean(ts, ts[0], y0),
+                               lambda key_: fwd_ys_sampler(key_, y0))
 
-    vs = ys[::-1]
+    vs = prop_ys[::-1]
 
     u0s = ref_sampler(key_u0, nparticles)
     prop_uTs, prop_log_ell = pmcmc_filter_step(key_pmcmc, vs, u0s, ts, transition_sampler, likelihood_logpdf,
