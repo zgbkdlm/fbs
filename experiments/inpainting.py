@@ -234,10 +234,10 @@ for k in range(args.ny0s):
 
             print(f'Inpainting-{rect_size} | Gibbs | iter: {i}, acc: {acc}')
     elif args.method == 'pmcmc':
-        x0, log_ell, yT, xT = jnp.zeros(x_shape), 0., jnp.zeros(y_shape), jnp.zeros(x_shape)
+        x0, log_ell, ys, xT = jnp.zeros(x_shape), 0., jnp.zeros((nsteps + 1, *y_shape)), jnp.zeros(x_shape)
         for i in range(nsamples):
             key, subkey = jax.random.split(key)
-            x0, log_ell, yT, xT, mcmc_state = pmcmc_kernel(subkey, x0, log_ell, yT, xT, test_y0, dataset_param=mask)
+            x0, log_ell, ys, xT, mcmc_state = pmcmc_kernel(subkey, x0, log_ell, ys, xT, test_y0, dataset_param=mask)
             plt.imsave(
                 f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_pmcmc_{k}_{i}.png',
                 to_imsave(dataset.concat(x0, test_y0, mask)), cmap='gray' if nchannels == 1 else 'viridis')
