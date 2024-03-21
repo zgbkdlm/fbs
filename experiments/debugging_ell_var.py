@@ -191,7 +191,7 @@ for k in range(args.ny0s):
     x0 = jnp.zeros(x_shape)
 
     key, subkey = jax.random.split(key)
-    key_fwd, key_filter, key_u0 = jax.random.split(subkey)
+    key_fwd, key_filter, key_u0 = jax.random.split(subkey, num=3)
     path_xy = fwd_sampler(key_fwd, x0, test_y0, mask)
     _, ys = dataset.unpack(path_xy, mask)
     vs = ys[::-1]
