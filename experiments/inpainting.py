@@ -24,13 +24,15 @@ parser.add_argument('--dataset', type=str, default='mnist', help='Which dataset.
                                                                  'or celeba-128.')
 parser.add_argument('--rect_size', type=int, default=15, help='The w/h of the inpainting rectangle.')
 parser.add_argument('--sde', type=str, default='lin')
+parser.add_argument('--method', type=str, default='gibbs', help='What method to do the conditional sampling. '
+                                                                'Options are filter, gibbs, and gibbs-eb.')
 parser.add_argument('--test_nsteps', type=int, default=500)
 parser.add_argument('--test_epoch', type=int, default=2999)
 parser.add_argument('--test_ema', action='store_true', default=False)
 parser.add_argument('--test_seed', type=int, default=666)
-parser.add_argument('--nparticles', type=int, default=100)
-parser.add_argument('--ngibbs', type=int, default=10)
 parser.add_argument('--ny0s', type=int, default=10)
+parser.add_argument('--nparticles', type=int, default=100)
+parser.add_argument('--nsamples', type=int, default=10)
 parser.add_argument('--init_method', type=str, default='smoother')
 parser.add_argument('--marg', action='store_true', default=False, help='Whether marginalise our the Y path.')
 
@@ -86,7 +88,7 @@ param = np.load(filename)['ema_param' if args.test_ema else 'param']
 
 # Conditional sampling
 nparticles = args.nparticles
-ngibbs = args.ngibbs
+nsamples = args.nsamples
 
 
 def reverse_drift(uv, t):
@@ -147,10 +149,15 @@ gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde
                                transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf,
                                marg_y=args.marg))
 gibbs_init = jax.jit(partial(gibbs_init, x0_shape=(rect_size ** 2, nchannels), ts=ts, fwd_sampler=fwd_sampler,
-                             dataset=dataset,
+                             sde=sde, dataset=dataset,
                              transition_sampler=transition_sampler, transition_logpdf=transition_logpdf,
                              likelihood_logpdf=likelihood_logpdf,
-                             nparticles=nparticles, method=args.init_method))
+                             nparticles=nparticles, method=args.init_method, marg_y=args.marg))
+pf = jax.jit(partial(gibbs_init, x0_shape=(rect_size ** 2, nchannels), ts=ts, fwd_sampler=fwd_sampler,
+                     sde=sde, dataset=dataset,
+                     transition_sampler=transition_sampler, transition_logpdf=transition_logpdf,
+                     likelihood_logpdf=likelihood_logpdf,
+                     nparticles=nparticles, method='filter', marg_y=args.marg))
 
 
 def to_imsave(img):
@@ -158,7 +165,7 @@ def to_imsave(img):
 
 
 for k in range(args.ny0s):
-    print(f'Running Gibbs sampler for {k}-th y0.')
+    print(f'Running Gibbs sampler for {k}-th test sample.')
     key, subkey = jax.random.split(key)
     test_img, test_y0, mask = dataset.sampler(subkey)
 
@@ -168,21 +175,33 @@ for k in range(args.ny0s):
                to_imsave(dataset.concat(jnp.zeros((rect_size ** 2, nchannels)), test_y0, mask)),
                cmap='gray' if nchannels == 1 else 'viridis')
 
-    # Gibbs loop
-    key, subkey = jax.random.split(key)
-    x0, us_star = gibbs_init(subkey, test_y0, dataset_param=mask)
-    bs_star = jnp.zeros((nsteps + 1), dtype=int)
-
-    plt.imsave(f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_{k}_init.png',
-               to_imsave(dataset.concat(x0, test_y0, mask)),
-               cmap='gray' if nchannels == 1 else 'viridis')
-
-    for i in range(ngibbs):
+    if args.method == 'filter':
+        for i in range(nsamples):
+            key, subkey = jax.random.split(key)
+            x0, _ = pf(subkey, test_y0, dataset_param=mask)
+            plt.imsave(f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_filter_{k}_{i}.png',
+                       to_imsave(dataset.concat(x0, test_y0, mask)),
+                       cmap='gray' if nchannels == 1 else 'viridis')
+            print(f'Inpainting-{rect_size} | filter iter: {i}')
+    elif args.method == 'gibbs':
         key, subkey = jax.random.split(key)
-        x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, test_y0, us_star, bs_star, dataset_param=mask)
-
-        plt.imsave(f'./tmp_figs/{dataset_name}_inpainting{"_marg" if args.marg else ""}_{k}_{i}.png',
-                   to_imsave(dataset.concat(us_star[-1], test_y0, mask)),
+        x0, us_star = gibbs_init(subkey, test_y0, dataset_param=mask)
+        bs_star = jnp.zeros((nsteps + 1), dtype=int)
+        plt.imsave(f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_gibbs_{k}_init.png',
+                   to_imsave(dataset.concat(x0, test_y0, mask)),
                    cmap='gray' if nchannels == 1 else 'viridis')
 
-        print(f'Inpainting-{rect_size} | Gibbs iter: {i}, acc: {acc}')
+        for i in range(nsamples):
+            key, subkey = jax.random.split(key)
+            x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, test_y0, us_star, bs_star, dataset_param=mask)
+            sample = us_star[-1]
+            plt.imsave(
+                f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_gibbs_{"_marg" if args.marg else ""}_{k}_{i}.png',
+                to_imsave(dataset.concat(us_star[-1], test_y0, mask)),
+                cmap='gray' if nchannels == 1 else 'viridis')
+
+            print(f'Inpainting-{rect_size} | Gibbs iter: {i}, acc: {acc}')
+    elif args.method == 'gibbs-eb':
+        pass
+    else:
+        raise ValueError(f"Unknown method {args.method}")

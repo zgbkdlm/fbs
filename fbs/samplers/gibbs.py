@@ -19,9 +19,10 @@ def bridge_sampler(key, y0, yT, ts, sde):
 
 
 def gibbs_init(key, y0, x0_shape, ts,
-               fwd_sampler: Callable, dataset, dataset_param,
+               fwd_sampler: Callable, sde, dataset, dataset_param,
                transition_sampler, transition_logpdf, likelihood_logpdf,
                nparticles, method: str = 'smoother',
+               marg_y: bool = True,
                x0=None):
     """Initialise the Gibbs sampler with a draw from a bootstrap filter.
 
@@ -32,12 +33,12 @@ def gibbs_init(key, y0, x0_shape, ts,
     """
     if x0 is None:
         x0 = jnp.zeros(x0_shape)
-    key_fwd, key_u0, key_bf, key_fwd2, key_bwd = jax.random.split(key, num=5)
+    key_fwd, key_bridge, key_u0, key_bf, key_fwd2, key_bwd = jax.random.split(key, num=6)
 
     path_xy = fwd_sampler(key_fwd, x0, y0, dataset_param)
     _, path_y = dataset.unpack(path_xy, dataset_param)
 
-    vs = path_y[::-1]
+    vs = bridge_sampler(key_bridge, path_y[0], path_y[-1], ts, sde)[::-1] if marg_y else path_y[::-1]
 
     def init_sampler(*_):
         """Assume uT and vT independent N(0, 1) at T."""
