@@ -215,9 +215,8 @@ def pmcmc_filter_step(key: JKey,
 
 def pmcmc_kernel(key: JKey,
                  uT, log_ell, yT, xT,
-                 ts: JArray,
                  y0: JArray,
-                 x0_shape,
+                 ts: JArray,
                  fwd_sampler,
                  dataset,
                  dataset_param,
@@ -276,7 +275,7 @@ def pmcmc_kernel(key: JKey,
     """
     key_fwd, key_u0, key_pmcmc, key_mh = jax.random.split(key, num=4)
 
-    path_xy = fwd_sampler(key_fwd, uT, y0, dataset)
+    path_xy = fwd_sampler(key_fwd, uT, y0, dataset_param)
     _, ys = dataset.unpack(path_xy, dataset_param)
     vs = ys[::-1]
     prop_yT = ys[-1]
@@ -288,12 +287,13 @@ def pmcmc_kernel(key: JKey,
                                                transition_sampler,
                                                likelihood_logpdf,
                                                resampling,
-                                               nparticles)
+                                               nparticles,
+                                               dataset_param=dataset_param)
     prop_uT = prop_uTs[which_u]
     prop_xT = u0s[which_u]
 
     # log_acc_prob = jnp.minimum(0.,
-    #                            ref_logpdf(prop_xT, prop_yT) - ref_logpdf(xT, prop_yT)
+    #                            ref_logpdf(prop_xT) - ref_logpdf(xT)
     #                            + prop_log_ell - log_ell)
     log_acc_prob = jnp.minimum(0., prop_log_ell - log_ell)
 
