@@ -179,10 +179,10 @@ for k in range(args.ny0s):
         for i in range(nsamples):
             key, subkey = jax.random.split(key)
             x0, _ = pf(subkey, test_y0, dataset_param=mask)
-            plt.imsave(f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_filter_{k}_{i}.png',
+            plt.imsave(f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_filter{"_marg" if args.marg else ""}_{k}_{i}.png',
                        to_imsave(dataset.concat(x0, test_y0, mask)),
                        cmap='gray' if nchannels == 1 else 'viridis')
-            print(f'Inpainting-{rect_size} | filter iter: {i}')
+            print(f'Inpainting-{rect_size} | filter | iter: {i}')
     elif args.method == 'gibbs':
         key, subkey = jax.random.split(key)
         x0, us_star = gibbs_init(subkey, test_y0, dataset_param=mask)
@@ -196,11 +196,11 @@ for k in range(args.ny0s):
             x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, test_y0, us_star, bs_star, dataset_param=mask)
             sample = us_star[-1]
             plt.imsave(
-                f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_gibbs_{"_marg" if args.marg else ""}_{k}_{i}.png',
+                f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_gibbs{"_marg" if args.marg else ""}_{k}_{i}.png',
                 to_imsave(dataset.concat(us_star[-1], test_y0, mask)),
                 cmap='gray' if nchannels == 1 else 'viridis')
 
-            print(f'Inpainting-{rect_size} | Gibbs iter: {i}, acc: {acc}')
+            print(f'Inpainting-{rect_size} | Gibbs | iter: {i}, acc: {acc}')
     elif args.method == 'gibbs-eb':
         pass
     else:
