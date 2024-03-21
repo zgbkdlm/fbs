@@ -191,7 +191,7 @@ for k in range(args.ny0s):
             print(f'Inpainting-{rect_size} | filter | iter: {i}')
     elif args.method == 'debug':
         key, subkey = jax.random.split(key)
-        x0s, _ = pf(subkey, test_y0, dataset_param=mask)
+        x0s, _ = debug(subkey, test_y0, dataset_param=mask)
         np.save(f'x0s-filter-{k}', x0s)
     elif args.method == 'gibbs':
         key, subkey = jax.random.split(key)
