@@ -14,6 +14,8 @@ from fbs.data.images import normalise
 from fbs.sdes import make_linear_sde, StationaryConstLinearSDE, \
     StationaryLinLinearSDE, StationaryExpLinearSDE
 from fbs.samplers import gibbs_init, gibbs_kernel
+from fbs.samplers.smc import pmcmc_kernel
+from fbs.samplers.resampling import stratified
 from fbs.nn.models import make_st_nn
 from fbs.nn.unet import UNet
 from functools import partial
@@ -25,7 +27,7 @@ parser.add_argument('--dataset', type=str, default='mnist', help='Which dataset.
 parser.add_argument('--rect_size', type=int, default=15, help='The w/h of the inpainting rectangle.')
 parser.add_argument('--sde', type=str, default='lin')
 parser.add_argument('--method', type=str, default='gibbs', help='What method to do the conditional sampling. '
-                                                                'Options are filter, gibbs, and gibbs-eb.')
+                                                                'Options are filter, gibbs, gibbs-eb, and pmcmc.')
 parser.add_argument('--test_nsteps', type=int, default=500)
 parser.add_argument('--test_epoch', type=int, default=2999)
 parser.add_argument('--test_ema', action='store_true', default=False)
@@ -89,6 +91,8 @@ param = np.load(filename)['ema_param' if args.test_ema else 'param']
 # Conditional sampling
 nparticles = args.nparticles
 nsamples = args.nsamples
+x_shape = (rect_size ** 2, nchannels)
+y_shape = (resolution ** 2 - rect_size ** 2, nchannels)
 
 
 def reverse_drift(uv, t):
@@ -144,17 +148,25 @@ def fwd_sampler(key_, x0_, y0_, mask_):
     return simulate_cond_forward(key_, xy0, ts)
 
 
-pf = jax.jit(partial(gibbs_init, x0_shape=(rect_size ** 2, nchannels), ts=ts, fwd_sampler=fwd_sampler,
+def ref_sampler(key_, n):
+    return jax.random.normal(key_, (n, *x_shape))
+
+
+def ref_logpdf(x):
+    return jnp.sum(jax.scipy.stats.norm.logpdf(x, 0., 1.))
+
+
+pf = jax.jit(partial(gibbs_init, x0_shape=x_shape, ts=ts, fwd_sampler=fwd_sampler,
                      sde=sde, dataset=dataset,
                      transition_sampler=transition_sampler, transition_logpdf=transition_logpdf,
                      likelihood_logpdf=likelihood_logpdf,
                      nparticles=nparticles, method='filter', marg_y=args.marg))
-debug = jax.jit(partial(gibbs_init, x0_shape=(rect_size ** 2, nchannels), ts=ts, fwd_sampler=fwd_sampler,
+debug = jax.jit(partial(gibbs_init, x0_shape=x_shape, ts=ts, fwd_sampler=fwd_sampler,
                         sde=sde, dataset=dataset,
                         transition_sampler=transition_sampler, transition_logpdf=transition_logpdf,
                         likelihood_logpdf=likelihood_logpdf,
                         nparticles=nparticles, method='debug', marg_y=args.marg))
-gibbs_init = jax.jit(partial(gibbs_init, x0_shape=(rect_size ** 2, nchannels), ts=ts, fwd_sampler=fwd_sampler,
+gibbs_init = jax.jit(partial(gibbs_init, x0_shape=x_shape, ts=ts, fwd_sampler=fwd_sampler,
                              sde=sde, dataset=dataset,
                              transition_sampler=transition_sampler, transition_logpdf=transition_logpdf,
                              likelihood_logpdf=likelihood_logpdf,
@@ -163,6 +175,9 @@ gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde
                                nparticles=nparticles, transition_sampler=transition_sampler,
                                transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf,
                                marg_y=args.marg, explicit_backward=True if args.method == 'gibbs-eb' else False))
+pmcmc_kernel = jax.jit(partial(pmcmc_kernel, ts=ts, x0_shape=x_shape, fwd_sampler=fwd_sampler, dataset=dataset,
+                               ref_sampler=ref_sampler, ref_logpdf=ref_logpdf, transition_sampler=transition_sampler,
+                               likelihood_logpdf=likelihood_logpdf, resampling=stratified, nparticles=nparticles))
 
 
 def to_imsave(img):
@@ -211,5 +226,14 @@ for k in range(args.ny0s):
                 cmap='gray' if nchannels == 1 else 'viridis')
 
             print(f'Inpainting-{rect_size} | Gibbs | iter: {i}, acc: {acc}')
+    elif args.method == 'pmcmc':
+        x0, log_ell, yT, xT = jnp.zeros(x_shape), 0., jnp.zeros(y_shape), jnp.zeros(x_shape)
+        for i in range(nsamples):
+            key, subkey = jax.random.split(key)
+            x0, log_ell, yT, xT, mcmc_state = pmcmc_kernel(subkey, x0, log_ell, yT, xT, test_y0, dataset_param=mask)
+            plt.imsave(
+                f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_pmcmc_{k}_{i}.png',
+                to_imsave(dataset.concat(x0, test_y0, mask)), cmap='gray' if nchannels == 1 else 'viridis')
+            print(f'Inpainting-{rect_size} | pMCMC | iter: {i}, acc_prob: {mcmc_state.acceptance_prob}')
     else:
         raise ValueError(f"Unknown method {args.method}")

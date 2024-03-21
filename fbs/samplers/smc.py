@@ -98,6 +98,7 @@ def bootstrap_backward_smoother(key: JKey,
                                 *args, **kwargs) -> JArray:
     """Backward particle smoother by using the results from a bootstrap filter.
     """
+
     def scan_body(carry, elem):
         u_kp1 = carry
         uf_k, v_k, t_k, key_ = elem
@@ -162,13 +163,14 @@ def pf_temp(key: JKey,
     return jax.lax.scan(scan_body, u0s, (vs[1:], vs[:-1], ts[:-1], keys))[0]
 
 
-def pmcmc_step(key: JKey,
-               vs_bridge: JArray, ts: JArray,
-               u0s: JArray,
-               transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
-               likelihood_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
-               resampling: Callable,
-               nparticles: int) -> Tuple[JArray, JFloat]:
+def pmcmc_filter_step(key: JKey,
+                      vs_bridge: JArray, ts: JArray,
+                      u0s: JArray,
+                      transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
+                      likelihood_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
+                      resampling: Callable,
+                      nparticles: int,
+                      **kwargs) -> Tuple[JArray, JFloat]:
     """Particle MCMC sampling of p(x | y) for separable forward process.
 
     Parameters
@@ -189,13 +191,13 @@ def pmcmc_step(key: JKey,
     log_ell0 = 0.
 
     def scan_body(carry, elem):
-        us, log_ell = carry
+        us_prev, log_ell = carry
         v, v_prev, t_prev, key_ = elem
 
         key_proposal, key_resampling = jax.random.split(key_)
-        us = transition_sampler(us, v_prev, t_prev, key_proposal)
+        us = transition_sampler(us_prev, v_prev, t_prev, key_proposal, **kwargs)
 
-        log_ws = likelihood_logpdf(v, us, v_prev, t_prev)
+        log_ws = likelihood_logpdf(v, us_prev, v_prev, t_prev, **kwargs)
         _c = jax.scipy.special.logsumexp(log_ws)
         log_ell = log_ell - math.log(nparticles) + _c
         log_ws = log_ws - _c
@@ -215,9 +217,12 @@ def pmcmc_kernel(key: JKey,
                  uT, log_ell, yT, xT,
                  ts: JArray,
                  y0: JArray,
-                 fwd_ys_sampler: Callable[[JKey, JArray, JArray], JArray],
-                 ref_sampler: Callable[[JKey, int, Optional[JArray]], JArray],
-                 ref_logpdf: Callable[[JArray, Optional[JArray]], JArray],
+                 x0_shape,
+                 fwd_sampler,
+                 dataset,
+                 dataset_param,
+                 ref_sampler: Callable,
+                 ref_logpdf,
                  transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
                  likelihood_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
                  resampling: Callable,
@@ -240,7 +245,7 @@ def pmcmc_kernel(key: JKey,
     ts : JArray (K + 1, )
         Time steps :math`t_0, t_1, \ldots, t_K`.
     y0 : JArray (dv, )
-    fwd_ys_sampler : JKey, (dv, ), (K + 1, ) -> (K + 1, dv)
+    fwd_sampler : JKey, (dv, ), (K + 1, ) -> (K + 1, dv)
         A sampler for the forward process :math:`y_0, y_1, \ldots, y_K`.
     ref_sampler : JKey, int -> (n, du)
         Sampling the reference distribution for xT (or u0). This should return a Dirac.
@@ -269,37 +274,33 @@ def pmcmc_kernel(key: JKey,
     For the time being, let's assume that we can store the trajectory of Y. Implementing its online backward bridge is
     annoying.
     """
-    key_fwd_ys, key_u0, key_pmcmc, key_mh = jax.random.split(key, num=4)
-    ys = fwd_ys_sampler(key_fwd_ys, y0, ts)
+    key_fwd, key_u0, key_pmcmc, key_mh = jax.random.split(key, num=4)
+
+    path_xy = fwd_sampler(key_fwd, uT, y0, dataset)
+    _, ys = dataset.unpack(path_xy, dataset_param)
     vs = ys[::-1]
     prop_yT = ys[-1]
 
-    u0s = ref_sampler(key_u0, nparticles, prop_yT)
-    prop_uTs, prop_log_ell = pmcmc_step(key_pmcmc,
-                                        vs, ts,
-                                        u0s,
-                                        transition_sampler,
-                                        likelihood_logpdf,
-                                        resampling,
-                                        nparticles)
+    u0s = ref_sampler(key_u0, nparticles)
+    prop_uTs, prop_log_ell = pmcmc_filter_step(key_pmcmc,
+                                               vs, ts,
+                                               u0s,
+                                               transition_sampler,
+                                               likelihood_logpdf,
+                                               resampling,
+                                               nparticles)
     prop_uT = prop_uTs[which_u]
     prop_xT = u0s[which_u]
 
     # log_acc_prob = jnp.minimum(0.,
     #                            ref_logpdf(prop_xT, prop_yT) - ref_logpdf(xT, prop_yT)
     #                            + prop_log_ell - log_ell)
-    # log_acc_prob = jnp.minimum(0., prop_log_ell - log_ell)
-    #
-    # z = jax.random.uniform(key_mh)
-    # acc_flag = jnp.log(z) < log_acc_prob
-    #
-    # mcmc_state = MCMCState(acceptance_prob=jnp.exp(log_acc_prob), is_accepted=acc_flag)
-    acc_prob = jnp.minimum(1., jnp.exp(prop_log_ell - log_ell))
+    log_acc_prob = jnp.minimum(0., prop_log_ell - log_ell)
 
     z = jax.random.uniform(key_mh)
-    acc_flag = z < acc_prob
+    acc_flag = jnp.log(z) < log_acc_prob
 
-    mcmc_state = MCMCState(acceptance_prob=acc_prob, is_accepted=acc_flag)
+    mcmc_state = MCMCState(acceptance_prob=jnp.exp(log_acc_prob), is_accepted=acc_flag)
     return jax.lax.cond(acc_flag,
                         lambda _: (prop_uT, prop_log_ell, prop_yT, prop_xT, mcmc_state),
                         lambda _: (uT, log_ell, yT, xT, mcmc_state),
