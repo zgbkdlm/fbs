@@ -170,7 +170,7 @@ def to_imsave(img):
 
 
 for k in range(args.ny0s):
-    print(f'Running Gibbs sampler for {k}-th test sample.')
+    print(f'Running conditional sampler for {k}-th test sample.')
     key, subkey = jax.random.split(key)
     test_img, test_y0, mask = dataset.sampler(subkey)
 
@@ -192,7 +192,7 @@ for k in range(args.ny0s):
     elif args.method == 'debug':
         key, subkey = jax.random.split(key)
         x0s, _ = pf(subkey, test_y0, dataset_param=mask)
-        np.save('x0s-filter', x0s)
+        np.save(f'x0s-filter-{k}', x0s)
     elif args.method == 'gibbs':
         key, subkey = jax.random.split(key)
         x0, us_star = gibbs_init(subkey, test_y0, dataset_param=mask)
