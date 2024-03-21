@@ -210,10 +210,11 @@ def pmcmc_filter_step(key: JKey, vs_bridge: JArray, u0s: JArray, ts: JArray,
 
 
 def pmcmc_kernel(key: JKey,
-                 uT, log_ell, yT, xT,
+                 uT, log_ell, ys, xT,
                  y0: JArray,
                  ts: JArray,
                  fwd_sampler,
+                 sde,
                  dataset,
                  dataset_param,
                  ref_sampler: Callable,
@@ -222,6 +223,7 @@ def pmcmc_kernel(key: JKey,
                  likelihood_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
                  resampling: Callable,
                  nparticles: int,
+                 proposal_type: str = 'ind',
                  which_u: int = 0) -> Tuple[JArray, JFloat, JArray, JArray, MCMCState]:
     r"""A particle MCMC kernel for variables (uT, log_ell, yT, xT) targeting at p(uT | vT = y0)
 
@@ -271,10 +273,24 @@ def pmcmc_kernel(key: JKey,
     """
     key_fwd, key_u0, key_pmcmc, key_mh = jax.random.split(key, num=4)
 
-    path_xy = fwd_sampler(key_fwd, uT, y0, dataset_param)
-    _, ys = dataset.unpack(path_xy, dataset_param)
+    def fwd_ys_sampler(key_):
+        path_xy = fwd_sampler(key_, uT, y0, dataset_param)
+        return dataset.unpack(path_xy, dataset_param)[1]
+
+    if proposal_type == 'ind':
+        prop_ys = fwd_ys_sampler(key_fwd)
+    elif proposal_type == 'pcn':
+        delta = 0.2
+        beta = 2 / (2 + delta)
+        mean = sde.mean(ts[-1], ts[0], y0)
+        key_rnds = jax.random.split(key_fwd, num=2)
+        rnds = jax.vmap(fwd_ys_sampler)(key_rnds)
+        p = ys + math.sqrt(delta / 2) * (rnds[0] - mean)
+        prop_ys = beta * p + (1 - beta) * mean + math.sqrt(1 - beta) * (rnds[1] - mean)
+    else:
+        raise ValueError(f'Unknown proposal type: {proposal_type}')
+
     vs = ys[::-1]
-    prop_yT = ys[-1]
 
     u0s = ref_sampler(key_u0, nparticles)
     prop_uTs, prop_log_ell = pmcmc_filter_step(key_pmcmc, vs, u0s, ts, transition_sampler, likelihood_logpdf,
@@ -292,6 +308,6 @@ def pmcmc_kernel(key: JKey,
 
     mcmc_state = MCMCState(acceptance_prob=jnp.exp(log_acc_prob), is_accepted=acc_flag)
     return jax.lax.cond(acc_flag,
-                        lambda _: (prop_uT, prop_log_ell, prop_yT, prop_xT, mcmc_state),
-                        lambda _: (uT, log_ell, yT, xT, mcmc_state),
+                        lambda _: (prop_uT, prop_log_ell, prop_ys, prop_xT, mcmc_state),
+                        lambda _: (uT, log_ell, ys, xT, mcmc_state),
                         None)
