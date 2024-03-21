@@ -154,15 +154,15 @@ debug = jax.jit(partial(gibbs_init, x0_shape=(rect_size ** 2, nchannels), ts=ts,
                         transition_sampler=transition_sampler, transition_logpdf=transition_logpdf,
                         likelihood_logpdf=likelihood_logpdf,
                         nparticles=nparticles, method='debug', marg_y=args.marg))
-gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, dataset=dataset,
-                               nparticles=nparticles, transition_sampler=transition_sampler,
-                               transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf,
-                               marg_y=args.marg))
 gibbs_init = jax.jit(partial(gibbs_init, x0_shape=(rect_size ** 2, nchannels), ts=ts, fwd_sampler=fwd_sampler,
                              sde=sde, dataset=dataset,
                              transition_sampler=transition_sampler, transition_logpdf=transition_logpdf,
                              likelihood_logpdf=likelihood_logpdf,
                              nparticles=nparticles, method=args.init_method, marg_y=args.marg))
+gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, dataset=dataset,
+                               nparticles=nparticles, transition_sampler=transition_sampler,
+                               transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf,
+                               marg_y=args.marg, explicit_backward=True if args.method == 'gibbs-eb' else False))
 
 
 def to_imsave(img):
@@ -193,7 +193,7 @@ for k in range(args.ny0s):
         key, subkey = jax.random.split(key)
         x0s, _ = debug(subkey, test_y0, dataset_param=mask)
         np.save(f'x0s-filter-{k}', x0s)
-    elif args.method == 'gibbs':
+    elif 'gibbs' in args.method:
         key, subkey = jax.random.split(key)
         x0, us_star = gibbs_init(subkey, test_y0, dataset_param=mask)
         bs_star = jnp.zeros((nsteps + 1), dtype=int)
@@ -211,7 +211,5 @@ for k in range(args.ny0s):
                 cmap='gray' if nchannels == 1 else 'viridis')
 
             print(f'Inpainting-{rect_size} | Gibbs | iter: {i}, acc: {acc}')
-    elif args.method == 'gibbs-eb':
-        pass
     else:
         raise ValueError(f"Unknown method {args.method}")

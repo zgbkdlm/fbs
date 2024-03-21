@@ -11,75 +11,6 @@ from typing import Callable, Union, Any, Tuple
 from fbs.typings import JArray, JKey, FloatScalar
 
 
-def csmc(key: JKey,
-         us_star: JArray, bs_star: JArray,
-         vs: JArray, ts: JArray,
-         init_sampler: Callable[[JKey, int], JArray],
-         init_likelihood_logpdf: Callable[[JArray, JArray], JArray],
-         transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
-         transition_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
-         likelihood_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
-         cond_resampling: Callable,
-         nsamples,
-         niters: int,
-         backward: bool = False):
-    """
-    Generic cSMC kernel.
-
-    Parameters
-    ----------
-    key : JKey
-        A JAX random key.
-    us_star : JArray (K + 1, du)
-        Reference trajectory :math:`u_0^*, u_1^*, u_2^*, \ldots, u_K^*` to update.
-    bs_star : JArray (K + 1, )
-        Indices of the reference trajectory at times :math:`t_1, t_2, \ldots, t_K`.
-    vs : JArray (K + 1, dv)
-        Measurements :math:`v_0, v_1, \ldots, v_K`.
-    ts : JArray (K + 1, )
-        The times :math:`t_0, t_1, \ldots, t_K`.
-    init_sampler : JKey, int -> (n, du)
-    init_likelihood_logpdf : (dv, ), (n, du) -> (n, )
-    transition_sampler : (n, du), (dv, ), float, key -> (n, du)
-        Draw n new samples conditioned on the previous samples and :math:`v_{k-1}`.
-        That is, :math:`p(u_k | u_{k-1}, v_{k-1})`.
-    transition_logpdf : (du, ), (du, ), (dv, ), float -> (n, )
-    likelihood_logpdf : (dv, ), (n, du), (dv, ), float -> (n, )
-        The measurement conditional PDF :math:`p(v_k | u_{k-1}, v_{k-1})`.
-        The first function argument is for v. The second argument is for u, which accepts an array of samples
-        and output an array of evaluations. The third argument is for v_{k-1}. The fourth argument is for the time.
-    cond_resampling :
-        Resampling scheme to use.
-    key : JKey
-        Random number generator key.
-    nsamples : int
-        Number of particles to use (N+1, if we include the reference trajectory).
-
-    Returns
-    -------
-    xs : JArray (niters, K + 1, d)
-        Particles.
-    """
-    keys = jax.random.split(key, niters)
-
-    def scan_body(carry, elem):
-        us, bs = carry
-        key_ = elem
-
-        us, bs_next = csmc_kernel(key_,
-                                  us, bs, vs, ts,
-                                  init_sampler, init_likelihood_logpdf,
-                                  transition_sampler, transition_logpdf,
-                                  likelihood_logpdf,
-                                  cond_resampling,
-                                  nsamples,
-                                  backward)
-        accepted = bs_next != bs
-        return (us, bs), (us, accepted)
-
-    return jax.lax.scan(scan_body, (us_star, bs_star), keys)[1]
-
-
 def csmc_kernel(key: JKey,
                 us_star: JArray, bs_star: JArray,
                 vs: JArray, ts: JArray,
@@ -289,7 +220,7 @@ def backward_sampling_pass(key, transition_logpdf, vs, ts, uss, log_ws, *args, *
 
     # Run backward pass
     _, (uss, Bs, Ws) = jax.lax.scan(body, x_T, inps)
-    jax.debug.print('Ws: {}', Ws)
+    # jax.debug.print('Ws: {}', Ws)
 
     # Insert last ancestor and particle
     uss = jnp.insert(uss, 0, x_T, axis=0)

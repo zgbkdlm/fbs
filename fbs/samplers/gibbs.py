@@ -5,6 +5,7 @@ import jax
 import jax.numpy as jnp
 from fbs.sdes.simulators import doob_bridge_simulator
 from fbs.samplers.csmc.csmc import csmc_kernel
+from fbs.samplers.csmc.csmc import forward_pass as csmc_fwd
 from fbs.samplers.csmc.resamplings import killing
 from fbs.samplers.smc import bootstrap_filter, bootstrap_backward_smoother
 from fbs.samplers.resampling import stratified
@@ -67,7 +68,8 @@ def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JA
                  ts: JArray, fwd_sampler: Callable, sde: StationaryLinLinearSDE, dataset, dataset_param,
                  nparticles: int,
                  transition_sampler: Callable, transition_logpdf: Callable, likelihood_logpdf: Callable,
-                 marg_y: bool = True) -> Tuple[JArray, JArray, JArray, JArray]:
+                 marg_y: bool = True,
+                 explicit_backward: bool = False) -> Tuple[JArray, JArray, JArray, JArray]:
     """Gibbs kernel for our forward-backward conditional sampler.
     The carry variables are `x0`, `us_star`, and `bs_star`.
 
@@ -99,6 +101,7 @@ def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JA
     likelihood_logpdf
     marg_y: bool, default=True
         Whether to use the Doob's diffusion bridge to marginalise out the path of `y`.
+    explicit_backward
 
     Returns
     -------
@@ -117,14 +120,24 @@ def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JA
     def init_likelihood_logpdf(*_):
         return -math.log(nparticles) * jnp.ones(nparticles)
 
-    us_star_next, bs_star_next = csmc_kernel(key_csmc,
-                                             us_star, bs_star,
-                                             vs, ts,
-                                             init_sampler, init_likelihood_logpdf,
-                                             transition_sampler, transition_logpdf,
-                                             likelihood_logpdf,
-                                             killing, nparticles,
-                                             backward=True,
-                                             dataset_param=dataset_param)
+    if explicit_backward:
+        key_csmc_fwd, key_csmc_x0, key_csmc_bwd_us, key_csmc_bwd_bs = jax.random.split(key_csmc, num=4)
+        _, log_ws, uss = csmc_fwd(key_csmc_fwd, us_star, bs_star, vs, ts, init_sampler, init_likelihood_logpdf,
+                                  transition_sampler, likelihood_logpdf, killing, nparticles,
+                                  dataset_param=dataset_param)
+        jax.debug.print('Ws: {}', jnp.exp(log_ws[-1]))
+        x0 = jax.random.choice(key_csmc_x0, uss, p=jnp.exp(log_ws[-1]), axis=1)
+        us_star_next = dataset.unpack(fwd_sampler(key_csmc_bwd_us, x0, y0, dataset_param), dataset_param)[0][::-1]
+        bs_star_next = jax.random.randint(key_csmc_bwd_bs, (us.shape[0],), minval=0, maxval=nparticles)
+    else:
+        us_star_next, bs_star_next = csmc_kernel(key_csmc,
+                                                 us_star, bs_star,
+                                                 vs, ts,
+                                                 init_sampler, init_likelihood_logpdf,
+                                                 transition_sampler, transition_logpdf,
+                                                 likelihood_logpdf,
+                                                 killing, nparticles,
+                                                 backward=True,
+                                                 dataset_param=dataset_param)
     x0_next = us_star_next[-1]
     return x0_next, us_star_next, bs_star_next, bs_star_next != bs_star
