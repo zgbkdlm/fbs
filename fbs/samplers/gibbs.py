@@ -50,7 +50,7 @@ def gibbs_init(key, y0, x0_shape, ts,
     elif method == 'smoother':
         uss = bootstrap_filter(transition_sampler, likelihood_logpdf, vs, ts, init_sampler, key_bf, nparticles,
                                stratified, log=True, return_last=False, dataset_param=dataset_param)[0]
-        approx_x0 = uss  # !
+        approx_x0 = uss[-1, 0]
         approx_us_star = bootstrap_backward_smoother(key_bwd, uss, vs, ts, transition_logpdf,
                                                      dataset_param=dataset_param)
     else:
@@ -62,7 +62,7 @@ def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JA
                  ts: JArray, fwd_sampler: Callable, sde: StationaryLinLinearSDE, dataset, dataset_param,
                  nparticles: int,
                  transition_sampler: Callable, transition_logpdf: Callable, likelihood_logpdf: Callable,
-                 doob: bool = True) -> Tuple[JArray, JArray, JArray, JArray]:
+                 marg_y: bool = True) -> Tuple[JArray, JArray, JArray, JArray]:
     """Gibbs kernel for our forward-backward conditional sampler.
     The carry variables are `x0`, `us_star`, and `bs_star`.
 
@@ -92,8 +92,8 @@ def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JA
     transition_sampler
     transition_logpdf
     likelihood_logpdf
-    doob: bool, default=True
-        Whether to use the Doob's diffusion bridge to generate new path of `y`.
+    marg_y: bool, default=True
+        Whether to use the Doob's diffusion bridge to marginalise out the path of `y`.
 
     Returns
     -------
@@ -104,7 +104,7 @@ def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JA
     path_xy = fwd_sampler(key_fwd, x0, y0, dataset_param)
     path_x, path_y = dataset.unpack(path_xy, dataset_param)
     us = path_x[::-1]
-    vs = bridge_sampler(key_fwd, path_y[0], path_y[-1], ts, sde)[::-1] if doob else path_y[::-1]
+    vs = bridge_sampler(key_bridge, path_y[0], path_y[-1], ts, sde)[::-1] if marg_y else path_y[::-1]
 
     def init_sampler(*_):
         return us[0] * jnp.ones((nparticles, *us.shape[1:]))
