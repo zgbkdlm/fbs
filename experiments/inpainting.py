@@ -27,7 +27,8 @@ parser.add_argument('--dataset', type=str, default='mnist', help='Which dataset.
 parser.add_argument('--rect_size', type=int, default=15, help='The w/h of the inpainting rectangle.')
 parser.add_argument('--sde', type=str, default='lin')
 parser.add_argument('--method', type=str, default='gibbs', help='What method to do the conditional sampling. '
-                                                                'Options are filter, gibbs, gibbs-eb, and pmcmc.')
+                                                                'Options are filter, gibbs, gibbs-eb, '
+                                                                'pmcmc, and pmcmc-x.')
 parser.add_argument('--test_nsteps', type=int, default=500)
 parser.add_argument('--test_epoch', type=int, default=2999)
 parser.add_argument('--test_ema', action='store_true', default=False)
@@ -179,10 +180,11 @@ gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde
                                nparticles=nparticles, transition_sampler=transition_sampler,
                                transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf,
                                marg_y=args.marg, explicit_backward=True if args.method == 'gibbs-eb' else False))
+delta = None if len(args.method.split('-')) == 1 else args.method.split('-')[-1]
 pmcmc_kernel = jax.jit(partial(pmcmc_kernel, ts=ts, fwd_ys_sampler=fwd_ys_sampler, sde=sde,
                                ref_sampler=ref_sampler, ref_logpdf=ref_logpdf, transition_sampler=transition_sampler,
                                likelihood_logpdf=likelihood_logpdf, resampling=stratified,
-                               nparticles=nparticles, delta=0.5))
+                               nparticles=nparticles, delta=delta))
 
 
 def to_imsave(img):

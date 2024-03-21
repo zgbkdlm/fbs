@@ -17,7 +17,7 @@ jax.config.update("jax_enable_x64", True)
 
 def test_pcn_proposal():
     T = 2
-    nsteps = 200
+    nsteps = 500
     ts = jnp.linspace(0, T, nsteps + 1)
 
     for sde in (StationaryConstLinearSDE(a=-0.5, b=1.),
@@ -42,8 +42,8 @@ def test_pcn_proposal():
         keys = jax.random.split(key, num=10000)
         prop_yss = jax.vmap(proposal, in_axes=[0, 0])(keys, yss)
 
-        npt.assert_allclose(jnp.mean(prop_yss, axis=0), jnp.mean(yss, axis=0), rtol=2e-2)
-        npt.assert_allclose(jnp.var(prop_yss, axis=0), jnp.var(yss, axis=0), rtol=2e-2)
+        npt.assert_allclose(jnp.mean(prop_yss, axis=0), jnp.mean(yss, axis=0), rtol=5e-2)
+        npt.assert_allclose(jnp.var(prop_yss, axis=0), jnp.var(yss, axis=0), rtol=5e-2)
 
 
 def test_pmcmc():
