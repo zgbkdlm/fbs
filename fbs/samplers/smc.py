@@ -163,14 +163,10 @@ def pf_temp(key: JKey,
     return jax.lax.scan(scan_body, u0s, (vs[1:], vs[:-1], ts[:-1], keys))[0]
 
 
-def pmcmc_filter_step(key: JKey,
-                      vs_bridge: JArray, ts: JArray,
-                      u0s: JArray,
+def pmcmc_filter_step(key: JKey, vs_bridge: JArray, u0s: JArray, ts: JArray,
                       transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
-                      likelihood_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
-                      resampling: Callable,
-                      nparticles: int,
-                      **kwargs) -> Tuple[JArray, JFloat]:
+                      likelihood_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray], resampling: Callable,
+                      nparticles: int, **kwargs) -> Tuple[JArray, JFloat]:
     """Particle MCMC sampling of p(x | y) for separable forward process.
 
     Parameters
@@ -281,14 +277,8 @@ def pmcmc_kernel(key: JKey,
     prop_yT = ys[-1]
 
     u0s = ref_sampler(key_u0, nparticles)
-    prop_uTs, prop_log_ell = pmcmc_filter_step(key_pmcmc,
-                                               vs, ts,
-                                               u0s,
-                                               transition_sampler,
-                                               likelihood_logpdf,
-                                               resampling,
-                                               nparticles,
-                                               dataset_param=dataset_param)
+    prop_uTs, prop_log_ell = pmcmc_filter_step(key_pmcmc, vs, u0s, ts, transition_sampler, likelihood_logpdf,
+                                               resampling, nparticles, dataset_param=dataset_param)
     prop_uT = prop_uTs[which_u]
     prop_xT = u0s[which_u]
 

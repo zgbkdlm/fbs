@@ -14,7 +14,7 @@ from fbs.data.images import normalise
 from fbs.sdes import make_linear_sde, StationaryConstLinearSDE, \
     StationaryLinLinearSDE, StationaryExpLinearSDE
 from fbs.samplers import gibbs_init, gibbs_kernel
-from fbs.samplers.smc import pmcmc_kernel
+from fbs.samplers.smc import pmcmc_kernel, pmcmc_filter_step
 from fbs.samplers.resampling import stratified
 from fbs.nn.models import make_st_nn
 from fbs.nn.unet import UNet
@@ -175,9 +175,8 @@ gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde
                                nparticles=nparticles, transition_sampler=transition_sampler,
                                transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf,
                                marg_y=args.marg, explicit_backward=True if args.method == 'gibbs-eb' else False))
-pmcmc_kernel = jax.jit(partial(pmcmc_kernel, ts=ts, fwd_sampler=fwd_sampler, dataset=dataset,
-                               ref_sampler=ref_sampler, ref_logpdf=ref_logpdf, transition_sampler=transition_sampler,
-                               likelihood_logpdf=likelihood_logpdf, resampling=stratified, nparticles=nparticles))
+pmcmc_filter_step = jax.jit(partial(pmcmc_filter_step, ts=ts, transition_sampler=transition_sampler,
+                                    likelihood_logpdf=likelihood_logpdf, resampling=stratified, nparticles=nparticles))
 
 
 def to_imsave(img):
@@ -189,51 +188,19 @@ for k in range(args.ny0s):
     key, subkey = jax.random.split(key)
     test_img, test_y0, mask = dataset.sampler(subkey)
 
-    plt.imsave(f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_{k}_true.png', to_imsave(test_img),
-               cmap='gray' if nchannels == 1 else 'viridis')
-    plt.imsave(f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_{k}_corrupt.png',
-               to_imsave(dataset.concat(jnp.zeros((rect_size ** 2, nchannels)), test_y0, mask)),
-               cmap='gray' if nchannels == 1 else 'viridis')
+    x0 = jnp.zeros(x_shape)
 
-    if args.method == 'filter':
-        for i in range(nsamples):
-            key, subkey = jax.random.split(key)
-            x0, _ = pf(subkey, test_y0, dataset_param=mask)
-            plt.imsave(f'./tmp_figs/{dataset_name}_inpainting-{rect_size}'
-                       f'_filter{"_marg" if args.marg else ""}_{k}_{i}.png',
-                       to_imsave(dataset.concat(x0, test_y0, mask)),
-                       cmap='gray' if nchannels == 1 else 'viridis')
-            print(f'Inpainting-{rect_size} | filter | iter: {i}')
-    elif args.method == 'debug':
-        key, subkey = jax.random.split(key)
-        x0s, _ = debug(subkey, test_y0, dataset_param=mask)
-        np.save(f'x0s-filter-{k}', x0s)
-    elif 'gibbs' in args.method:
-        key, subkey = jax.random.split(key)
-        x0, us_star = gibbs_init(subkey, test_y0, dataset_param=mask)
-        bs_star = jnp.zeros((nsteps + 1), dtype=int)
-        plt.imsave(f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_gibbs_{k}_init.png',
-                   to_imsave(dataset.concat(x0, test_y0, mask)),
-                   cmap='gray' if nchannels == 1 else 'viridis')
+    key, subkey = jax.random.split(key)
+    key_fwd, key_filter, key_u0 = jax.random.split(subkey)
+    path_xy = fwd_sampler(key_fwd, x0, test_y0, mask)
+    _, ys = dataset.unpack(path_xy, mask)
+    vs = ys[::-1]
+    u0s = ref_sampler(key_u0, nparticles)
 
-        for i in range(nsamples):
-            key, subkey = jax.random.split(key)
-            x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, test_y0, us_star, bs_star, dataset_param=mask)
-            sample = us_star[-1]
-            plt.imsave(
-                f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_gibbs{"_marg" if args.marg else ""}_{k}_{i}.png',
-                to_imsave(dataset.concat(us_star[-1], test_y0, mask)),
-                cmap='gray' if nchannels == 1 else 'viridis')
+    log_ells = np.zeros((100, ))
+    for n in range(100):
+        _, log_ell = pmcmc_filter_step(key_filter, vs, u0s, ts, dataset_param=mask)
+        print(log_ell)
+        log_ells[n] = log_ell
 
-            print(f'Inpainting-{rect_size} | Gibbs | iter: {i}, acc: {acc}')
-    elif args.method == 'pmcmc':
-        x0, log_ell, yT, xT = jnp.zeros(x_shape), 0., jnp.zeros(y_shape), jnp.zeros(x_shape)
-        for i in range(nsamples):
-            key, subkey = jax.random.split(key)
-            x0, log_ell, yT, xT, mcmc_state = pmcmc_kernel(subkey, x0, log_ell, yT, xT, test_y0, dataset_param=mask)
-            plt.imsave(
-                f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_pmcmc_{k}_{i}.png',
-                to_imsave(dataset.concat(x0, test_y0, mask)), cmap='gray' if nchannels == 1 else 'viridis')
-            print(f'Inpainting-{rect_size} | pMCMC | iter: {i}, acc_prob: {mcmc_state.acceptance_prob}')
-    else:
-        raise ValueError(f"Unknown method {args.method}")
+    print(f'log_ells: {np.var(log_ells)}')
