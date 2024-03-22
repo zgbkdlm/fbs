@@ -194,10 +194,15 @@ def to_imsave(img):
     return img[..., 0] if nchannels == 1 else img
 
 
+@jax.jit
+def dataset_sampler(key_):
+    return dataset.sampler(key_)
+
+
 for k in range(args.ny0s):
     print(f'Running conditional sampler for {k}-th test sample.')
     key, subkey = jax.random.split(key)
-    test_img, test_y0, mask = dataset.sampler(subkey)
+    test_img, test_y0, mask = dataset_sampler(subkey)
 
     plt.imsave(f'./tmp_figs/{dataset_name}_supr-{sr_rate}_{k}_true.png', to_imsave(test_img),
                cmap='gray' if nchannels == 1 else 'viridis')
