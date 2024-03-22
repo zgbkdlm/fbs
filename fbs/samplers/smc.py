@@ -304,6 +304,6 @@ def pmcmc_kernel(key: JKey,
 
     mcmc_state = MCMCState(acceptance_prob=log_acc_prob, is_accepted=acc_flag)
     return jax.lax.cond(acc_flag,
-                        lambda _: (prop_uT, prop_log_ell, prop_ys, mcmc_state),
-                        lambda _: (uT, log_ell, ys, mcmc_state),
+                        lambda _: (prop_uT, prop_log_ell, prop_ys, None, mcmc_state),
+                        lambda _: (uT, log_ell, ys, None, mcmc_state),
                         None)
