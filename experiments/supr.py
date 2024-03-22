@@ -1,5 +1,5 @@
 r"""
-Inpainting experiment.
+Super-resolution experiment.
 
 Run the script under the folder `./experiments`.
 """
@@ -21,10 +21,11 @@ from fbs.nn.unet import UNet
 from functools import partial
 
 # Parse arguments
-parser = argparse.ArgumentParser(description='Training forward noising modelInpainting.')
+parser = argparse.ArgumentParser(description='Super-resolution.')
 parser.add_argument('--dataset', type=str, default='mnist', help='Which dataset. Options are mnist, celeba-64, '
                                                                  'or celeba-128.')
-parser.add_argument('--rect_size', type=int, default=15, help='The w/h of the inpainting rectangle.')
+parser.add_argument('--rate', type=int, default=4, help='The rate of super-resolution.')
+parser.add_argument('--rnd_mask', action='store_true', default=False, help='Whether to use random sr mask.')
 parser.add_argument('--sde', type=str, default='lin')
 parser.add_argument('--method', type=str, default='gibbs', help='What method to do the conditional sampling. '
                                                                 'Options are filter, gibbs, gibbs-eb, '
@@ -43,9 +44,9 @@ args = parser.parse_args()
 dataset_name = args.dataset
 resolution = 28 if dataset_name == 'mnist' else int(dataset_name.split('-')[-1])
 nchannels = 1 if dataset_name == 'mnist' else 3
-rect_size = args.rect_size
+sr_rate = args.rate
 
-print(f'Test inpainting-{rect_size} on {args.dataset}')
+print(f'Test super-resolution-{sr_rate} on {args.dataset}')
 
 # General configs
 # jax.config.update("jax_enable_x64", True)
@@ -61,13 +62,14 @@ ts = jnp.linspace(0, T, nsteps + 1)
 key, subkey = jax.random.split(key)
 if dataset_name == 'mnist':
     d = (resolution, resolution, 1)
-    dataset = MNISTRestore(subkey, 'datasets/mnist.npz', task=f'inpaint-{rect_size}', test=True)
+    dataset = MNISTRestore(subkey, 'datasets/mnist.npz', task=f'supr-{sr_rate}', test=True)
 elif 'celeba' in dataset_name:
     d = (resolution, resolution, 3)
     dataset = CelebAHQRestore(subkey, f'datasets/celeba_hq{resolution}.npy',
-                              task=f'inpaint-{rect_size}', resolution=resolution, test=True)
+                              task=f'supr-{sr_rate}', resolution=resolution, test=True)
 else:
     raise NotImplementedError(f'{dataset_name} not implemented.')
+dataset.sr_random = args.rnd_mask
 
 # Define the forward noising process
 if args.sde == 'const':
@@ -92,8 +94,8 @@ param = np.load(filename)['ema_param' if args.test_ema else 'param']
 # Conditional sampling
 nparticles = args.nparticles
 nsamples = args.nsamples
-x_shape = (rect_size ** 2, nchannels)
-y_shape = (resolution ** 2 - rect_size ** 2, nchannels)
+x_shape = dataset.unobs_shape
+y_shape = (resolution ** 2 - x_shape[0], nchannels)
 
 
 def reverse_drift(uv, t):
@@ -197,9 +199,9 @@ for k in range(args.ny0s):
     key, subkey = jax.random.split(key)
     test_img, test_y0, mask = dataset.sampler(subkey)
 
-    plt.imsave(f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_{k}_true.png', to_imsave(test_img),
+    plt.imsave(f'./tmp_figs/{dataset_name}_supr-{sr_rate}_{k}_true.png', to_imsave(test_img),
                cmap='gray' if nchannels == 1 else 'viridis')
-    plt.imsave(f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_{k}_corrupt.png',
+    plt.imsave(f'./tmp_figs/{dataset_name}-supr-{sr_rate}_{k}_corrupt.png',
                to_imsave(dataset.concat(jnp.zeros(x_shape), test_y0, mask)),
                cmap='gray' if nchannels == 1 else 'viridis')
 
@@ -207,11 +209,11 @@ for k in range(args.ny0s):
         for i in range(nsamples):
             key, subkey = jax.random.split(key)
             x0, _ = pf(subkey, test_y0, dataset_param=mask)
-            plt.imsave(f'./tmp_figs/{dataset_name}_inpainting-{rect_size}'
+            plt.imsave(f'./tmp_figs/{dataset_name}_supr-{sr_rate}'
                        f'_filter{"_marg" if args.marg else ""}_{k}_{i}.png',
                        to_imsave(dataset.concat(x0, test_y0, mask)),
                        cmap='gray' if nchannels == 1 else 'viridis')
-            print(f'Inpainting-{rect_size} | filter | iter: {i}')
+            print(f'Supr-{sr_rate} | filter | iter: {i}')
     elif args.method == 'debug':
         key, subkey = jax.random.split(key)
         x0s, _ = debug(subkey, test_y0, dataset_param=mask)
@@ -220,7 +222,7 @@ for k in range(args.ny0s):
         key, subkey = jax.random.split(key)
         x0, us_star = gibbs_init(subkey, test_y0, dataset_param=mask)
         bs_star = jnp.zeros((nsteps + 1), dtype=int)
-        plt.imsave(f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_gibbs_{k}_init.png',
+        plt.imsave(f'./tmp_figs/{dataset_name}_supr-{sr_rate}_gibbs_{k}_init.png',
                    to_imsave(dataset.concat(x0, test_y0, mask)),
                    cmap='gray' if nchannels == 1 else 'viridis')
 
@@ -229,11 +231,11 @@ for k in range(args.ny0s):
             x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, test_y0, us_star, bs_star, dataset_param=mask)
             sample = us_star[-1]
             plt.imsave(
-                f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_gibbs{"_marg" if args.marg else ""}_{k}_{i}.png',
+                f'./tmp_figs/{dataset_name}_supr-{sr_rate}_gibbs{"_marg" if args.marg else ""}_{k}_{i}.png',
                 to_imsave(dataset.concat(us_star[-1], test_y0, mask)),
                 cmap='gray' if nchannels == 1 else 'viridis')
 
-            print(f'Inpainting-{rect_size} | Gibbs | iter: {i}, acc: {acc}')
+            print(f'Inpainting-{sr_rate} | Gibbs | iter: {i}, acc: {acc}')
     elif 'pmcmc' in args.method:
         key, subkey = jax.random.split(key)
         x0, log_ell, ys, xT = jnp.zeros(x_shape), 0., fwd_ys_sampler(subkey, test_y0), jnp.zeros(x_shape)
@@ -241,8 +243,8 @@ for k in range(args.ny0s):
             key, subkey = jax.random.split(key)
             x0, log_ell, ys, xT, mcmc_state = pmcmc_kernel(subkey, x0, log_ell, ys, xT, test_y0, dataset_param=mask)
             plt.imsave(
-                f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_pmcmc_{k}_{i}.png',
+                f'./tmp_figs/{dataset_name}_supr-{sr_rate}_pmcmc_{k}_{i}.png',
                 to_imsave(dataset.concat(x0, test_y0, mask)), cmap='gray' if nchannels == 1 else 'viridis')
-            print(f'Inpainting-{rect_size} | pMCMC {delta} | iter: {i}, acc_prob: {mcmc_state.acceptance_prob}')
+            print(f'Inpainting-{sr_rate} | pMCMC {delta} | iter: {i}, acc_prob: {mcmc_state.acceptance_prob}')
     else:
         raise ValueError(f"Unknown method {args.method}")

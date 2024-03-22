@@ -229,8 +229,9 @@ class ImageRestore(Dataset):
     image_shape: Tuple[int, int, int]
     task: str
     unobs_shape: Tuple[int, int]
+    sr_random: bool = True
 
-    def __init__(self, task: str):
+    def __init__(self, task: str, sr_random: bool = True):
         w, h, c = self.image_shape
         s = int(self.task.split('-')[-1])
         if 'inpaint' in task:
@@ -239,6 +240,7 @@ class ImageRestore(Dataset):
             self.unobs_shape = (int(w * h * (s ** 2 - 1) / s ** 2), c)
         else:
             raise ValueError(f'Unknown task {task}.')
+        self.sr_random = sr_random
 
     @staticmethod
     def standardise(array: Array) -> JArray:
@@ -250,10 +252,13 @@ class ImageRestore(Dataset):
         inds = perm_inds[i]
         return self.xs[inds]
 
-    def _gen_supr_mask(self, key: JKey, rate: int) -> SRMask:
+    def _gen_supr_mask(self, key: JKey, rate: int, random: bool = True) -> SRMask:
         img_w, img_h = self.image_shape[:2]
         nblocks = int(img_w * img_h / rate ** 2)
-        shifts = jax.random.randint(key, (nblocks, 2), 0, rate)
+        if random:
+            shifts = jax.random.randint(key, (nblocks, 2), 0, rate)
+        else:
+            shifts = jnp.ones((nblocks, 2)) * (rate // 2)
 
         inds_w, inds_h = [i for i in range(0, img_w, rate)], [i for i in range(0, img_h, rate)]
         inds_wa, inds_ha = [i for i in range(img_w)], [i for i in range(img_h)]
@@ -293,7 +298,7 @@ class ImageRestore(Dataset):
             return self._gen_inpaint_mask(key, s, s)
         elif 'supr' in self.task:
             rate = int(self.task.split('-')[-1])
-            return self._gen_supr_mask(key, rate)
+            return self._gen_supr_mask(key, rate, random=self.sr_random)
         else:
             raise ValueError(f'Unknown task {self.task}.')
 
