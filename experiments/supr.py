@@ -204,6 +204,10 @@ for k in range(args.ny0s):
     plt.imsave(f'./tmp_figs/{dataset_name}-supr-{sr_rate}_{k}_corrupt.png',
                to_imsave(dataset.concat(jnp.zeros(x_shape), test_y0, mask)),
                cmap='gray' if nchannels == 1 else 'viridis')
+    low_res = resolution // sr_rate
+    plt.imsave(f'./tmp_figs/{dataset_name}-supr-{sr_rate}_{k}_corrupt_.png',
+               to_imsave(jnp.reshape(test_y0, (low_res, low_res, nchannels))),
+               cmap='gray' if nchannels == 1 else 'viridis')
 
     if args.method == 'filter':
         for i in range(nsamples):
