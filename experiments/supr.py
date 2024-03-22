@@ -46,7 +46,7 @@ resolution = 28 if dataset_name == 'mnist' else int(dataset_name.split('-')[-1])
 nchannels = 1 if dataset_name == 'mnist' else 3
 sr_rate = args.rate
 
-print(f'Test super-resolution-{sr_rate} on {args.dataset}')
+print(f'Test super-resolution-x{sr_rate} on {args.dataset}')
 
 # General configs
 # jax.config.update("jax_enable_x64", True)

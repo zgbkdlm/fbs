@@ -258,7 +258,7 @@ class ImageRestore(Dataset):
         if random:
             shifts = jax.random.randint(key, (nblocks, 2), 0, rate)
         else:
-            shifts = jnp.ones((nblocks, 2)) * (rate // 2)
+            shifts = jnp.ones((nblocks, 2), dtype=int) * (rate // 2)
 
         inds_w, inds_h = [i for i in range(0, img_w, rate)], [i for i in range(0, img_h, rate)]
         inds_wa, inds_ha = [i for i in range(img_w)], [i for i in range(img_h)]
