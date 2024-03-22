@@ -297,7 +297,7 @@ def pmcmc_kernel(key: JKey,
     # log_acc_prob = jnp.minimum(0.,
     #                            ref_logpdf(prop_xT) - ref_logpdf(xT)
     #                            + prop_log_ell - log_ell)
-    log_acc_prob = jnp.minimum(0., prop_log_ell - log_ell)
+    log_acc_prob = prop_log_ell - log_ell
 
     z = jax.random.uniform(key_mh)
     acc_flag = jnp.log(z) < log_acc_prob
