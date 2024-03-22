@@ -141,32 +141,34 @@ def test_pmcmc():
         cond_m = v_prev + reverse_drift_v(v_prev, u_prev, t_prev) * dt
         return jax.scipy.stats.norm.logpdf(v, cond_m, math.sqrt(dt) * B[1, 1])
 
-    def init_sampler(key_, nsamples_, _):
+    def init_sampler(key_, nsamples_):
         return (m_ref[0] + jnp.sqrt(cov_ref[0, 0]) * jax.random.normal(key_)) * jnp.ones((nsamples_,))
 
     def ref_logpdf(x, _):
         return jax.scipy.stats.norm.logpdf(x, m_ref[0], jnp.sqrt(cov_ref[0, 0]))
 
-    def fwd_ys_sampler(key_, y0_, _):
+    def fwd_ys_sampler(key_, y0_):
         xy0 = jnp.array([0., y0_])
         return simulate_forward(xy0, key_)[:, 1]
 
     @jax.jit
-    def mcmc_kernel(subkey_, uT_, log_ell_, yT_, xT_):
-        return pmcmc_kernel(subkey_, uT_, log_ell_, yT_, xT_,
-                            ts, y0,
+    def mcmc_kernel(subkey_, uT_, log_ell_, ys_, xT_):
+        return pmcmc_kernel(subkey_, uT_, log_ell_, ys_, xT_,
+                            y0, ts,
                             fwd_ys_sampler,
+                            None, None,
                             init_sampler, ref_logpdf,
                             transition_sampler, likelihood_logpdf,
-                            stratified, nparticles)
+                            stratified, nparticles, delta=None)
 
     # MCMC loop
+    key, subkey = jax.random.split(key)
     approx_cond_samples = np.zeros((nsamples,))
     uT, log_ell = 0., 0.
-    yT, xT = 0., m_ref[0]
+    ys, xT = fwd_ys_sampler(subkey, y0), m_ref[0]
     for i in range(nsamples):
         key, subkey = jax.random.split(key)
-        uT, log_ell, yT, xT, mcmc_state = mcmc_kernel(subkey, uT, log_ell, yT, xT)
+        uT, log_ell, ys, xT, mcmc_state = mcmc_kernel(subkey, uT, log_ell, ys, xT)
         approx_cond_samples[i] = uT
 
     approx_cond_samples = approx_cond_samples[burn_in:]
