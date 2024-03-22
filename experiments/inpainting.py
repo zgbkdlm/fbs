@@ -188,6 +188,7 @@ pmcmc_kernel = jax.jit(partial(pmcmc_kernel, ts=ts, fwd_ys_sampler=fwd_ys_sample
 
 
 def to_imsave(img):
+    img = normalise(img, method='clip')
     return img[..., 0] if nchannels == 1 else img
 
 
