@@ -297,12 +297,12 @@ def pmcmc_kernel(key: JKey,
     # log_acc_prob = jnp.minimum(0.,
     #                            ref_logpdf(prop_xT) - ref_logpdf(xT)
     #                            + prop_log_ell - log_ell)
-    log_acc_prob = prop_log_ell - log_ell
+    log_acc_prob = jnp.minimum(0., prop_log_ell - log_ell)
 
     z = jax.random.uniform(key_mh)
     acc_flag = jnp.log(z) < log_acc_prob
 
-    mcmc_state = MCMCState(acceptance_prob=log_acc_prob, is_accepted=acc_flag)
+    mcmc_state = MCMCState(acceptance_prob=prop_log_ell - log_ell, is_accepted=acc_flag)
     return jax.lax.cond(acc_flag,
                         lambda _: (prop_uT, prop_log_ell, prop_ys, prop_xT, mcmc_state),
                         lambda _: (uT, log_ell, ys, xT, mcmc_state),
