@@ -201,7 +201,7 @@ def pmcmc_filter_step(key: JKey, vs_bridge: JArray, u0s: JArray, ts: JArray,
         us = us[resampling(jnp.exp(log_ws), key_resampling), ...]
 
         return (us, log_ell), None
-
+    # the ws at t0 = 1 / pi_ref(xTs)
     keys = jax.random.split(key, num=ts.shape[0] - 1)
     (uT, log_ellT), *_ = jax.lax.scan(scan_body,
                                       (u0s, log_ell0),
@@ -223,7 +223,6 @@ def pmcmc_kernel(key: JKey,
                  ts: JArray,
                  fwd_ys_sampler,
                  sde,
-                 dataset_param,
                  ref_sampler: Callable,
                  ref_logpdf,
                  transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
@@ -231,7 +230,8 @@ def pmcmc_kernel(key: JKey,
                  resampling: Callable,
                  nparticles: int,
                  delta: float = None,
-                 which_u: int = 0) -> Tuple[JArray, JFloat, JArray, JArray, MCMCState]:
+                 which_u: int = 0,
+                 **kwargs) -> Tuple[JArray, JFloat, JArray, JArray, MCMCState]:
     r"""A particle MCMC kernel for variables (uT, log_ell, yT, xT) targeting at p(uT | vT = y0)
 
     Parameters
@@ -290,7 +290,7 @@ def pmcmc_kernel(key: JKey,
 
     u0s = ref_sampler(key_u0, nparticles)
     prop_uTs, prop_log_ell = pmcmc_filter_step(key_pmcmc, vs, u0s, ts, transition_sampler, likelihood_logpdf,
-                                               resampling, nparticles, dataset_param=dataset_param)
+                                               resampling, nparticles, **kwargs)
     prop_uT = prop_uTs[which_u]
     prop_xT = u0s[which_u]
 
@@ -302,8 +302,8 @@ def pmcmc_kernel(key: JKey,
     z = jax.random.uniform(key_mh)
     acc_flag = jnp.log(z) < log_acc_prob
 
-    mcmc_state = MCMCState(acceptance_prob=jnp.exp(log_acc_prob), is_accepted=acc_flag)
+    mcmc_state = MCMCState(acceptance_prob=log_acc_prob, is_accepted=acc_flag)
     return jax.lax.cond(acc_flag,
-                        lambda _: (prop_uT, prop_log_ell, prop_ys, prop_xT, mcmc_state),
-                        lambda _: (uT, log_ell, ys, xT, mcmc_state),
+                        lambda _: (prop_uT, prop_log_ell, prop_ys, mcmc_state),
+                        lambda _: (uT, log_ell, ys, mcmc_state),
                         None)
