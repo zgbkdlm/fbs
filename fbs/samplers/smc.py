@@ -151,7 +151,6 @@ def pmcmc_filter_step(key: JKey, vs_bridge: JArray, u0s: JArray, ts: JArray,
         _c = jax.scipy.special.logsumexp(log_ws)
         log_ell = log_ell - math.log(nparticles) + _c
         log_ws = log_ws - _c
-        # jax.debug.print('{}', 1 / jnp.sum(jnp.exp(2*log_ws)))
 
         us = us[resampling(jnp.exp(log_ws), key_resampling), ...]
 
@@ -160,7 +159,6 @@ def pmcmc_filter_step(key: JKey, vs_bridge: JArray, u0s: JArray, ts: JArray,
     (uT, log_ellT), *_ = jax.lax.scan(scan_body,
                                       (u0s, log_ell0),
                                       (vs_bridge[1:], vs_bridge[:-1], ts[:-1], keys))
-    # jax.debug.print('{}', log_ellT)
     return uT, log_ellT
 
 
