@@ -68,8 +68,8 @@ def test_pmcmc():
     true_cond_var = cov0[0, 0] - cov0[0, 1] ** 2 / cov0[1, 1]
 
     A = -0.5 * jnp.eye(2)
-    B = jnp.array([[3., 0.],
-                   [0., 0.1]])
+    B = jnp.array([[1., 0.],
+                   [0., 1]])
     gamma = B @ B.T
 
     def forward_m_cov(t):
@@ -141,7 +141,7 @@ def test_pmcmc():
         cond_m = v_prev + reverse_drift_v(v_prev, u_prev, t_prev) * dt
         return jax.scipy.stats.norm.logpdf(v, cond_m, math.sqrt(dt) * B[1, 1])
 
-    def init_sampler(key_, nsamples_):
+    def init_sampler(key_, yT, nsamples_):
         return (m_ref[0] + jnp.sqrt(cov_ref[0, 0]) * jax.random.normal(key_)) * jnp.ones((nsamples_,))
 
     def ref_logpdf(x):
@@ -152,14 +152,14 @@ def test_pmcmc():
         return simulate_forward(xy0, key_)[:, 1]
 
     @jax.jit
-    def mcmc_kernel(subkey_, uT_, log_ell_, ys_, xT_):
-        return pmcmc_kernel(subkey_, uT_, log_ell_, ys_, xT_,
+    def mcmc_kernel(subkey_, uT_, log_ell_, ys_):
+        return pmcmc_kernel(subkey_, uT_, log_ell_, ys_,
                             y0, ts,
                             fwd_ys_sampler,
                             None,
-                            init_sampler, ref_logpdf,
+                            init_sampler,
                             transition_sampler, likelihood_logpdf,
-                            stratified, nparticles, delta=None)
+                            stratified, nparticles, delta=0.)
 
     # Test the invariance of the MCMC kernel
     key, subkey = jax.random.split(key)
@@ -170,10 +170,7 @@ def test_pmcmc():
 
     key, subkey = jax.random.split(key)
     keys = jax.random.split(subkey, num=nsamples)
-    prop_samples = jax.vmap(mcmc_kernel, in_axes=[0, 0, None, None, None])(keys,
-                                                                           true_samples,
-                                                                           0.,
-                                                                           ys, 0.)[0]
+    prop_samples = jax.vmap(mcmc_kernel, in_axes=[0, 0, None, None])(keys, true_samples, 0., ys)[0]
 
     import matplotlib.pyplot as plt
 
