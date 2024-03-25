@@ -5,17 +5,19 @@ import jax
 import jax.numpy as jnp
 import math
 import matplotlib.pyplot as plt
-import numpy as np
-
+import argparse
 from fbs.samplers import bootstrap_filter, stratified
-from fbs.samplers.smc import bootstrap_backward_smoother
-from fbs.sdes import make_linear_sde, StationaryConstLinearSDE, reverse_simulator, euler_maruyama
+from fbs.sdes import make_linear_sde, StationaryConstLinearSDE, reverse_simulator
 from fbs.utils import bures_dist
 from functools import partial
 
+parser = argparse.ArgumentParser()
+parser.add_argument('--id', type=int, default=666, help='The id of independent MC experiment.')
+args = parser.parse_args()
+
 jax.config.update("jax_enable_x64", True)
 
-key = jax.random.PRNGKey(666)
+key = jax.random.PRNGKey(args.id)
 
 # GP setting
 ell, sigma = 1., 1.
@@ -147,7 +149,7 @@ def fwd_ys_sampler(key_, y0_):
     return simulate_cond_forward(key_, y0_, ts)
 
 
-# Gibbs initial
+# Filter
 def conditional_sampler(key_):
     key_fwd, key_bwd, key_bf = jax.random.split(key_, num=3)
     path_y = fwd_ys_sampler(key_fwd, y0)

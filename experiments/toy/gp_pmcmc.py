@@ -7,16 +7,20 @@ import math
 import matplotlib.pyplot as plt
 import numpy as np
 import numpyro as npr
+import argparse
 from fbs.samplers import bootstrap_filter, stratified
-from fbs.samplers.smc import bootstrap_backward_smoother, pmcmc_kernel
-from fbs.samplers import gibbs_kernel
-from fbs.sdes import make_linear_sde, StationaryConstLinearSDE, reverse_simulator, euler_maruyama
+from fbs.samplers.smc import pmcmc_kernel
+from fbs.sdes import make_linear_sde, StationaryConstLinearSDE, reverse_simulator
 from fbs.utils import bures_dist
 from functools import partial
 
+parser = argparse.ArgumentParser()
+parser.add_argument('--id', type=int, default=666, help='The id of independent MC experiment.')
+args = parser.parse_args()
+
 jax.config.update("jax_enable_x64", True)
 
-key = jax.random.PRNGKey(666)
+key = jax.random.PRNGKey(args.id)
 
 # GP setting
 ell, sigma = 1., 1.
