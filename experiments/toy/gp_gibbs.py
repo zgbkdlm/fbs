@@ -81,6 +81,10 @@ m_ref, cov_ref = forward_m_cov(T)
 chol_ref = jax.scipy.linalg.cho_factor(cov_ref[d:, d:])
 
 
+def unpack(xy):
+    return xy[..., :d], xy[..., d:]
+
+
 # The reverse process
 def reverse_drift(uv, t):
     return -sde.drift(uv, T - t) + sde.dispersion(T - t) ** 2 * score(uv, T - t)
@@ -107,7 +111,8 @@ def rev_sim(key_, uv0):
 
 # Conditional sampling
 nparticles = 10
-nsamples = 100
+nsamples = 1000
+burnin = 100
 
 
 def transition_sampler(us_prev, v_prev, t_prev, key_):
@@ -134,7 +139,7 @@ def ref_sampler(key_, yT, nsamples_):
     return m_ + jax.random.normal(key_, (nsamples_, d)) @ jnp.linalg.cholesky(cov_)
 
 
-def fwd_sampler(key_, x0_, y0_, _):
+def fwd_sampler(key_, x0_, y0_):
     return simulate_cond_forward(key_, jnp.concatenate([x0_, y0_]), ts)
 
 
@@ -151,22 +156,30 @@ uss = bootstrap_filter(transition_sampler, likelihood_logpdf, vs, ts, ref_sample
                        stratified, log=True, return_last=False)[0]
 x0 = uss[-1, 0]
 us_star = bootstrap_backward_smoother(key_bwd, uss, vs, ts, transition_logpdf)
+bs_star = jnp.zeros((nsteps + 1), dtype=int)
 
 # Gibbs loop
-gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, dataset=dataset,
+gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, unpack=unpack,
                                nparticles=nparticles, transition_sampler=transition_sampler,
                                transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf,
-                               marg_y=True, explicit_backward=True))
-
+                               marg_y=False, explicit_backward=True))
+gibbs_samples = np.zeros((nsamples, d))
 
 key, subkey = jax.random.split(key)
+for i in range(nsamples):
+    key, subkey = jax.random.split(subkey)
+    x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, y0, us_star, bs_star)
+    gibbs_samples[i] = x0
+    print(f'Gibbs | iter: {i}')
 
-keys = jax.random.split(key, num=nsamples)
-approx_cond_samples = jax.vmap(conditional_sampler)(keys)
-approx_gp_mean = jnp.mean(approx_cond_samples, axis=0)
-approx_gp_cov = jnp.cov(approx_cond_samples, rowvar=False)
+gibbs_samples = gibbs_samples[burnin:]
+approx_gp_mean = jnp.mean(gibbs_samples, axis=0)
+approx_gp_cov = jnp.cov(gibbs_samples, rowvar=False)
 
 print(bures_dist(gp_mean, gp_cov, approx_gp_mean, approx_gp_cov))
+
+plt.plot(gibbs_samples[:, 5])
+plt.show()
 
 plt.plot(zs, gp_mean)
 plt.plot(zs, approx_gp_mean)

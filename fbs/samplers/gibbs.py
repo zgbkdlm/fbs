@@ -125,7 +125,6 @@ def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JA
         _, log_ws, uss = csmc_fwd(key_csmc_fwd, us_star, bs_star, vs, ts, init_sampler, init_likelihood_logpdf,
                                   transition_sampler, likelihood_logpdf, killing, nparticles,
                                   **kwargs)
-        jax.debug.print('Ws: {}', jnp.exp(log_ws))
         x0 = jax.random.choice(key_csmc_x0, uss[-1], p=jnp.exp(log_ws[-1]), axis=0)
         us_star_next = unpack(fwd_sampler(key_csmc_bwd_us, x0, y0, **kwargs), **kwargs)[0][::-1]
         bs_star_next = jax.random.randint(key_csmc_bwd_bs, (us.shape[0],), minval=0, maxval=nparticles)
