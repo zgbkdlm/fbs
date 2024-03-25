@@ -96,6 +96,10 @@ x_shape = (rect_size ** 2, nchannels)
 y_shape = (resolution ** 2 - rect_size ** 2, nchannels)
 
 
+def unpack(xy, mask_):
+    return dataset.unpack(xy, mask_)
+
+
 def reverse_drift(uv, t):
     return -sde.drift(uv, T - t) + sde.dispersion(T - t) ** 2 * nn_score(uv, T - t, param)
 
@@ -116,29 +120,29 @@ def reverse_dispersion(t):
     return sde.dispersion(T - t)
 
 
-def transition_sampler(us_prev, v_prev, t_prev, key_, dataset_param):
+def transition_sampler(us_prev, v_prev, t_prev, key_, mask_):
     @partial(jax.vmap, in_axes=[0, None, None])
     def f(u, v, t):
-        return reverse_drift_u(u, v, t, dataset_param)
+        return reverse_drift_u(u, v, t, mask_)
 
     return (us_prev + f(us_prev, v_prev, t_prev) * dt
             + math.sqrt(dt) * reverse_dispersion(t_prev) * jax.random.normal(key_, us_prev.shape))
 
 
-def transition_logpdf(u, u_prev, v_prev, t_prev, dataset_param):
+def transition_logpdf(u, u_prev, v_prev, t_prev, mask_):
     @partial(jax.vmap, in_axes=[None, 0, None, None])
     def f(u, u_prev, v_prev, t_prev):
         return jnp.sum(jax.scipy.stats.norm.logpdf(u,
-                                                   u_prev + reverse_drift_u(u_prev, v_prev, t_prev, dataset_param) * dt,
+                                                   u_prev + reverse_drift_u(u_prev, v_prev, t_prev, mask_) * dt,
                                                    math.sqrt(dt) * reverse_dispersion(t_prev)))
 
     return f(u, u_prev, v_prev, t_prev)
 
 
-def likelihood_logpdf(v, u_prev, v_prev, t_prev, dataset_param):
+def likelihood_logpdf(v, u_prev, v_prev, t_prev, mask_):
     @partial(jax.vmap, in_axes=[None, 0, None, None])
     def f(v, u_prev, v_prev, t_prev):
-        cond_m = v_prev + reverse_drift_v(v_prev, u_prev, t_prev, dataset_param) * dt
+        cond_m = v_prev + reverse_drift_v(v_prev, u_prev, t_prev, mask_) * dt
         return jnp.sum(jax.scipy.stats.norm.logpdf(v, cond_m, math.sqrt(dt) * reverse_dispersion(t_prev)))
 
     return f(v, u_prev, v_prev, t_prev)
@@ -162,21 +166,21 @@ def ref_logpdf(x):
 
 
 pf = jax.jit(partial(gibbs_init, x0_shape=x_shape, ts=ts, fwd_sampler=fwd_sampler,
-                     sde=sde, dataset=dataset,
+                     sde=sde, unpack=unpack,
                      transition_sampler=transition_sampler, transition_logpdf=transition_logpdf,
                      likelihood_logpdf=likelihood_logpdf,
                      nparticles=nparticles, method='filter', marg_y=args.marg))
 debug = jax.jit(partial(gibbs_init, x0_shape=x_shape, ts=ts, fwd_sampler=fwd_sampler,
-                        sde=sde, dataset=dataset,
+                        sde=sde, unpack=unpack,
                         transition_sampler=transition_sampler, transition_logpdf=transition_logpdf,
                         likelihood_logpdf=likelihood_logpdf,
                         nparticles=nparticles, method='debug', marg_y=args.marg))
 gibbs_init = jax.jit(partial(gibbs_init, x0_shape=x_shape, ts=ts, fwd_sampler=fwd_sampler,
-                             sde=sde, dataset=dataset,
+                             sde=sde, unpack=unpack,
                              transition_sampler=transition_sampler, transition_logpdf=transition_logpdf,
                              likelihood_logpdf=likelihood_logpdf,
                              nparticles=nparticles, method=args.init_method, marg_y=args.marg))
-gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, dataset=dataset,
+gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, unpack=unpack,
                                nparticles=nparticles, transition_sampler=transition_sampler,
                                transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf,
                                marg_y=args.marg, explicit_backward=True if args.method == 'gibbs-eb' else False))
@@ -214,7 +218,7 @@ for k in range(args.ny0s):
     if args.method == 'filter':
         for i in range(nsamples):
             key, subkey = jax.random.split(key)
-            x0, _ = pf(subkey, test_y0, dataset_param=mask)
+            x0, _ = pf(subkey, test_y0, mask_=mask)
             plt.imsave(f'./tmp_figs/{dataset_name}_inpainting-{rect_size}'
                        f'_filter{"_marg" if args.marg else ""}_{k}_{i}.png',
                        to_imsave(dataset.concat(x0, test_y0, mask)),
@@ -222,11 +226,11 @@ for k in range(args.ny0s):
             print(f'Inpainting-{rect_size} | filter | iter: {i}')
     elif args.method == 'debug':
         key, subkey = jax.random.split(key)
-        x0s, _ = debug(subkey, test_y0, dataset_param=mask)
+        x0s, _ = debug(subkey, test_y0, mask_=mask)
         np.save(f'x0s-filter-{k}', x0s)
     elif 'gibbs' in args.method:
         key, subkey = jax.random.split(key)
-        x0, us_star = gibbs_init(subkey, test_y0, dataset_param=mask)
+        x0, us_star = gibbs_init(subkey, test_y0, mask_=mask)
         bs_star = jnp.zeros((nsteps + 1), dtype=int)
         plt.imsave(f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_gibbs_{k}_init.png',
                    to_imsave(dataset.concat(x0, test_y0, mask)),
@@ -234,7 +238,7 @@ for k in range(args.ny0s):
 
         for i in range(nsamples):
             key, subkey = jax.random.split(key)
-            x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, test_y0, us_star, bs_star, dataset_param=mask)
+            x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, test_y0, us_star, bs_star, mask_=mask)
             sample = us_star[-1]
             plt.imsave(
                 f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_gibbs{"_marg" if args.marg else ""}_{k}_{i}.png',
@@ -247,7 +251,7 @@ for k in range(args.ny0s):
         x0, log_ell, ys, xT = jnp.zeros(x_shape), 0., fwd_ys_sampler(subkey, test_y0), jnp.zeros(x_shape)
         for i in range(nsamples):
             key, subkey = jax.random.split(key)
-            x0, log_ell, ys, xT, mcmc_state = pmcmc_kernel(subkey, x0, log_ell, ys, xT, test_y0, dataset_param=mask)
+            x0, log_ell, ys, xT, mcmc_state = pmcmc_kernel(subkey, x0, log_ell, ys, xT, test_y0, mask_=mask)
             plt.imsave(
                 f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_pmcmc_{k}_{i}.png',
                 to_imsave(dataset.concat(x0, test_y0, mask)), cmap='gray' if nchannels == 1 else 'viridis')
