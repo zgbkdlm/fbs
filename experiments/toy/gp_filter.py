@@ -1,8 +1,9 @@
 """
-Gaussian process regression.
+Gaussian process regression using filter.
 """
 import jax
 import jax.numpy as jnp
+import numpy as np
 import math
 import matplotlib.pyplot as plt
 import argparse
@@ -106,19 +107,9 @@ def rev_sim(key_, uv0):
                              integrator='euler-maruyama', integration_nsteps=10)
 
 
-# key, subkey = jax.random.split(key)
-# uv0s = m_ref + jax.random.normal(subkey, (1000, 2 * d)) @ jnp.linalg.cholesky(cov_ref)
-#
-# key, subkey = jax.random.split(key)
-# keys = jax.random.split(subkey, num=1000)
-# approx_init_samples = jax.vmap(rev_sim, in_axes=[0, 0])(keys, uv0s)
-# approx_joint_mean = jnp.mean(approx_init_samples, axis=0)
-# approx_joint_cov = jnp.cov(approx_init_samples, rowvar=False)
-
-
 # Conditional sampling
 nparticles = 10
-nsamples = 100
+nsamples = 1000
 
 
 def transition_sampler(us_prev, v_prev, t_prev, key_):
@@ -150,6 +141,7 @@ def fwd_ys_sampler(key_, y0_):
 
 
 # Filter
+@jax.jit
 def conditional_sampler(key_):
     key_fwd, key_bwd, key_bf = jax.random.split(key_, num=3)
     path_y = fwd_ys_sampler(key_fwd, y0)
@@ -159,13 +151,30 @@ def conditional_sampler(key_):
     return approx_x0
 
 
-keys = jax.random.split(key, num=nsamples)
-approx_cond_samples = jax.vmap(conditional_sampler)(keys)
+approx_cond_samples = np.zeros((nsamples, d))
+for i in range(nsamples):
+    key, subkey = jax.random.split(key)
+    approx_cond_sample = conditional_sampler(subkey)
+    approx_cond_samples[i] = approx_cond_sample
+    print(f'Sample {i}')
+
+# Save results
+np.save(f'./toy/results/gp-filter-{args.id}', approx_cond_samples)
+
+# Plot
 approx_gp_mean = jnp.mean(approx_cond_samples, axis=0)
 approx_gp_cov = jnp.cov(approx_cond_samples, rowvar=False)
-
-print(bures_dist(gp_mean, gp_cov, approx_gp_mean, approx_gp_cov))
+distance = bures_dist(gp_mean, gp_cov, approx_gp_mean, approx_gp_cov)
+print(f'Bures distance {distance}')
 
 plt.plot(zs, gp_mean)
+plt.fill_between(zs,
+                 gp_mean - 1.96 * jnp.sqrt(jnp.diag(gp_cov)),
+                 gp_mean + 1.96 * jnp.sqrt(jnp.diag(gp_cov)),
+                 alpha=0.3, color='black', edgecolor='none')
 plt.plot(zs, approx_gp_mean)
+plt.fill_between(zs,
+                 approx_gp_mean - 1.96 * jnp.sqrt(jnp.diag(approx_gp_cov)),
+                 approx_gp_mean + 1.96 * jnp.sqrt(jnp.diag(approx_gp_cov)),
+                 alpha=0.3, color='tab:red', edgecolor='none')
 plt.show()

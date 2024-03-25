@@ -17,6 +17,9 @@ from functools import partial
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--id', type=int, default=666, help='The id of independent MC experiment.')
+parser.add_argument('--explicit_backward', action='store_true', default=False,
+                    help='Whether to explicitly sample the CSMC backward')
+parser.add_argument('--marg', action='store_true', default=False, help='Whether marginalise our the Y path.')
 args = parser.parse_args()
 
 jax.config.update("jax_enable_x64", True)
@@ -167,26 +170,36 @@ bs_star = jnp.zeros((nsteps + 1), dtype=int)
 gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, unpack=unpack,
                                nparticles=nparticles, transition_sampler=transition_sampler,
                                transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf,
-                               marg_y=False, explicit_backward=True))
-gibbs_samples = np.zeros((nsamples, d))
+                               marg_y=args.marg_y, explicit_backward=args.explicit_backward))
 
+gibbs_samples = np.zeros((nsamples, d))
 for i in range(nsamples):
     key, subkey = jax.random.split(subkey)
     x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, y0, us_star, bs_star)
     gibbs_samples[i] = x0
     print(f'Gibbs | iter: {i}')
 
+# Save results
+np.save(f'./toy/results/gp-gibbs{"-marg" if args.marg_y else ""}{"-eb" if args.explicit_backward else ""}-{args.id}',
+        gibbs_samples)
+
+# Plot
 gibbs_samples = gibbs_samples[burnin:]
 approx_gp_mean = jnp.mean(gibbs_samples, axis=0)
 approx_gp_cov = jnp.cov(gibbs_samples, rowvar=False)
-
-print(bures_dist(gp_mean, gp_cov, approx_gp_mean, approx_gp_cov))
-
-plt.plot(gibbs_samples[:, 5])
-plt.show()
+distance = bures_dist(gp_mean, gp_cov, approx_gp_mean, approx_gp_cov)
+print(f'Bures distance {distance}')
 
 plt.plot(zs, gp_mean)
+plt.fill_between(zs,
+                 gp_mean - 1.96 * jnp.sqrt(jnp.diag(gp_cov)),
+                 gp_mean + 1.96 * jnp.sqrt(jnp.diag(gp_cov)),
+                 alpha=0.3, color='black', edgecolor='none')
 plt.plot(zs, approx_gp_mean)
+plt.fill_between(zs,
+                 approx_gp_mean - 1.96 * jnp.sqrt(jnp.diag(approx_gp_cov)),
+                 approx_gp_mean + 1.96 * jnp.sqrt(jnp.diag(approx_gp_cov)),
+                 alpha=0.3, color='tab:red', edgecolor='none')
 plt.show()
 
 autocorrs = npr.diagnostics.autocorrelation(gibbs_samples, axis=0)[:100]

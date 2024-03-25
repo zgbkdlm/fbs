@@ -16,6 +16,7 @@ from functools import partial
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--id', type=int, default=666, help='The id of independent MC experiment.')
+parser.add_argument('--delta', type=float, default=0.01, help='The delta value of pMCMC')
 args = parser.parse_args()
 
 jax.config.update("jax_enable_x64", True)
@@ -24,7 +25,7 @@ key = jax.random.PRNGKey(args.id)
 
 # GP setting
 ell, sigma = 1., 1.
-d = 100
+d = 10
 zs = jnp.linspace(0., 5., d)
 obs_var = 1.
 
@@ -156,36 +157,44 @@ key, subkey = jax.random.split(key)
 key_fwd, key_bwd, key_bf = jax.random.split(subkey, num=3)
 path_y = fwd_ys_sampler(key_fwd, y0)
 vs = path_y[::-1]
-x0 = bootstrap_filter(transition_sampler, likelihood_logpdf, vs, ts, ref_sampler, key_bf, nparticles,
-                      stratified, log=True, return_last=True)[0][0]
-
+x0s, log_ell = bootstrap_filter(transition_sampler, likelihood_logpdf, vs, ts, ref_sampler, key_bf, nparticles,
+                                stratified, log=True, return_last=True)
+x0 = x0s[0]
 key, subkey = jax.random.split(key)
-log_ell, ys = 0., fwd_ys_sampler(subkey, y0)
+ys = fwd_ys_sampler(subkey, y0)
 
 # pMCMC loop
 pmcmc_kernel = jax.jit(partial(pmcmc_kernel, ts=ts, fwd_ys_sampler=fwd_ys_sampler, sde=sde,
                                ref_sampler=ref_sampler, transition_sampler=transition_sampler,
                                likelihood_logpdf=likelihood_logpdf, resampling=stratified,
-                               nparticles=nparticles, delta=0.01))
-pmcmc_samples = np.zeros((nsamples, d))
+                               nparticles=nparticles, delta=args.delta))
 
+pmcmc_samples = np.zeros((nsamples, d))
 for i in range(nsamples):
     key, subkey = jax.random.split(subkey)
     x0, log_ell, ys, mcmc_state = pmcmc_kernel(subkey, x0, log_ell, ys, y0)
     pmcmc_samples[i] = x0
     print(f'pMCMC | iter: {i} | acc_prob: {mcmc_state.acceptance_prob:.3f}')
 
+# Save results
+np.save(f'./toy/results/pmcmc-{args.delta}', pmcmc_samples)
+
 pmcmc_samples = pmcmc_samples[burnin:]
 approx_gp_mean = jnp.mean(pmcmc_samples, axis=0)
 approx_gp_cov = jnp.cov(pmcmc_samples, rowvar=False)
-
-print(bures_dist(gp_mean, gp_cov, approx_gp_mean, approx_gp_cov))
-
-plt.plot(pmcmc_samples[:, 5])
-plt.show()
+distance = bures_dist(gp_mean, gp_cov, approx_gp_mean, approx_gp_cov)
+print(f'Bures distance {distance}')
 
 plt.plot(zs, gp_mean)
+plt.fill_between(zs,
+                 gp_mean - 1.96 * jnp.sqrt(jnp.diag(gp_cov)),
+                 gp_mean + 1.96 * jnp.sqrt(jnp.diag(gp_cov)),
+                 alpha=0.3, color='black', edgecolor='none')
 plt.plot(zs, approx_gp_mean)
+plt.fill_between(zs,
+                 approx_gp_mean - 1.96 * jnp.sqrt(jnp.diag(approx_gp_cov)),
+                 approx_gp_mean + 1.96 * jnp.sqrt(jnp.diag(approx_gp_cov)),
+                 alpha=0.3, color='tab:red', edgecolor='none')
 plt.show()
 
 autocorrs = npr.diagnostics.autocorrelation(pmcmc_samples, axis=0)[:100]
