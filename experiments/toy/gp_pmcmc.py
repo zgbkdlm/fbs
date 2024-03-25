@@ -65,7 +65,7 @@ plt.show()
 
 # SDE noising process
 T = 1.
-nsteps = 500
+nsteps = 200
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
 
@@ -177,7 +177,7 @@ for i in range(nsamples):
     key, subkey = jax.random.split(subkey)
     x0, log_ell, ys, mcmc_state = pmcmc_kernel(subkey, x0, log_ell, ys, y0)
     pmcmc_samples[i] = x0
-    print(f'pMCMC | iter: {i} | acc_prob: {mcmc_state.acceptance_prob:.3f}')
+    print(f'ID: {args.id} | pMCMC | iter: {i} | acc_prob: {mcmc_state.acceptance_prob:.3f}')
 
 # Save results
 np.save(f'./toy/results/pmcmc-{args.delta}', pmcmc_samples)

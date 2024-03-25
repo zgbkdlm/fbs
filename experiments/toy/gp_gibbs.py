@@ -68,7 +68,7 @@ plt.show()
 
 # SDE noising process
 T = 1.
-nsteps = 500
+nsteps = 200
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
 
@@ -180,10 +180,10 @@ for i in range(nsamples):
     key, subkey = jax.random.split(subkey)
     x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, y0, us_star, bs_star)
     gibbs_samples[i] = x0
-    print(f'Gibbs | iter: {i}')
+    print(f'ID: {args.id} | Gibbs | iter: {i}')
 
 # Save results
-np.save(f'./toy/results/gp-gibbs{"-marg" if args.marg else ""}{"-eb" if args.explicit_backward else ""}-{args.id}',
+np.save(f'./toy/results/gp-gibbs{"-eb" if args.explicit_backward else ""}{"-marg" if args.marg else ""}-{args.id}',
         gibbs_samples)
 
 # Plot

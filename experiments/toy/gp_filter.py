@@ -62,7 +62,7 @@ plt.show()
 
 # SDE noising process
 T = 1.
-nsteps = 500
+nsteps = 200
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
 
