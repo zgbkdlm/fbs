@@ -191,7 +191,7 @@ if 'pmcmc' in args.method:
 else:
     delta = None
 pmcmc_kernel = jax.jit(partial(pmcmc_kernel, ts=ts, fwd_ys_sampler=fwd_ys_sampler, sde=sde,
-                               ref_sampler=ref_sampler, ref_logpdf=ref_logpdf, transition_sampler=transition_sampler,
+                               ref_sampler=ref_sampler, transition_sampler=transition_sampler,
                                likelihood_logpdf=likelihood_logpdf, resampling=stratified,
                                nparticles=nparticles, delta=delta))
 
@@ -254,10 +254,10 @@ for k in range(args.ny0s):
             print(f'Inpainting-{sr_rate} | Gibbs | iter: {i}, acc: {acc}')
     elif 'pmcmc' in args.method:
         key, subkey = jax.random.split(key)
-        x0, log_ell, ys, xT = jnp.zeros(x_shape), 0., fwd_ys_sampler(subkey, test_y0), jnp.zeros(x_shape)
+        x0, log_ell, ys = jnp.zeros(x_shape), 0., fwd_ys_sampler(subkey, test_y0)
         for i in range(nsamples):
             key, subkey = jax.random.split(key)
-            x0, log_ell, ys, xT, mcmc_state = pmcmc_kernel(subkey, x0, log_ell, ys, xT, test_y0, mask_=mask)
+            x0, log_ell, ys, mcmc_state = pmcmc_kernel(subkey, x0, log_ell, ys, test_y0, mask_=mask)
             plt.imsave(
                 f'./tmp_figs/{dataset_name}_supr-{sr_rate}_pmcmc_{k}_{i}.png',
                 to_imsave(dataset.concat(x0, test_y0, mask)), cmap='gray' if nchannels == 1 else 'viridis')

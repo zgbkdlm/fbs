@@ -1,5 +1,5 @@
 """
-Gaussian process regression using pMCMC.
+Gaussian process regression using Gibbs CSMC.
 """
 import jax
 import jax.numpy as jnp
@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpyro as npr
 from fbs.samplers import bootstrap_filter, stratified
-from fbs.samplers.smc import bootstrap_backward_smoother
+from fbs.samplers.smc import bootstrap_backward_smoother, pmcmc_kernel
 from fbs.samplers import gibbs_kernel
 from fbs.sdes import make_linear_sde, StationaryConstLinearSDE, reverse_simulator, euler_maruyama
 from fbs.utils import bures_dist
@@ -20,7 +20,7 @@ key = jax.random.PRNGKey(666)
 
 # GP setting
 ell, sigma = 1., 1.
-d = 10
+d = 100
 zs = jnp.linspace(0., 5., d)
 obs_var = 1.
 
@@ -147,43 +147,43 @@ def fwd_ys_sampler(key_, y0_):
     return simulate_cond_forward(key_, y0_, ts)
 
 
-# Gibbs initial
+# pMCMC initial
 key, subkey = jax.random.split(key)
 key_fwd, key_bwd, key_bf = jax.random.split(subkey, num=3)
 path_y = fwd_ys_sampler(key_fwd, y0)
 vs = path_y[::-1]
-uss = bootstrap_filter(transition_sampler, likelihood_logpdf, vs, ts, ref_sampler, key_bf, nparticles,
-                       stratified, log=True, return_last=False)[0]
-x0 = uss[-1, 0]
-us_star = bootstrap_backward_smoother(key_bwd, uss, vs, ts, transition_logpdf)
-bs_star = jnp.zeros((nsteps + 1), dtype=int)
+x0 = bootstrap_filter(transition_sampler, likelihood_logpdf, vs, ts, ref_sampler, key_bf, nparticles,
+                      stratified, log=True, return_last=True)[0][0]
 
-# Gibbs loop
-gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, unpack=unpack,
-                               nparticles=nparticles, transition_sampler=transition_sampler,
-                               transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf,
-                               marg_y=False, explicit_backward=True))
-gibbs_samples = np.zeros((nsamples, d))
+key, subkey = jax.random.split(key)
+log_ell, ys = 0., fwd_ys_sampler(subkey, y0)
+
+# pMCMC loop
+pmcmc_kernel = jax.jit(partial(pmcmc_kernel, ts=ts, fwd_ys_sampler=fwd_ys_sampler, sde=sde,
+                               ref_sampler=ref_sampler, transition_sampler=transition_sampler,
+                               likelihood_logpdf=likelihood_logpdf, resampling=stratified,
+                               nparticles=nparticles, delta=0.01))
+pmcmc_samples = np.zeros((nsamples, d))
 
 for i in range(nsamples):
     key, subkey = jax.random.split(subkey)
-    x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, y0, us_star, bs_star)
-    gibbs_samples[i] = x0
-    print(f'Gibbs | iter: {i}')
+    x0, log_ell, ys, mcmc_state = pmcmc_kernel(subkey, x0, log_ell, ys, y0)
+    pmcmc_samples[i] = x0
+    print(f'pMCMC | iter: {i} | acc_prob: {mcmc_state.acceptance_prob:.3f}')
 
-gibbs_samples = gibbs_samples[burnin:]
-approx_gp_mean = jnp.mean(gibbs_samples, axis=0)
-approx_gp_cov = jnp.cov(gibbs_samples, rowvar=False)
+pmcmc_samples = pmcmc_samples[burnin:]
+approx_gp_mean = jnp.mean(pmcmc_samples, axis=0)
+approx_gp_cov = jnp.cov(pmcmc_samples, rowvar=False)
 
 print(bures_dist(gp_mean, gp_cov, approx_gp_mean, approx_gp_cov))
 
-plt.plot(gibbs_samples[:, 5])
+plt.plot(pmcmc_samples[:, 5])
 plt.show()
 
 plt.plot(zs, gp_mean)
 plt.plot(zs, approx_gp_mean)
 plt.show()
 
-autocorrs = npr.diagnostics.autocorrelation(gibbs_samples, axis=0)[:100]
+autocorrs = npr.diagnostics.autocorrelation(pmcmc_samples, axis=0)[:100]
 plt.plot(np.percentile(autocorrs, 95, axis=1))
 plt.show()
