@@ -173,7 +173,7 @@ bs_star = jnp.zeros((nsteps + 1), dtype=int)
 gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, unpack=unpack,
                                nparticles=nparticles, transition_sampler=transition_sampler,
                                transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf,
-                               marg_y=args.marg_y, explicit_backward=args.explicit_backward))
+                               marg_y=args.marg, explicit_backward=args.explicit_backward))
 
 gibbs_samples = np.zeros((nsamples, d))
 for i in range(nsamples):
@@ -183,7 +183,7 @@ for i in range(nsamples):
     print(f'Gibbs | iter: {i}')
 
 # Save results
-np.save(f'./toy/results/gp-gibbs{"-marg" if args.marg_y else ""}{"-eb" if args.explicit_backward else ""}-{args.id}',
+np.save(f'./toy/results/gp-gibbs{"-marg" if args.marg else ""}{"-eb" if args.explicit_backward else ""}-{args.id}',
         gibbs_samples)
 
 # Plot
