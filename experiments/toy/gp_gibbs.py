@@ -1,5 +1,5 @@
 """
-Gaussian process regression.
+Gaussian process regression using Gibbs CSMC.
 """
 import jax
 import jax.numpy as jnp
@@ -9,6 +9,7 @@ import numpy as np
 
 from fbs.samplers import bootstrap_filter, stratified
 from fbs.samplers.smc import bootstrap_backward_smoother
+from fbs.samplers import gibbs_kernel
 from fbs.sdes import make_linear_sde, StationaryConstLinearSDE, reverse_simulator, euler_maruyama
 from fbs.utils import bures_dist
 from functools import partial
@@ -104,16 +105,6 @@ def rev_sim(key_, uv0):
                              integrator='euler-maruyama', integration_nsteps=10)
 
 
-# key, subkey = jax.random.split(key)
-# uv0s = m_ref + jax.random.normal(subkey, (1000, 2 * d)) @ jnp.linalg.cholesky(cov_ref)
-#
-# key, subkey = jax.random.split(key)
-# keys = jax.random.split(subkey, num=1000)
-# approx_init_samples = jax.vmap(rev_sim, in_axes=[0, 0])(keys, uv0s)
-# approx_joint_mean = jnp.mean(approx_init_samples, axis=0)
-# approx_joint_cov = jnp.cov(approx_init_samples, rowvar=False)
-
-
 # Conditional sampling
 nparticles = 10
 nsamples = 100
@@ -143,19 +134,32 @@ def ref_sampler(key_, yT, nsamples_):
     return m_ + jax.random.normal(key_, (nsamples_, d)) @ jnp.linalg.cholesky(cov_)
 
 
+def fwd_sampler(key_, x0_, y0_, _):
+    return simulate_cond_forward(key_, jnp.concatenate([x0_, y0_]), ts)
+
+
 def fwd_ys_sampler(key_, y0_):
     return simulate_cond_forward(key_, y0_, ts)
 
 
 # Gibbs initial
-def conditional_sampler(key_):
-    key_fwd, key_bwd, key_bf = jax.random.split(key_, num=3)
-    path_y = fwd_ys_sampler(key_fwd, y0)
-    vs = path_y[::-1]
-    approx_x0 = bootstrap_filter(transition_sampler, likelihood_logpdf, vs, ts, ref_sampler, key_bf, nparticles,
-                                 stratified, log=True, return_last=True)[0][0]
-    return approx_x0
+key, subkey = jax.random.split(key)
+key_fwd, key_bwd, key_bf = jax.random.split(subkey, num=3)
+path_y = fwd_ys_sampler(key_fwd, y0)
+vs = path_y[::-1]
+uss = bootstrap_filter(transition_sampler, likelihood_logpdf, vs, ts, ref_sampler, key_bf, nparticles,
+                       stratified, log=True, return_last=False)[0]
+x0 = uss[-1, 0]
+us_star = bootstrap_backward_smoother(key_bwd, uss, vs, ts, transition_logpdf)
 
+# Gibbs loop
+gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, dataset=dataset,
+                               nparticles=nparticles, transition_sampler=transition_sampler,
+                               transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf,
+                               marg_y=True, explicit_backward=True))
+
+
+key, subkey = jax.random.split(key)
 
 keys = jax.random.split(key, num=nsamples)
 approx_cond_samples = jax.vmap(conditional_sampler)(keys)
