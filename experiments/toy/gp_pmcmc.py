@@ -15,8 +15,11 @@ from fbs.utils import bures_dist
 from functools import partial
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--id', type=int, default=666, help='The id of independent MC experiment.')
+parser.add_argument('--d', type=int, default=10, help='The problem dimension.')
+parser.add_argument('--nparticles', type=int, default=10, help='The number of particles.')
+parser.add_argument('--nsamples', type=int, default=1000, help='The number of samples to draw.')
 parser.add_argument('--delta', type=float, default=0.01, help='The delta value of pMCMC')
+parser.add_argument('--id', type=int, default=666, help='The id of independent MC experiment.')
 args = parser.parse_args()
 
 jax.config.update("jax_enable_x64", True)
@@ -25,7 +28,7 @@ key = jax.random.PRNGKey(args.id)
 
 # GP setting
 ell, sigma = 1., 1.
-d = 10
+d = args.d
 zs = jnp.linspace(0., 5., d)
 obs_var = 1.
 
@@ -115,8 +118,8 @@ def rev_sim(key_, uv0):
 
 
 # Conditional sampling
-nparticles = 10
-nsamples = 1000
+nparticles = args.nparticles
+nsamples = args.nsamples
 burnin = 100
 
 

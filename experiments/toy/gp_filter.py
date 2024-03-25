@@ -13,6 +13,9 @@ from fbs.utils import bures_dist
 from functools import partial
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--d', type=int, default=10, help='The problem dimension.')
+parser.add_argument('--nparticles', type=int, default=10, help='The number of particles.')
+parser.add_argument('--nsamples', type=int, default=1000, help='The number of samples to draw.')
 parser.add_argument('--id', type=int, default=666, help='The id of independent MC experiment.')
 args = parser.parse_args()
 
@@ -22,7 +25,7 @@ key = jax.random.PRNGKey(args.id)
 
 # GP setting
 ell, sigma = 1., 1.
-d = 10
+d = args.d
 zs = jnp.linspace(0., 5., d)
 obs_var = 1.
 
@@ -108,8 +111,8 @@ def rev_sim(key_, uv0):
 
 
 # Conditional sampling
-nparticles = 10
-nsamples = 1000
+nparticles = args.nparticles
+nsamples = args.nsamples
 
 
 def transition_sampler(us_prev, v_prev, t_prev, key_):
@@ -156,7 +159,7 @@ for i in range(nsamples):
     key, subkey = jax.random.split(key)
     approx_cond_sample = conditional_sampler(subkey)
     approx_cond_samples[i] = approx_cond_sample
-    print(f'Sample {i}')
+    print(f'ID: {args.id} | Sample {i}')
 
 # Save results
 np.save(f'./toy/results/gp-filter-{args.id}', approx_cond_samples)
