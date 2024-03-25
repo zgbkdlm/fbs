@@ -6,7 +6,7 @@ import jax.numpy as jnp
 import math
 import matplotlib.pyplot as plt
 import numpy as np
-
+import numpyro as npr
 from fbs.samplers import bootstrap_filter, stratified
 from fbs.samplers.smc import bootstrap_backward_smoother
 from fbs.samplers import gibbs_kernel
@@ -183,4 +183,8 @@ plt.show()
 
 plt.plot(zs, gp_mean)
 plt.plot(zs, approx_gp_mean)
+plt.show()
+
+autocorrs = npr.diagnostics.autocorrelation(gibbs_samples, axis=0)[:100]
+plt.plot(np.percentile(autocorrs, 95, axis=1))
 plt.show()
