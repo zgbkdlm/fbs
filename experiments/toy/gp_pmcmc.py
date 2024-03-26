@@ -180,7 +180,7 @@ for i in range(nsamples):
     print(f'ID: {args.id} | pMCMC | iter: {i} | acc_prob: {mcmc_state.acceptance_prob:.3f}')
 
 # Save results
-np.save(f'./toy/results/pmcmc-{args.delta}', pmcmc_samples)
+np.save(f'./toy/results/pmcmc-{args.delta}-{args.id}', pmcmc_samples)
 
 pmcmc_samples = pmcmc_samples[burnin:]
 approx_gp_mean = jnp.mean(pmcmc_samples, axis=0)
