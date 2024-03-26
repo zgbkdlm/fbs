@@ -162,7 +162,7 @@ for i in range(nsamples):
     print(f'ID: {args.id} | Sample {i}')
 
 # Save results
-np.save(f'./toy/results/gp-filter-{args.id}', approx_cond_samples)
+np.savez(f'./toy/results/gp-filter-{args.id}', samples=approx_cond_samples, gp_mean=gp_mean, gp_cov=gp_cov)
 
 # Plot
 approx_gp_mean = jnp.mean(approx_cond_samples, axis=0)

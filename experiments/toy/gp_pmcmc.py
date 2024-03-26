@@ -173,15 +173,18 @@ pmcmc_kernel = jax.jit(partial(pmcmc_kernel, ts=ts, fwd_ys_sampler=fwd_ys_sample
                                nparticles=nparticles, delta=args.delta))
 
 pmcmc_samples = np.zeros((nsamples, d))
+accs = np.zeros((nsamples,))
 for i in range(nsamples):
     key, subkey = jax.random.split(subkey)
     x0, log_ell, ys, mcmc_state = pmcmc_kernel(subkey, x0, log_ell, ys, y0)
     pmcmc_samples[i] = x0
+    accs[i] = mcmc_state.acceptance_prob
     print(f'ID: {args.id} | pMCMC | iter: {i} | acc_prob: {mcmc_state.acceptance_prob:.3f}')
 
 # Save results
-np.save(f'./toy/results/pmcmc-{args.delta}-{args.id}', pmcmc_samples)
+np.savez(f'./toy/results/pmcmc-{args.delta}-{args.id}', samples=pmcmc_samples, gp_mean=gp_mean, gp_cov=gp_cov)
 
+# Plot
 pmcmc_samples = pmcmc_samples[burnin:]
 approx_gp_mean = jnp.mean(pmcmc_samples, axis=0)
 approx_gp_cov = jnp.cov(pmcmc_samples, rowvar=False)

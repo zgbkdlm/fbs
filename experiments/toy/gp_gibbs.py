@@ -183,8 +183,8 @@ for i in range(nsamples):
     print(f'ID: {args.id} | Gibbs | iter: {i}')
 
 # Save results
-np.save(f'./toy/results/gp-gibbs{"-eb" if args.explicit_backward else ""}{"-marg" if args.marg else ""}-{args.id}',
-        gibbs_samples)
+np.savez(f'./toy/results/gp-gibbs{"-eb" if args.explicit_backward else ""}{"-marg" if args.marg else ""}-{args.id}',
+         samples=gibbs_samples, gp_mean=gp_mean, gp_cov=gp_cov)
 
 # Plot
 gibbs_samples = gibbs_samples[burnin:]
