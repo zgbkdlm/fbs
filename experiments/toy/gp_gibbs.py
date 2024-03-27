@@ -183,7 +183,7 @@ for i in range(nsamples):
     print(f'ID: {args.id} | Gibbs | iter: {i}')
 
 # Save results
-np.savez(f'./toy/results/gp-gibbs{"-eb" if args.explicit_backward else ""}{"-marg" if args.marg else ""}-{args.id}',
+np.savez(f'./toy/results/gibbs{"-eb" if args.explicit_backward else ""}{"-marg" if args.marg else ""}-{args.id}',
          samples=gibbs_samples, gp_mean=gp_mean, gp_cov=gp_cov)
 
 # Plot
