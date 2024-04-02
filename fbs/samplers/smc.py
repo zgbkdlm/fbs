@@ -278,9 +278,9 @@ def twisted_smc(key: JKey, y: JArray, ts: JArray,
 
     def scan_body(carry, elem):
         xs_prev, log_ps_prev, log_ws = carry
-        key_, t_prev = elem
+        key_step, t_prev = elem
 
-        key_resampling, key_prop = jax.random.split(key_)
+        key_resampling, key_prop = jax.random.split(key_step)
 
         # Resampling
         resampling_inds = resampling(jnp.exp(log_ws), key_resampling)

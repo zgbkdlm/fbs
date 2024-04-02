@@ -91,7 +91,8 @@ def reverse_drift(u, t):
 
 
 def reverse_cond_drift(u, t, y):
-    return reverse_drift(u, t) + jax.grad(twisting_logpdf, argnums=1)(y, u, t)
+    return -sde.drift(u, T - t) + sde.dispersion(T - t) ** 2 * (
+            score(u, T - t) + jax.grad(twisting_logpdf, argnums=1)(y, u, t))
 
 
 def reverse_dispersion(t):
