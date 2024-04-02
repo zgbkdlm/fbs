@@ -13,7 +13,7 @@ from fbs.utils import bures_dist
 from functools import partial
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--d', type=int, default=100, help='The problem dimension.')
+parser.add_argument('--d', type=int, default=10, help='The problem dimension.')
 parser.add_argument('--nparticles', type=int, default=10, help='The number of particles.')
 parser.add_argument('--nsamples', type=int, default=1000, help='The number of samples to draw.')
 parser.add_argument('--id', type=int, default=666, help='The id of independent MC experiment.')
@@ -72,12 +72,11 @@ discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(s
 
 def forward_m_cov(t):
     F_, Q_ = discretise_linear_sde(t, ts[0])
-    return F_ * joint_mean, F_ ** 2 * joint_cov + Q_ * jnp.eye(2 * d)
+    return F_ * joint_mean[:d], F_ ** 2 * cov_mat + Q_ * jnp.eye(d)
 
 
 def score(u, t):
     mt, covt = forward_m_cov(t)
-    mt, covt = mt[:d], covt[:d, :d]
     chol = jax.scipy.linalg.cho_factor(covt)
     return -jax.scipy.linalg.cho_solve(chol, u - mt)
 
@@ -112,13 +111,13 @@ def transition_logpdf(u, u_prev, t_prev):
 
 
 def init_sampler(key_, nparticles_):
-    return m_ref[:d] + jnp.einsum('ij,nj->ni',
-                                  jnp.linalg.cholesky(cov_ref[:d, :d]),
-                                  jax.random.normal(key_, (nparticles_, d)))
+    return m_ref + jnp.einsum('ij,nj->ni',
+                              jnp.linalg.cholesky(cov_ref),
+                              jax.random.normal(key_, (nparticles_, d)))
 
 
 def twisting_logpdf(y, u, t):
-    denoising_estimate = u + score(u, T - t) * dt
+    denoising_estimate = u + reverse_drift(u, t) * dt
     return jnp.sum(jax.scipy.stats.norm.logpdf(y, denoising_estimate, jnp.sqrt(obs_var)))
 
 
