@@ -154,6 +154,9 @@ for i in range(nsamples):
     approx_cond_samples[i] = approx_cond_sample
     print(f'ID: {args.id} | Sample {i}')
 
+# Save results
+np.savez(f'./toy/results/twisted-{args.id}', samples=approx_cond_samples, gp_mean=gp_mean, gp_cov=gp_cov)
+
 # Plot
 approx_gp_mean = jnp.mean(approx_cond_samples, axis=0)
 approx_gp_cov = jnp.cov(approx_cond_samples, rowvar=False)
