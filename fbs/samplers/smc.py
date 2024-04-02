@@ -155,6 +155,7 @@ def pmcmc_filter_step(key: JKey, vs_bridge: JArray, u0s: JArray, ts: JArray,
         us = us[resampling(jnp.exp(log_ws), key_resampling), ...]
 
         return (us, log_ell), None
+
     keys = jax.random.split(key, num=ts.shape[0] - 1)
     (uT, log_ellT), *_ = jax.lax.scan(scan_body,
                                       (u0s, log_ell0),
@@ -258,3 +259,54 @@ def pmcmc_kernel(key: JKey,
                         lambda _: (prop_uT, prop_log_ell, prop_ys, mcmc_state),
                         lambda _: (uT, log_ell, ys, mcmc_state),
                         None)
+
+
+def twisted_smc(key: JKey, y: JArray, ts: JArray,
+                init_sampler: Callable[[JKey, int], JArray],
+                transition_logpdf: Callable[[JArray, JArray, JArray], JArray],
+                twisting_logpdf: Callable[[JArray, JArray, FloatScalar], JArray],
+                twisting_prop_sampler: Callable[[JKey, JArray, FloatScalar, JArray], JArray],
+                twisting_prop_logpdf: Callable[[JArray, JArray, FloatScalar, JArray], JArray],
+                resampling: Callable,
+                nparticles: int) -> Tuple[JArray, JArray]:
+    """Implementation of the twisted SMC sampler.
+
+    Notes
+    -----
+    Algorithm 1, https://arxiv.org/pdf/2306.17775.pdf.
+    """
+
+    def scan_body(carry, elem):
+        xs_prev, log_ps_prev, log_ws = carry
+        key_, t_prev = elem
+
+        key_resampling, key_prop = jax.random.split(key_)
+
+        # Resampling
+        resampling_inds = resampling(jnp.exp(log_ws), key_resampling)
+        xs_prev = xs_prev[resampling_inds, ...]
+        log_ps_prev = log_ps_prev[resampling_inds, ...]
+
+        # Proposal
+        xs = twisting_prop_sampler(key_prop, xs_prev, t_prev, y)
+
+        # Weights
+        log_ps = twisting_logpdf(y, xs, t_prev)
+        log_ws = (transition_logpdf(xs, xs_prev, t_prev) + log_ps
+                  - twisting_prop_logpdf(xs, xs_prev, t_prev, y) - log_ps_prev)
+        log_ws = log_ws - jax.scipy.special.logsumexp(log_ws)
+
+        return (xs, log_ps, log_ws), None
+
+    nsteps = ts.shape[0] - 1
+    key_init, key_filter = jax.random.split(key, num=2)
+    keys = jax.random.split(key_filter, num=nsteps)
+
+    init_xs = init_sampler(key_init, nparticles)
+    init_log_ps = twisting_logpdf(y, init_xs, ts[0])
+    init_log_ws = init_log_ps - jax.scipy.special.logsumexp(init_log_ps)
+
+    (samples, _, log_weights), _ = jax.lax.scan(scan_body,
+                                                (init_xs, init_log_ps, init_log_ws),
+                                                (keys, ts[1:]))
+    return samples, log_weights
