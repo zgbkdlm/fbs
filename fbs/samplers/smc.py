@@ -145,14 +145,14 @@ def pmcmc_filter_step(key: JKey, vs_bridge: JArray, u0s: JArray, ts: JArray,
         v, v_prev, t_prev, key_ = elem
 
         key_proposal, key_resampling = jax.random.split(key_)
-        us = transition_sampler(us_prev, v_prev, t_prev, key_proposal, **kwargs)
 
         log_ws = likelihood_logpdf(v, us_prev, v_prev, t_prev, **kwargs)
         _c = jax.scipy.special.logsumexp(log_ws)
         log_ell = log_ell - math.log(nparticles) + _c
         log_ws = log_ws - _c
-
-        us = us[resampling(jnp.exp(log_ws), key_resampling), ...]
+        idx = resampling(jnp.exp(log_ws), key_resampling)
+        us_prev = us_prev[idx, ...]
+        us = transition_sampler(us_prev, v_prev, t_prev, key_proposal, **kwargs)
 
         return (us, log_ell), None
 
@@ -232,6 +232,8 @@ def pmcmc_kernel(key: JKey,
     annoying.
     """
     key_prop, key_u0, key_filter, key_mh = jax.random.split(key, num=4)
+
+    # TODO: PCN for yT only, generate bridge between y0 and yT
 
     if delta is None:
         prop_ys = fwd_ys_sampler(key_prop, y0)

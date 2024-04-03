@@ -82,7 +82,7 @@ def forward_pass(key: JKey,
                  us_star: JArray, bs_star: JArray,
                  vs: JArray, ts: JArray,
                  init_sampler: Callable[[JKey, int], JArray],
-                 init_likelihood_logpdf: Callable[[JArray, JArray], JArray],
+                 init_likelihood_logpdf: Callable[[JArray, JArray, JArray], JArray],
                  transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
                  likelihood_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
                  cond_resampling: Callable,
@@ -107,7 +107,7 @@ def forward_pass(key: JKey,
     ts : JArray (K + 1, )
         The times :math:`t_0, t_1, \ldots, t_K`.
     init_sampler : JKey, int -> (n, du)
-    init_likelihood_logpdf : (dv, ), (n, du) -> (n, )
+    init_likelihood_logpdf : (dv, ), (n, du), (dv, ) -> (n, )
     transition_sampler : (n, du), (dv, ), float, key -> (n, du)
         Draw n new samples conditioned on the previous samples and :math:`v_{k-1}`.
         That is, :math:`p(u_k | u_{k-1}, v_{k-1})`.
@@ -152,7 +152,7 @@ def forward_pass(key: JKey,
     us0 = init_sampler(key_init, nsamples + 1)
     us0 = us0.at[bs_star[0]].set(us_star[0])
 
-    log_ws0 = init_likelihood_logpdf(vs[0], us0)
+    log_ws0 = init_likelihood_logpdf(vs[0], us0, vs[1])
     log_ws0 = normalise(log_ws0, log_space=True)
 
     keys = jax.random.split(key_scan, nsteps)

@@ -179,7 +179,8 @@ for i in range(nsamples):
     x0, log_ell, ys, mcmc_state = pmcmc_kernel(subkey, x0, log_ell, ys, y0)
     pmcmc_samples[i] = x0
     accs[i] = mcmc_state.acceptance_prob
-    print(f'ID: {args.id} | pMCMC | iter: {i} | acc_prob: {mcmc_state.acceptance_prob:.3f}')
+    j = max(0, i - 100)
+    print(f'ID: {args.id} | pMCMC | iter: {i} | acc_prob: {mcmc_state.acceptance_prob:.3f} | {np.mean(accs[:i])} | {np.mean(accs[j:i])}')
 
 # Save results
 np.savez(f'./toy/results/pmcmc-{args.delta}-{args.id}', samples=pmcmc_samples, gp_mean=gp_mean, gp_cov=gp_cov)

@@ -70,6 +70,7 @@ def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JA
                  transition_sampler: Callable, transition_logpdf: Callable, likelihood_logpdf: Callable,
                  marg_y: bool = True,
                  explicit_backward: bool = False,
+                 explicit_final: bool = False,
                  **kwargs) -> Tuple[JArray, JArray, JArray, JArray]:
     """Gibbs kernel for our forward-backward conditional sampler.
     The carry variables are `x0`, `us_star`, and `bs_star`.
@@ -102,6 +103,8 @@ def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JA
     marg_y: bool, default=True
         Whether to use the Doob's diffusion bridge to marginalise out the path of `y`.
     explicit_backward
+    explicit_final
+        Whether to use the explicit reference distribution to initialise the backward filter.
 
     Returns
     -------
@@ -114,11 +117,19 @@ def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JA
     us = path_x[::-1]
     vs = bridge_sampler(key_bridge, path_y[0], path_y[-1], ts, sde)[::-1] if marg_y else path_y[::-1]
 
-    def init_sampler(*_):
-        return us[0] * jnp.ones((nparticles, *us.shape[1:]))
+    if explicit_final:
+        def init_sampler(key_, n_samples):
+            return jax.random.normal(key_, (n_samples, *us.shape[1:]))
 
-    def init_likelihood_logpdf(*_):
-        return -math.log(nparticles) * jnp.ones(nparticles)
+        def init_likelihood_logpdf(v0, u0, v1):
+            return likelihood_logpdf(v0, u0, v1, ts[0])
+
+    else:
+        def init_sampler(*_):
+            return us[0] * jnp.ones((nparticles, *us.shape[1:]))
+
+        def init_likelihood_logpdf(*_):
+            return -math.log(nparticles) * jnp.ones(nparticles)
 
     if explicit_backward:
         key_csmc_fwd, key_csmc_x0, key_csmc_bwd_us, key_csmc_bwd_bs = jax.random.split(key_csmc, num=4)

@@ -21,6 +21,8 @@ parser.add_argument('--nparticles', type=int, default=10, help='The number of pa
 parser.add_argument('--nsamples', type=int, default=1000, help='The number of samples to draw.')
 parser.add_argument('--explicit_backward', action='store_true', default=False,
                     help='Whether to explicitly sample the CSMC backward')
+parser.add_argument('--explicit_final', action='store_true', default=False,
+                    help='Whether to ue ref in CSMC.')
 parser.add_argument('--marg', action='store_true', default=False, help='Whether marginalise our the Y path.')
 parser.add_argument('--id', type=int, default=666, help='The id of independent MC experiment.')
 args = parser.parse_args()
@@ -173,17 +175,21 @@ bs_star = jnp.zeros((nsteps + 1), dtype=int)
 gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, unpack=unpack,
                                nparticles=nparticles, transition_sampler=transition_sampler,
                                transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf,
-                               marg_y=args.marg, explicit_backward=args.explicit_backward))
+                               marg_y=args.marg,
+                               explicit_backward=args.explicit_backward, explicit_final=args.explicit_final))
 
 gibbs_samples = np.zeros((nsamples, d))
+accs = np.zeros((nsamples,), dtype=bool)
 for i in range(nsamples):
     key, subkey = jax.random.split(subkey)
     x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, y0, us_star, bs_star)
     gibbs_samples[i] = x0
-    print(f'ID: {args.id} | Gibbs | iter: {i}')
+    accs[i] = acc[-1]
+    j = max(0, i - 100)
+    print(f'ID: {args.id} | Gibbs | iter: {i} | acc : {acc[-1]} | acc rate: {accs[:i].mean()} | acc rate last 100: {accs[j:i].mean()}')
 
 # Save results
-np.savez(f'./toy/results/gibbs{"-eb" if args.explicit_backward else ""}{"-marg" if args.marg else ""}-{args.id}',
+np.savez(f'./toy/results/gibbs{"-eb" if args.explicit_backward else ""}{"-ef" if args.explicit_final else ""}{"-marg" if args.marg else ""}-{args.id}',
          samples=gibbs_samples, gp_mean=gp_mean, gp_cov=gp_cov)
 
 # Plot
