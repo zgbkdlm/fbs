@@ -84,21 +84,20 @@ nparticles = args.nparticles
 nsamples = args.nsamples
 x_shape = (rect_size ** 2, nchannels)
 y_shape = (resolution ** 2 - rect_size ** 2, nchannels)
-xy_shape = (resolution ** 2, nchannels)
+xy_shape = (28, 28, nchannels)
 
 
 def unpack(xy, mask_):
     return dataset.unpack(xy, mask_)
 
 
-def reverse_drift(u, t):
-    return -sde.drift(u, T - t) + sde.dispersion(T - t) ** 2 * nn_score(u, T - t, param)
+def reverse_drift(uv, t):
+    return -sde.drift(uv, T - t) + sde.dispersion(T - t) ** 2 * nn_score(uv, T - t, param)
 
 
-def reverse_cond_drift(u, t, y, mask_):
-    uv = dataset.concat(u, y, mask_)
+def reverse_cond_drift(uv, t, y, mask_):
     return -sde.drift(uv, T - t) + sde.dispersion(T - t) ** 2 * (
-            nn_score(uv, T - t) + jax.grad(twisting_logpdf, argnums=1)(y, u, t))
+            nn_score(uv, T - t, param) + jax.grad(twisting_logpdf, argnums=1)(y, uv, t, mask_))
 
 
 def reverse_dispersion(t):
@@ -116,33 +115,36 @@ def init_sampler(key_, nparticles_):
     return jax.random.normal(key_, (nparticles_, *xy_shape))
 
 
-def twisting_logpdf(y, u, t, mask_):
-    @partial(jax.vmap, in_axes=[None, 0, None])
-    def _twisting_logpdf(y, u, t):
-        denoising_estimate = u + reverse_drift(u, t) * dt
-        _, obs_part = unpack(denoising_estimate, mask_)
-        return jnp.sum(jax.scipy.stats.norm.logpdf(y, obs_part, reverse_dispersion(t)))
-
-    return _twisting_logpdf(y, u, t)
+def twisting_logpdf(y, uv, t, mask_):
+    denoising_estimate = uv + reverse_drift(uv, t) * dt
+    _, obs_part = unpack(denoising_estimate, mask_)
+    return jnp.sum(jax.scipy.stats.norm.logpdf(y, obs_part, reverse_dispersion(t)))
 
 
-def twisting_prop_sampler(key_, us, t, y, mask_):
+def twisting_logpdf_vmap(y, uvs, t, mask_):
+    f = lambda q, w, e: twisting_logpdf(q, w, e, mask_)
+    return jax.vmap(f, in_axes=[None, 0, None])(y, uvs, t)
+
+
+def twisting_prop_sampler(key_, uvs, t, y, mask_):
     _reverse_cond_drift = lambda q, w, e: reverse_cond_drift(q, w, e, mask_)
-    m_ = us + jax.vmap(_reverse_cond_drift, in_axes=[0, None, None])(us, t, y) * dt
-    return m_ + math.sqrt(dt) * reverse_dispersion(t) * jax.random.normal(key_, (nparticles, d))
+    m_ = uvs + jax.vmap(_reverse_cond_drift, in_axes=[0, None, None])(uvs, t, y) * dt
+    return m_ + math.sqrt(dt) * reverse_dispersion(t) * jax.random.normal(key_, (nparticles, *xy_shape))
 
 
-@partial(jax.vmap, in_axes=[0, 0, None, None])
 def twisting_prop_logpdf(u, u_prev, t, y, mask_):
-    m_ = u_prev + reverse_cond_drift(u_prev, t, y, mask_) * dt
-    return jnp.sum(jax.scipy.stats.norm.logpdf(u, m_, math.sqrt(dt) * reverse_dispersion(t)))
+    def f(u, u_prev, t, y):
+        m_ = u_prev + reverse_cond_drift(u_prev, t, y, mask_) * dt
+        return jnp.sum(jax.scipy.stats.norm.logpdf(u, m_, math.sqrt(dt) * reverse_dispersion(t)))
+
+    return jax.vmap(f, in_axes=[0, 0, None, None])(u, u_prev, t, y)
 
 
 @jax.jit
 def conditional_sampler(key_, y, **kwargs):
     key_filter, key_select = jax.random.split(key_)
     uvs, log_ws = twisted_smc(key_filter, y, ts,
-                              init_sampler, transition_logpdf, twisting_logpdf, twisting_prop_sampler,
+                              init_sampler, transition_logpdf, twisting_logpdf_vmap, twisting_prop_sampler,
                               twisting_prop_logpdf,
                               resampling=stratified, nparticles=nparticles, **kwargs)
     return jax.random.choice(key_select, uvs, p=jnp.exp(log_ws), axis=0)
