@@ -31,8 +31,6 @@ parser.add_argument('--test_seed', type=int, default=666)
 parser.add_argument('--ny0s', type=int, default=10)
 parser.add_argument('--nparticles', type=int, default=100)
 parser.add_argument('--nsamples', type=int, default=10)
-parser.add_argument('--init_method', type=str, default='smoother')
-parser.add_argument('--marg', action='store_true', default=False, help='Whether marginalise our the Y path.')
 
 args = parser.parse_args()
 dataset_name = args.dataset
@@ -86,6 +84,7 @@ nparticles = args.nparticles
 nsamples = args.nsamples
 x_shape = (rect_size ** 2, nchannels)
 y_shape = (resolution ** 2 - rect_size ** 2, nchannels)
+xy_shape = (resolution ** 2, nchannels)
 
 
 def unpack(xy, mask_):
@@ -114,7 +113,7 @@ def transition_logpdf(u, u_prev, t_prev):
 
 
 def init_sampler(key_, nparticles_):
-    return jax.random.normal(key_, (nparticles_, d))
+    return jax.random.normal(key_, (nparticles_, *xy_shape))
 
 
 def twisting_logpdf(y, u, t, mask_):
