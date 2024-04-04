@@ -176,6 +176,6 @@ for k in range(args.ny0s):
         x0 = conditional_sampler(subkey, test_y0, mask_=mask)
         plt.imsave(f'./tmp_figs/{dataset_name}_inpainting-{rect_size}'
                    f'_twisted_{k}_{i}.png',
-                   to_imsave(dataset.concat(x0, test_y0, mask)),
+                   to_imsave(x0),
                    cmap='gray' if nchannels == 1 else 'viridis')
         print(f'Inpainting-{rect_size} | Twisted | iter: {i}')
