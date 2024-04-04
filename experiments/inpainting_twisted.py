@@ -174,8 +174,7 @@ for k in range(args.ny0s):
     for i in range(nsamples):
         key, subkey = jax.random.split(key)
         x0 = conditional_sampler(subkey, test_y0, mask_=mask)
-        plt.imsave(f'./tmp_figs/{dataset_name}_inpainting-{rect_size}'
-                   f'_twisted_{k}_{i}.png',
+        plt.imsave(f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_twisted_{k}_{i}.png',
                    to_imsave(x0),
                    cmap='gray' if nchannels == 1 else 'viridis')
         print(f'Inpainting-{rect_size} | Twisted | iter: {i}')
