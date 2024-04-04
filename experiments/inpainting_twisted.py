@@ -139,12 +139,12 @@ def twisting_prop_logpdf(u, u_prev, t, y, mask_):
 
 
 @jax.jit
-def conditional_sampler(key_, y):
+def conditional_sampler(key_, y, **kwargs):
     key_filter, key_select = jax.random.split(key_)
     uvs, log_ws = twisted_smc(key_filter, y, ts,
                               init_sampler, transition_logpdf, twisting_logpdf, twisting_prop_sampler,
                               twisting_prop_logpdf,
-                              resampling=stratified, nparticles=nparticles)
+                              resampling=stratified, nparticles=nparticles, **kwargs)
     return jax.random.choice(key_select, uvs, p=jnp.exp(log_ws), axis=0)
 
 
@@ -171,7 +171,7 @@ for k in range(args.ny0s):
 
     for i in range(nsamples):
         key, subkey = jax.random.split(key)
-        x0 = conditional_sampler(subkey, test_y0)
+        x0 = conditional_sampler(subkey, test_y0, mask_=mask)
         plt.imsave(f'./tmp_figs/{dataset_name}_inpainting-{rect_size}'
                    f'_twisted_{k}_{i}.png',
                    to_imsave(dataset.concat(x0, test_y0, mask)),
