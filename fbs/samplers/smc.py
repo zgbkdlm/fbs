@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 from fbs.samplers.common import MCMCState
 from fbs.typings import JArray, JFloat, JKey, FloatScalar
-from typing import Callable, Tuple, Optional
+from typing import Callable, Tuple, Optional, Any
 
 
 def bootstrap_filter(transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
@@ -266,11 +266,11 @@ def pmcmc_kernel(key: JKey,
 def twisted_smc(key: JKey, y: JArray, ts: JArray,
                 init_sampler: Callable[[JKey, int], JArray],
                 transition_logpdf: Callable[[JArray, JArray, JArray], JArray],
-                twisting_logpdf: Callable[[JArray, JArray, FloatScalar], JArray],
-                twisting_prop_sampler: Callable[[JKey, JArray, FloatScalar, JArray], JArray],
-                twisting_prop_logpdf: Callable[[JArray, JArray, FloatScalar, JArray], JArray],
+                twisting_logpdf: Callable[[JArray, JArray, FloatScalar, Optional[Any]], JArray],
+                twisting_prop_sampler: Callable[[JKey, JArray, FloatScalar, JArray, Optional[Any]], JArray],
+                twisting_prop_logpdf: Callable[[JArray, JArray, FloatScalar, JArray, Optional[Any]], JArray],
                 resampling: Callable,
-                nparticles: int) -> Tuple[JArray, JArray]:
+                nparticles: int, **kwargs) -> Tuple[JArray, JArray]:
     """Implementation of the twisted SMC sampler.
 
     Notes
@@ -290,12 +290,12 @@ def twisted_smc(key: JKey, y: JArray, ts: JArray,
         log_ps_prev = log_ps_prev[resampling_inds, ...]
 
         # Proposal
-        xs = twisting_prop_sampler(key_prop, xs_prev, t_prev, y)
+        xs = twisting_prop_sampler(key_prop, xs_prev, t_prev, y, **kwargs)
 
         # Weights
-        log_ps = twisting_logpdf(y, xs, t_prev)
+        log_ps = twisting_logpdf(y, xs, t_prev, **kwargs)
         log_ws = (transition_logpdf(xs, xs_prev, t_prev) + log_ps
-                  - twisting_prop_logpdf(xs, xs_prev, t_prev, y) - log_ps_prev)
+                  - twisting_prop_logpdf(xs, xs_prev, t_prev, y, **kwargs) - log_ps_prev)
         log_ws = log_ws - jax.scipy.special.logsumexp(log_ws)
 
         return (xs, log_ps, log_ws), None
@@ -305,7 +305,7 @@ def twisted_smc(key: JKey, y: JArray, ts: JArray,
     keys = jax.random.split(key_filter, num=nsteps)
 
     init_xs = init_sampler(key_init, nparticles)
-    init_log_ps = twisting_logpdf(y, init_xs, ts[0])
+    init_log_ps = twisting_logpdf(y, init_xs, ts[0], **kwargs)
     init_log_ws = init_log_ps - jax.scipy.special.logsumexp(init_log_ps)
 
     (samples, _, log_weights), _ = jax.lax.scan(scan_body,

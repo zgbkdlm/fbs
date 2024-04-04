@@ -21,7 +21,7 @@ from fbs.nn.unet import UNet
 from functools import partial
 
 # Parse arguments
-parser = argparse.ArgumentParser(description='Training forward noising modelInpainting.')
+parser = argparse.ArgumentParser(description='Inpainting.')
 parser.add_argument('--dataset', type=str, default='mnist', help='Which dataset. Options are mnist, celeba-64, '
                                                                  'or celeba-128.')
 parser.add_argument('--rect_size', type=int, default=15, help='The w/h of the inpainting rectangle.')
@@ -74,9 +74,6 @@ if args.sde == 'const':
     sde = StationaryConstLinearSDE(a=-0.5, b=1.)
 elif args.sde == 'lin':
     sde = StationaryLinLinearSDE(beta_min=0.02, beta_max=5., t0=0., T=T)
-elif args.sde == 'exp':
-    # Not tested.
-    sde = StationaryExpLinearSDE(a=-0.5, b=1., c=1., z=1.)
 else:
     raise NotImplementedError('...')
 discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(sde)
