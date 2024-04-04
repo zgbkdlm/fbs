@@ -22,7 +22,7 @@ def csmc_kernel(key: JKey,
                 cond_resampling: Callable,
                 nsamples: int,
                 backward: bool = False,
-                *args, **kwargs) -> Tuple[JArray, JArray]:
+                **kwargs) -> Tuple[JArray, JArray]:
     """
     Generic cSMC kernel.
 
@@ -69,7 +69,7 @@ def csmc_kernel(key: JKey,
                                    vs, ts,
                                    init_sampler, init_likelihood_logpdf,
                                    transition_sampler, measurement_cond_logpdf, cond_resampling, nsamples,
-                                   *args, **kwargs)
+                                   **kwargs)
     if backward:
         xs_star, bs_star = backward_sampling_pass(key_bwd, transition_logpdf, vs, ts, xss, log_ws,
                                                   *args, **kwargs)
@@ -87,7 +87,7 @@ def forward_pass(key: JKey,
                  likelihood_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
                  cond_resampling: Callable,
                  nsamples: int,
-                 *args, **kwargs) -> Tuple[JArray, JArray, JArray]:
+                 **kwargs) -> Tuple[JArray, JArray, JArray]:
     r"""
     Forward pass of the cSMC kernel.
 
@@ -140,10 +140,10 @@ def forward_pass(key: JKey,
         A = cond_resampling(key_resampling, jnp.exp(log_ws), b_star_prev, b_star, True)
         us_prev = jnp.take(us_prev, A, axis=0)
 
-        us = transition_sampler(us_prev, v_prev, t_prev, key_transition, *args, **kwargs)
+        us = transition_sampler(us_prev, v_prev, t_prev, key_transition, **kwargs)
         us = us.at[b_star].set(u_star)
 
-        log_ws = likelihood_logpdf(v, us_prev, v_prev, t_prev, *args, **kwargs)
+        log_ws = likelihood_logpdf(v, us_prev, v_prev, t_prev, **kwargs)
         log_ws = normalise(log_ws, log_space=True)
 
         return (log_ws, us), (log_ws, A, us)
@@ -152,7 +152,7 @@ def forward_pass(key: JKey,
     us0 = init_sampler(key_init, nsamples + 1)
     us0 = us0.at[bs_star[0]].set(us_star[0])
 
-    log_ws0 = init_likelihood_logpdf(vs[0], us0, vs[1])
+    log_ws0 = init_likelihood_logpdf(vs[0], us0, vs[1], **kwargs)
     log_ws0 = normalise(log_ws0, log_space=True)
 
     keys = jax.random.split(key_scan, nsteps)
