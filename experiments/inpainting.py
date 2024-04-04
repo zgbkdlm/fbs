@@ -183,7 +183,8 @@ gibbs_init = jax.jit(partial(gibbs_init, x0_shape=x_shape, ts=ts, fwd_sampler=fw
 gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, unpack=unpack,
                                nparticles=nparticles, transition_sampler=transition_sampler,
                                transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf,
-                               marg_y=args.marg, explicit_backward=True if args.method == 'gibbs-eb' else False))
+                               marg_y=args.marg, explicit_backward=True if args.method == 'gibbs-eb' else False,
+                               explicit_final=True))
 if 'pmcmc' in args.method:
     delta = None if len(args.method.split('-')) == 1 else float(args.method.split('-')[-1])
 else:

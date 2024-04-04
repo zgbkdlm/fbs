@@ -23,7 +23,7 @@ parser.add_argument('--explicit_backward', action='store_true', default=False,
                     help='Whether to explicitly sample the CSMC backward')
 parser.add_argument('--explicit_final', action='store_true', default=False,
                     help='Whether to ue ref in CSMC.')
-parser.add_argument('--marg', action='store_true', default=False, help='Whether marginalise our the Y path.')
+parser.add_argument('--marg', action='store_true', default=False, help='Whether marginalise out the Y path.')
 parser.add_argument('--id', type=int, default=666, help='The id of independent MC experiment.')
 args = parser.parse_args()
 
@@ -186,10 +186,12 @@ for i in range(nsamples):
     gibbs_samples[i] = x0
     accs[i] = acc[-1]
     j = max(0, i - 100)
-    print(f'ID: {args.id} | Gibbs | iter: {i} | acc : {acc[-1]} | acc rate: {accs[:i].mean()} | acc rate last 100: {accs[j:i].mean()}')
+    print(f'ID: {args.id} | Gibbs | iter: {i} | acc : {acc[-1]} | '
+          f'acc rate: {np.mean(accs[:i]):.3f} | acc rate last 100: {np.mean(accs[j:i]):.3f}')
 
 # Save results
-np.savez(f'./toy/results/gibbs{"-eb" if args.explicit_backward else ""}{"-ef" if args.explicit_final else ""}{"-marg" if args.marg else ""}-{args.id}',
+np.savez(f'./toy/results/gibbs{"-eb" if args.explicit_backward else ""}{"-ef" if args.explicit_final else ""}'
+         f'{"-marg" if args.marg else ""}-{args.id}',
          samples=gibbs_samples, gp_mean=gp_mean, gp_cov=gp_cov)
 
 # Plot

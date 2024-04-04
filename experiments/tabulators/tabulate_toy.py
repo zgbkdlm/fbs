@@ -13,7 +13,7 @@ from fbs.utils import kl
 
 jax.config.update("jax_enable_x64", True)
 
-methods = ['filter', 'gibbs-eb', 'pmcmc-0.01']
+methods = ['filter', 'gibbs-eb', 'pmcmc-0.01', 'twisted']
 method_label = ['', '', '']
 max_mcs = 50
 max_lags = 100

@@ -180,7 +180,8 @@ for i in range(nsamples):
     pmcmc_samples[i] = x0
     accs[i] = mcmc_state.acceptance_prob
     j = max(0, i - 100)
-    print(f'ID: {args.id} | pMCMC | iter: {i} | acc_prob: {mcmc_state.acceptance_prob:.3f} | {np.mean(accs[:i])} | {np.mean(accs[j:i])}')
+    print(f'ID: {args.id} | pMCMC | iter: {i} | '
+          f'acc_prob: {mcmc_state.acceptance_prob:.3f} | {np.mean(accs[:i]):.3f} | {np.mean(accs[j:i]):.3f}')
 
 # Save results
 np.savez(f'./toy/results/pmcmc-{args.delta}-{args.id}', samples=pmcmc_samples, gp_mean=gp_mean, gp_cov=gp_cov)

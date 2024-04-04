@@ -150,8 +150,8 @@ def pmcmc_filter_step(key: JKey, vs_bridge: JArray, u0s: JArray, ts: JArray,
         _c = jax.scipy.special.logsumexp(log_ws)
         log_ell = log_ell - math.log(nparticles) + _c
         log_ws = log_ws - _c
-        idx = resampling(jnp.exp(log_ws), key_resampling)
-        us_prev = us_prev[idx, ...]
+        inds = resampling(jnp.exp(log_ws), key_resampling)
+        us_prev = us_prev[inds, ...]
         us = transition_sampler(us_prev, v_prev, t_prev, key_proposal, **kwargs)
 
         return (us, log_ell), None
