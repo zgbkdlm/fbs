@@ -20,7 +20,7 @@ parser.add_argument('--nsamples', type=int, default=1000, help='The number of sa
 parser.add_argument('--sde', type=str, default='const', help='The type of forward SDE.')
 parser.add_argument('--delta', type=float, default=0.01, help='The delta value of pMCMC')
 parser.add_argument('--id', type=int, default=666, help='The id of independent MC experiment.')
-parser.add_argument('--chain', type=int, default=0, help='The MCMC chain id.')
+parser.add_argument('--nchains', type=int, default=4, help='The number of MCMC chains.')
 args = parser.parse_args()
 
 jax.config.update("jax_enable_x64", False)
@@ -115,6 +115,8 @@ def reverse_dispersion(t):
 # Conditional sampling
 nparticles = args.nparticles
 nsamples = args.nsamples
+nchains = args.nchains
+chain_track_id = 0
 burnin = 100
 
 
@@ -151,38 +153,44 @@ def fwd_ys_sampler(key_, y0_):
 
 
 # pMCMC initial
-key, subkey = jax.random.split(key)
-key_fwd, key_bwd, key_bf = jax.random.split(subkey, num=3)
-path_y = fwd_ys_sampler(key_fwd, y0)
-vs = path_y[::-1]
-x0s, log_ell = bootstrap_filter(transition_sampler, likelihood_logpdf, vs, ts, ref_sampler, key_bf, nparticles,
-                                stratified, log=True, return_last=True)
-x0 = x0s[0]
-key, subkey = jax.random.split(key)
-ys = fwd_ys_sampler(subkey, y0)
+def pmcmc_init(key_):
+    key_fwd, key_bwd, key_bf, key_ys = jax.random.split(key_, num=4)
+    path_y = fwd_ys_sampler(key_fwd, y0)
+    vs = path_y[::-1]
+    x0s, log_ell = bootstrap_filter(transition_sampler, likelihood_logpdf, vs, ts, ref_sampler, key_bf, nparticles,
+                                     stratified, log=True, return_last=True)
+    return x0s[0], log_ell, fwd_ys_sampler(key_ys, y0)
+
+
+# pMCMC kernel
+pmcmc_kernel = partial(pmcmc_kernel, ts=ts, fwd_ys_sampler=fwd_ys_sampler, sde=sde,
+                       ref_sampler=ref_sampler, transition_sampler=transition_sampler,
+                       likelihood_logpdf=likelihood_logpdf, resampling=stratified,
+                       nparticles=nparticles, delta=args.delta)
+
+pmcmc_init_chain_vmap = jax.vmap(pmcmc_init, in_axes=[0])
+pmcmc_kernel_chain_vmap = jax.jit(jax.vmap(pmcmc_kernel, in_axes=[0, 0, 0, 0, None]))
 
 # pMCMC loop
-pmcmc_kernel = jax.jit(partial(pmcmc_kernel, ts=ts, fwd_ys_sampler=fwd_ys_sampler, sde=sde,
-                               ref_sampler=ref_sampler, transition_sampler=transition_sampler,
-                               likelihood_logpdf=likelihood_logpdf, resampling=stratified,
-                               nparticles=nparticles, delta=args.delta))
+key, subkey = jax.random.split(key)
+key_chains = jax.random.split(subkey, num=nchains)
+x0s, log_ells, yss = pmcmc_init_chain_vmap(key_chains)
 
-pmcmc_samples = np.zeros((nsamples, d))
+pmcmc_samples = np.zeros((nchains, nsamples, d))
 accs = np.zeros((nsamples,))
-for _ in range(args.chain):
-    key, _ = jax.random.split(key)
-
 for i in range(nsamples):
     key, subkey = jax.random.split(key)
-    x0, log_ell, ys, mcmc_state = pmcmc_kernel(subkey, x0, log_ell, ys, y0)
-    pmcmc_samples[i] = x0
-    accs[i] = mcmc_state.acceptance_prob
+    key_chains = jax.random.split(subkey, num=nchains)
+    x0s, log_ells, yss, mcmc_states = pmcmc_kernel_chain_vmap(key_chains, x0s, log_ells, yss, y0)
+    pmcmc_samples[:, i, :] = x0s
+    accs[i] = mcmc_states.acceptance_prob[chain_track_id]
     j = max(0, i - 100)
     print(f'ID: {args.id} | pMCMC | iter: {i} | '
-          f'acc_prob: {mcmc_state.acceptance_prob:.3f} | {np.mean(accs[:i]):.3f} | {np.mean(accs[j:i]):.3f}')
+          f'acc_prob: {mcmc_states.acceptance_prob[chain_track_id]:.3f} '
+          f'| {np.mean(accs[:i]):.3f} | {np.mean(accs[j:i]):.3f}')
 
 # Save results
-np.savez(f'./toy/results/pmcmc-{args.delta}-{args.id}-{args.chain}',
+np.savez(f'./toy/results/pmcmc-{args.delta}-{args.sde}-{args.nparticles}-{args.id}',
          samples=pmcmc_samples, gp_mean=gp_mean, gp_cov=gp_cov)
 
 # Plot

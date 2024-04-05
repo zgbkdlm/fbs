@@ -14,7 +14,7 @@ from fbs.sdes import make_linear_sde, StationaryConstLinearSDE, StationaryLinLin
 from functools import partial
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--d', type=int, default=100, help='The problem dimension.')
+parser.add_argument('--d', type=int, default=10, help='The problem dimension.')
 parser.add_argument('--nparticles', type=int, default=10, help='The number of particles.')
 parser.add_argument('--nsamples', type=int, default=1000, help='The number of samples to draw.')
 parser.add_argument('--sde', type=str, default='const', help='The type of forward SDE.')
@@ -24,7 +24,7 @@ parser.add_argument('--explicit_final', action='store_true', default=False,
                     help='Whether to ue ref in CSMC.')
 parser.add_argument('--marg', action='store_true', default=False, help='Whether marginalise out the Y path.')
 parser.add_argument('--id', type=int, default=666, help='The id of independent MC experiment.')
-parser.add_argument('--chain', type=int, default=0, help='The MCMC chain id.')
+parser.add_argument('--nchains', type=int, default=4, help='The number of MCMC chains.')
 args = parser.parse_args()
 
 jax.config.update("jax_enable_x64", False)
@@ -123,6 +123,8 @@ def reverse_dispersion(t):
 # Conditional sampling
 nparticles = args.nparticles
 nsamples = args.nsamples
+nchains = args.nchains
+chain_track_id = 0
 burnin = 100
 
 
@@ -159,40 +161,48 @@ def fwd_ys_sampler(key_, y0_):
 
 
 # Gibbs initial
-key, subkey = jax.random.split(key)
-key_fwd, key_bwd, key_bf = jax.random.split(subkey, num=3)
-path_y = fwd_ys_sampler(key_fwd, y0)
-vs = path_y[::-1]
-uss = bootstrap_filter(transition_sampler, likelihood_logpdf, vs, ts, ref_sampler, key_bf, nparticles,
-                       stratified, log=True, return_last=False)[0]
-x0 = uss[-1, 0]
-us_star = bootstrap_backward_smoother(key_bwd, uss, vs, ts, transition_logpdf)
-bs_star = jnp.zeros((nsteps + 1), dtype=int)
+def gibbs_init(key_):
+    key_fwd, key_bwd, key_bf = jax.random.split(key_, num=3)
+    path_y = fwd_ys_sampler(key_fwd, y0)
+    vs = path_y[::-1]
+    uss = bootstrap_filter(transition_sampler, likelihood_logpdf, vs, ts, ref_sampler, key_bf, nparticles,
+                           stratified, log=True, return_last=False)[0]
+    x0 = uss[-1, 0]
+    us_star = bootstrap_backward_smoother(key_bwd, uss, vs, ts, transition_logpdf)
+    bs_star = jnp.zeros((nsteps + 1), dtype=int)
+    return x0, us_star, bs_star
+
+
+# Gibbs kernel
+gibbs_kernel = partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, unpack=unpack,
+                       nparticles=nparticles, transition_sampler=transition_sampler,
+                       transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf,
+                       marg_y=args.marg,
+                       explicit_backward=args.explicit_backward, explicit_final=args.explicit_final)
+
+gibbs_init_chain_vmap = jax.vmap(gibbs_init, in_axes=[0])
+gibbs_kernel_chain_vmap = jax.jit(jax.vmap(gibbs_kernel, in_axes=[0, 0, None, 0, 0]))
 
 # Gibbs loop
-gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, unpack=unpack,
-                               nparticles=nparticles, transition_sampler=transition_sampler,
-                               transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf,
-                               marg_y=args.marg,
-                               explicit_backward=args.explicit_backward, explicit_final=args.explicit_final))
+key, subkey = jax.random.split(key)
+key_chains = jax.random.split(subkey, num=nchains)
+x0s, us_stars, bs_stars = gibbs_init_chain_vmap(key_chains)
 
-gibbs_samples = np.zeros((nsamples, d))
+gibbs_samples = np.zeros((nchains, nsamples, d))
 accs = np.zeros((nsamples,), dtype=bool)
-for _ in range(args.chain):
-    key, _ = jax.random.split(key)
-
 for i in range(nsamples):
     key, subkey = jax.random.split(key)
-    x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, y0, us_star, bs_star)
-    gibbs_samples[i] = x0
-    accs[i] = acc[-1]
+    key_chains = jax.random.split(subkey, num=nchains)
+    x0s, us_stars, bs_stars, acc = gibbs_kernel_chain_vmap(key_chains, x0s, y0, us_stars, bs_stars)
+    gibbs_samples[:, i, :] = x0s
+    accs[i] = acc[chain_track_id, -1]
     j = max(0, i - 100)
-    print(f'ID: {args.id} | Gibbs | iter: {i} | acc : {acc[-1]} | '
+    print(f'ID: {args.id} | Gibbs | iter: {i} | acc : {acc[chain_track_id, -1]} | '
           f'acc rate: {np.mean(accs[:i]):.3f} | acc rate last 100: {np.mean(accs[j:i]):.3f}')
 
 # Save results
 np.savez(f'./toy/results/gibbs{"-eb" if args.explicit_backward else ""}{"-ef" if args.explicit_final else ""}'
-         f'{"-marg" if args.marg else ""}-{args.id}-{args.chain}',
+         f'{"-marg" if args.marg else ""}-{args.sde}-{args.nparticles}-{args.id}',
          samples=gibbs_samples, gp_mean=gp_mean, gp_cov=gp_cov)
 
 # Plot
