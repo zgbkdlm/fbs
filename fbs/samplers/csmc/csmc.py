@@ -11,75 +11,6 @@ from typing import Callable, Union, Any, Tuple
 from fbs.typings import JArray, JKey, FloatScalar
 
 
-def csmc(key: JKey,
-         us_star: JArray, bs_star: JArray,
-         vs: JArray, ts: JArray,
-         init_sampler: Callable[[JKey, int], JArray],
-         init_likelihood_logpdf: Callable[[JArray, JArray], JArray],
-         transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
-         transition_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
-         likelihood_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
-         cond_resampling: Callable,
-         nsamples,
-         niters: int,
-         backward: bool = False):
-    """
-    Generic cSMC kernel.
-
-    Parameters
-    ----------
-    key : JKey
-        A JAX random key.
-    us_star : JArray (K + 1, du)
-        Reference trajectory :math:`u_0^*, u_1^*, u_2^*, \ldots, u_K^*` to update.
-    bs_star : JArray (K + 1, )
-        Indices of the reference trajectory at times :math:`t_1, t_2, \ldots, t_K`.
-    vs : JArray (K + 1, dv)
-        Measurements :math:`v_0, v_1, \ldots, v_K`.
-    ts : JArray (K + 1, )
-        The times :math:`t_0, t_1, \ldots, t_K`.
-    init_sampler : JKey, int -> (n, du)
-    init_likelihood_logpdf : (dv, ), (n, du) -> (n, )
-    transition_sampler : (n, du), (dv, ), float, key -> (n, du)
-        Draw n new samples conditioned on the previous samples and :math:`v_{k-1}`.
-        That is, :math:`p(u_k | u_{k-1}, v_{k-1})`.
-    transition_logpdf : (du, ), (du, ), (dv, ), float -> (n, )
-    likelihood_logpdf : (dv, ), (n, du), (dv, ), float -> (n, )
-        The measurement conditional PDF :math:`p(v_k | u_{k-1}, v_{k-1})`.
-        The first function argument is for v. The second argument is for u, which accepts an array of samples
-        and output an array of evaluations. The third argument is for v_{k-1}. The fourth argument is for the time.
-    cond_resampling :
-        Resampling scheme to use.
-    key : JKey
-        Random number generator key.
-    nsamples : int
-        Number of particles to use (N+1, if we include the reference trajectory).
-
-    Returns
-    -------
-    xs : JArray (niters, K + 1, d)
-        Particles.
-    """
-    keys = jax.random.split(key, niters)
-
-    def scan_body(carry, elem):
-        us, bs = carry
-        key_ = elem
-
-        us, bs_next = csmc_kernel(key_,
-                                  us, bs, vs, ts,
-                                  init_sampler, init_likelihood_logpdf,
-                                  transition_sampler, transition_logpdf,
-                                  likelihood_logpdf,
-                                  cond_resampling,
-                                  nsamples,
-                                  backward)
-        accepted = bs_next != bs
-        return (us, bs), (us, accepted)
-
-    return jax.lax.scan(scan_body, (us_star, bs_star), keys)[1]
-
-
 def csmc_kernel(key: JKey,
                 us_star: JArray, bs_star: JArray,
                 vs: JArray, ts: JArray,
@@ -90,7 +21,8 @@ def csmc_kernel(key: JKey,
                 measurement_cond_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
                 cond_resampling: Callable,
                 nsamples: int,
-                backward: bool = False):
+                backward: bool = False,
+                **kwargs) -> Tuple[JArray, JArray]:
     """
     Generic cSMC kernel.
 
@@ -136,9 +68,11 @@ def csmc_kernel(key: JKey,
                                    us_star, bs_star,
                                    vs, ts,
                                    init_sampler, init_likelihood_logpdf,
-                                   transition_sampler, measurement_cond_logpdf, cond_resampling, nsamples)
+                                   transition_sampler, measurement_cond_logpdf, cond_resampling, nsamples,
+                                   **kwargs)
     if backward:
-        xs_star, bs_star = backward_sampling_pass(key_bwd, transition_logpdf, vs, ts, xss, log_ws)
+        xs_star, bs_star = backward_sampling_pass(key_bwd, transition_logpdf, vs, ts, xss, log_ws,
+                                                  *args, **kwargs)
     else:
         xs_star, bs_star = backward_scanning_pass(key_bwd, As, xss, log_ws[-1])
     return xs_star, bs_star
@@ -148,11 +82,12 @@ def forward_pass(key: JKey,
                  us_star: JArray, bs_star: JArray,
                  vs: JArray, ts: JArray,
                  init_sampler: Callable[[JKey, int], JArray],
-                 init_likelihood_logpdf: Callable[[JArray, JArray], JArray],
+                 init_likelihood_logpdf: Callable[[JArray, JArray, JArray], JArray],
                  transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
                  likelihood_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
                  cond_resampling: Callable,
-                 nsamples: int) -> Tuple[JArray, JArray, JArray]:
+                 nsamples: int,
+                 **kwargs) -> Tuple[JArray, JArray, JArray]:
     r"""
     Forward pass of the cSMC kernel.
 
@@ -172,7 +107,7 @@ def forward_pass(key: JKey,
     ts : JArray (K + 1, )
         The times :math:`t_0, t_1, \ldots, t_K`.
     init_sampler : JKey, int -> (n, du)
-    init_likelihood_logpdf : (dv, ), (n, du) -> (n, )
+    init_likelihood_logpdf : (dv, ), (n, du), (dv, ) -> (n, )
     transition_sampler : (n, du), (dv, ), float, key -> (n, du)
         Draw n new samples conditioned on the previous samples and :math:`v_{k-1}`.
         That is, :math:`p(u_k | u_{k-1}, v_{k-1})`.
@@ -205,10 +140,10 @@ def forward_pass(key: JKey,
         A = cond_resampling(key_resampling, jnp.exp(log_ws), b_star_prev, b_star, True)
         us_prev = jnp.take(us_prev, A, axis=0)
 
-        us = transition_sampler(us_prev, v_prev, t_prev, key_transition)
+        us = transition_sampler(us_prev, v_prev, t_prev, key_transition, **kwargs)
         us = us.at[b_star].set(u_star)
 
-        log_ws = likelihood_logpdf(v, us_prev, v_prev, t_prev)
+        log_ws = likelihood_logpdf(v, us_prev, v_prev, t_prev, **kwargs)
         log_ws = normalise(log_ws, log_space=True)
 
         return (log_ws, us), (log_ws, A, us)
@@ -217,7 +152,7 @@ def forward_pass(key: JKey,
     us0 = init_sampler(key_init, nsamples + 1)
     us0 = us0.at[bs_star[0]].set(us_star[0])
 
-    log_ws0 = init_likelihood_logpdf(vs[0], us0)
+    log_ws0 = init_likelihood_logpdf(vs[0], us0, vs[1], **kwargs)
     log_ws0 = normalise(log_ws0, log_space=True)
 
     keys = jax.random.split(key_scan, nsteps)
@@ -230,7 +165,7 @@ def forward_pass(key: JKey,
     return As, log_wss, uss
 
 
-def backward_sampling_pass(key, transition_logpdf, vs, ts, uss, log_ws):
+def backward_sampling_pass(key, transition_logpdf, vs, ts, uss, log_ws, *args, **kwargs):
     """
     Backward sampling pass for the cSMC kernel.
 
@@ -263,19 +198,19 @@ def backward_sampling_pass(key, transition_logpdf, vs, ts, uss, log_ws):
     #        BACKWARD PASS        #
     ###############################
     # Select last ancestor
-    W_T = normalise(log_ws[-1], )
+    W_T = normalise(log_ws[-1])
     B_T = barker_move(keys[-1], W_T)
     x_T = uss[-1, B_T]
 
     def body(x_t, inp):
         op_key, xs_t_m_1, log_w_t_m_1, v_t_m_1, t_m_1 = inp
-        Gamma_log_w = transition_logpdf(x_t, xs_t_m_1, v_t_m_1, t_m_1)  # I swapped the order
+        Gamma_log_w = transition_logpdf(x_t, xs_t_m_1, v_t_m_1, t_m_1, *args, **kwargs)  # I swapped the order
         Gamma_log_w -= jnp.max(Gamma_log_w)
         log_w = Gamma_log_w + log_w_t_m_1
         w = normalise(log_w)
         B_t_m_1 = jax.random.choice(op_key, w.shape[0], p=w, shape=())
         x_t_m_1 = xs_t_m_1[B_t_m_1]
-        return x_t_m_1, (x_t_m_1, B_t_m_1)
+        return x_t_m_1, (x_t_m_1, B_t_m_1, normalise(Gamma_log_w))
 
     # Reverse arrays, ideally, should use jax.lax.scan(reverse=True) but it is simpler this way due to insertions.
     # xs[-2::-1] is the reversed list of xs[:-1], I know, not readable... Same for log_ws.
@@ -284,7 +219,8 @@ def backward_sampling_pass(key, transition_logpdf, vs, ts, uss, log_ws):
     inps = keys[:-1], uss[-2::-1], log_ws[-2::-1], vs[-2::-1], ts[-2::-1]
 
     # Run backward pass
-    _, (uss, Bs) = jax.lax.scan(body, x_T, inps)
+    _, (uss, Bs, Ws) = jax.lax.scan(body, x_T, inps)
+    # jax.debug.print('Ws: {}', Ws)
 
     # Insert last ancestor and particle
     uss = jnp.insert(uss, 0, x_T, axis=0)

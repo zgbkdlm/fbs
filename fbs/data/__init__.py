@@ -1,3 +1,3 @@
 from .base import Dataset
 from .bayesian import Crescent
-from .images import MNIST, CIFAR10, CelebAHQ
+from .images import MNIST, MNISTRestore, CIFAR10, CelebAHQ, CelebAHQRestore

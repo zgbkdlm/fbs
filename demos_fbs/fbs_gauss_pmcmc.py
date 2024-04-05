@@ -119,52 +119,42 @@ def likelihood_logpdf(v, u_prev, v_prev, t_prev):
     return jax.scipy.stats.norm.logpdf(v, cond_m, math.sqrt(dt) * B[1, 1])
 
 
-def init_sampler(key_, nsamples_, v0):
-    cond_m = m_ref[0] + cov_ref[0, 1] / cov_ref[1, 1] * (v0 - m_ref[1])
-    cond_var = cov_ref[0, 0] - cov_ref[0, 1] ** 2 / cov_ref[1, 1]
-    return (cond_m + jnp.sqrt(cond_var) * jax.random.normal(key_)) * jnp.ones((nsamples_,))
-#
-#
-# def ref_logpdf(x, v0):
+# def init_sampler(key_, v0, nsamples_):
 #     cond_m = m_ref[0] + cov_ref[0, 1] / cov_ref[1, 1] * (v0 - m_ref[1])
 #     cond_var = cov_ref[0, 0] - cov_ref[0, 1] ** 2 / cov_ref[1, 1]
-#     return jax.scipy.stats.norm.logpdf(x, cond_m, jnp.sqrt(cond_var))
+#     return (cond_m + jnp.sqrt(cond_var) * jax.random.normal(key_)) * jnp.ones((nsamples_,))
+#
 
-
-# def init_sampler(key_, nsamples_, _):
+# def init_sampler(key_, v0, nsamples_):
 #     return (m_ref[0] + jnp.sqrt(cov_ref[0, 0]) * jax.random.normal(key_)) * jnp.ones((nsamples_,))
 
 
-# def init_sampler(key_, nsamples_, _):
-#     return m_ref[0] + jnp.sqrt(cov_ref[0, 0]) * jax.random.normal(key_, (nsamples_, ))
-#
-#
-def ref_logpdf(x, _):
-    return jax.scipy.stats.norm.logpdf(x, m_ref[0], jnp.sqrt(cov_ref[0, 0]))
+def init_sampler(key_, v0, nsamples_):
+    return m_ref[0] + jnp.sqrt(cov_ref[0, 0]) * jax.random.normal(key_, (nsamples_, ))
 
 
-def fwd_ys_sampler(key_, y0_, _):
+def fwd_ys_sampler(key_, y0_):
     xy0 = jnp.array([0., y0_])
     return simulate_forward(xy0, key_)[:, 1]
 
 
 @jax.jit
-def mcmc_kernel(subkey_, uT_, log_ell_, yT_, xT_):
-    return pmcmc_kernel(subkey_, uT_, log_ell_, yT_, xT_,
-                        ts, y0,
-                        fwd_ys_sampler,
-                        init_sampler, ref_logpdf,
+def mcmc_kernel(subkey_, uT_, log_ell_, yT_):
+    return pmcmc_kernel(subkey_, uT_, log_ell_, yT_,
+                        y0, ts,
+                        fwd_ys_sampler, None,
+                        init_sampler,
                         transition_sampler, likelihood_logpdf,
-                        stratified, nparticles)
+                        stratified, nparticles, delta=None)
 
 
 # MCMC loop
 approx_cond_samples = np.zeros((nsamples,))
 uT, log_ell = 0., 0.
-yT, xT = 0., m_ref[0]
+yT, xT = fwd_ys_sampler(subkey, y0), m_ref[0]
 for i in range(nsamples):
     key, subkey = jax.random.split(key)
-    uT, log_ell, yT, xT, mcmc_state = mcmc_kernel(subkey, uT, log_ell, yT, xT)
+    uT, log_ell, yT, mcmc_state = mcmc_kernel(subkey, uT, log_ell, yT)
     approx_cond_samples[i] = uT
     print(i, f'acc_prob: {mcmc_state.acceptance_prob}', f'is_acc: {mcmc_state.is_accepted}')
 

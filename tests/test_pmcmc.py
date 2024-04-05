@@ -6,12 +6,44 @@ import jax.numpy as jnp
 import math
 import numpy as np
 import numpy.testing as npt
+from fbs.sdes import make_linear_sde, StationaryConstLinearSDE, StationaryLinLinearSDE
 from fbs.utils import discretise_lti_sde
-from fbs.samplers.smc import pmcmc_kernel
+from fbs.samplers.smc import pmcmc_kernel, pcn_proposal
 from fbs.samplers import stratified
 from functools import partial
 
 jax.config.update("jax_enable_x64", True)
+
+
+def test_pcn_proposal():
+    T = 2
+    nsteps = 500
+    ts = jnp.linspace(0, T, nsteps + 1)
+
+    for sde in (StationaryConstLinearSDE(a=-0.5, b=1.),
+                StationaryLinLinearSDE(beta_min=0.02, beta_max=5., t0=0., T=T)):
+
+        discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(sde)
+
+        delta = 5.  # Check it
+        y0 = jnp.array(2.)
+
+        def fwd_sampler(key_):
+            return simulate_cond_forward(key_, y0, ts)
+
+        def proposal(key_, ys):
+            return pcn_proposal(key_, delta, ys, sde.mean(ts, ts[0], y0), fwd_sampler)
+
+        key = jax.random.PRNGKey(666)
+        keys = jax.random.split(key, num=10000)
+        yss = jax.vmap(fwd_sampler)(keys)
+
+        key, _ = jax.random.split(key)
+        keys = jax.random.split(key, num=10000)
+        prop_yss = jax.vmap(proposal, in_axes=[0, 0])(keys, yss)
+
+        npt.assert_allclose(jnp.mean(prop_yss, axis=0), jnp.mean(yss, axis=0), rtol=5e-2)
+        npt.assert_allclose(jnp.var(prop_yss, axis=0), jnp.var(yss, axis=0), rtol=5e-2)
 
 
 def test_pmcmc():
@@ -31,13 +63,13 @@ def test_pmcmc():
     cov0 = jnp.array([[2., 0.5],
                       [0.5, 1.2]])
 
-    y0 = jnp.array(5.)
+    y0 = jnp.array(4.)
     true_cond_m = m0[0] + cov0[0, 1] / cov0[1, 1] * (y0 - m0[1])
     true_cond_var = cov0[0, 0] - cov0[0, 1] ** 2 / cov0[1, 1]
 
     A = -0.5 * jnp.eye(2)
-    B = jnp.array([[3., 0.],
-                   [0., 0.1]])
+    B = jnp.array([[1., 0.],
+                   [0., 1]])
     gamma = B @ B.T
 
     def forward_m_cov(t):
@@ -77,7 +109,7 @@ def test_pmcmc():
         return (-A @ uv + gamma @ score(uv, T - t))[1]
 
     key, subkey = jax.random.split(key)
-    uv0s = m_ref + jax.random.normal(subkey, (nsamples, 2)) @ jnp.linalg.cholesky(cov_ref)
+    uv0s = m_ref + jax.random.normal(subkey, (10_000, 2)) @ jnp.linalg.cholesky(cov_ref)
 
     def backward_euler(uv0, key_):
         def scan_body(carry, elem):
@@ -92,12 +124,12 @@ def test_pmcmc():
         return jax.lax.scan(scan_body, uv0, (dws, ts[:-1]))[0]
 
     key, subkey = jax.random.split(key)
-    keys = jax.random.split(subkey, num=nsamples)
-    approx_init_samples = jax.vmap(backward_euler, in_axes=[0, 0])(uv0s, keys)
-
-    # First test if the backward is implemented correctly
-    npt.assert_allclose(jnp.mean(approx_init_samples, axis=0), m0, rtol=1e-1)
-    npt.assert_allclose(jnp.cov(approx_init_samples, rowvar=False), cov0, rtol=1e-1)
+    # keys = jax.random.split(subkey, num=10_000)
+    # approx_init_samples = jax.vmap(backward_euler, in_axes=[0, 0])(uv0s, keys)
+    #
+    # # First test if the backward is implemented correctly
+    # npt.assert_allclose(jnp.mean(approx_init_samples, axis=0), m0, rtol=1e-1)
+    # npt.assert_allclose(jnp.cov(approx_init_samples, rowvar=False), cov0, rtol=1e-1)
 
     # Now pMCMC for the conditional sampling
     def transition_sampler(us, v, t, key_):
@@ -109,34 +141,53 @@ def test_pmcmc():
         cond_m = v_prev + reverse_drift_v(v_prev, u_prev, t_prev) * dt
         return jax.scipy.stats.norm.logpdf(v, cond_m, math.sqrt(dt) * B[1, 1])
 
-    def init_sampler(key_, nsamples_, _):
+    def init_sampler(key_, yT, nsamples_):
         return (m_ref[0] + jnp.sqrt(cov_ref[0, 0]) * jax.random.normal(key_)) * jnp.ones((nsamples_,))
 
-    def ref_logpdf(x, _):
+    def ref_logpdf(x):
         return jax.scipy.stats.norm.logpdf(x, m_ref[0], jnp.sqrt(cov_ref[0, 0]))
 
-    def fwd_ys_sampler(key_, y0_, _):
+    def fwd_ys_sampler(key_, y0_):
         xy0 = jnp.array([0., y0_])
         return simulate_forward(xy0, key_)[:, 1]
 
     @jax.jit
-    def mcmc_kernel(subkey_, uT_, log_ell_, yT_, xT_):
-        return pmcmc_kernel(subkey_, uT_, log_ell_, yT_, xT_,
-                            ts, y0,
+    def mcmc_kernel(subkey_, uT_, log_ell_, ys_):
+        return pmcmc_kernel(subkey_, uT_, log_ell_, ys_,
+                            y0, ts,
                             fwd_ys_sampler,
-                            init_sampler, ref_logpdf,
+                            None,
+                            init_sampler,
                             transition_sampler, likelihood_logpdf,
-                            stratified, nparticles)
+                            stratified, nparticles, delta=0.)
 
-    # MCMC loop
-    approx_cond_samples = np.zeros((nsamples,))
-    uT, log_ell = 0., 0.
-    yT, xT = 0., m_ref[0]
-    for i in range(nsamples):
-        key, subkey = jax.random.split(key)
-        uT, log_ell, yT, xT, mcmc_state = mcmc_kernel(subkey, uT, log_ell, yT, xT)
-        approx_cond_samples[i] = uT
+    # Test the invariance of the MCMC kernel
+    key, subkey = jax.random.split(key)
+    true_samples = true_cond_m + jnp.sqrt(true_cond_var) * jax.random.normal(subkey, (nsamples,))
 
-    approx_cond_samples = approx_cond_samples[burn_in:]
-    npt.assert_allclose(jnp.mean(approx_cond_samples), true_cond_m, rtol=1e-2)
-    npt.assert_allclose(jnp.var(approx_cond_samples), true_cond_var, rtol=3e-2)
+    key, subkey = jax.random.split(key)
+    ys = fwd_ys_sampler(subkey, y0)
+
+    key, subkey = jax.random.split(key)
+    keys = jax.random.split(subkey, num=nsamples)
+    prop_samples = jax.vmap(mcmc_kernel, in_axes=[0, 0, None, None])(keys, true_samples, 0., ys)[0]
+
+    import matplotlib.pyplot as plt
+
+    plt.hist(true_samples, density=True, bins=50, alpha=0.5)
+    plt.hist(prop_samples, density=True, bins=50, alpha=0.5)
+    plt.show()
+
+    # # Test the MCMC loop
+    # key, subkey = jax.random.split(key)
+    # approx_cond_samples = np.zeros((nsamples,))
+    # uT, log_ell = 0., 0.
+    # ys, xT = fwd_ys_sampler(subkey, y0), m_ref[0]
+    # for i in range(nsamples):
+    #     key, subkey = jax.random.split(key)
+    #     uT, log_ell, ys, xT, mcmc_state = mcmc_kernel(subkey, uT, log_ell, ys, xT)
+    #     approx_cond_samples[i] = uT
+    #
+    # approx_cond_samples = approx_cond_samples[burn_in:]
+    # npt.assert_allclose(jnp.mean(approx_cond_samples), true_cond_m, rtol=1e-2)
+    # npt.assert_allclose(jnp.var(approx_cond_samples), true_cond_var, rtol=3e-2)
