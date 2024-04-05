@@ -1,5 +1,5 @@
 """
-Gaussian process regression using pMCMC.
+Gaussian process regression using diffusion Gibbs.
 """
 import jax
 import jax.numpy as jnp
@@ -8,26 +8,26 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpyro as npr
 import argparse
-from fbs.samplers import bootstrap_filter, stratified
+from fbs.samplers import bootstrap_filter, stratified, gibbs_kernel
 from fbs.samplers.smc import bootstrap_backward_smoother
-from fbs.samplers import gibbs_kernel
-from fbs.sdes import make_linear_sde, StationaryConstLinearSDE, reverse_simulator
-from fbs.utils import bures_dist
+from fbs.sdes import make_linear_sde, StationaryConstLinearSDE, StationaryLinLinearSDE
 from functools import partial
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--d', type=int, default=10, help='The problem dimension.')
+parser.add_argument('--d', type=int, default=100, help='The problem dimension.')
 parser.add_argument('--nparticles', type=int, default=10, help='The number of particles.')
 parser.add_argument('--nsamples', type=int, default=1000, help='The number of samples to draw.')
+parser.add_argument('--sde', type=str, default='const', help='The type of forward SDE.')
 parser.add_argument('--explicit_backward', action='store_true', default=False,
                     help='Whether to explicitly sample the CSMC backward')
 parser.add_argument('--explicit_final', action='store_true', default=False,
                     help='Whether to ue ref in CSMC.')
 parser.add_argument('--marg', action='store_true', default=False, help='Whether marginalise out the Y path.')
 parser.add_argument('--id', type=int, default=666, help='The id of independent MC experiment.')
+parser.add_argument('--chain', type=int, default=0, help='The MCMC chain id.')
 args = parser.parse_args()
 
-jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_enable_x64", False)
 
 key = jax.random.PRNGKey(args.id)
 
@@ -74,7 +74,10 @@ nsteps = 200
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
 
-sde = StationaryConstLinearSDE(a=-0.5, b=1.)
+if args.sde == 'lin':
+    sde = StationaryLinLinearSDE(beta_min=0.02, beta_max=4., t0=0., T=T)
+else:
+    sde = StationaryConstLinearSDE(a=-0.5, b=1.)
 discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(sde)
 
 
@@ -115,11 +118,6 @@ def reverse_drift_v(v, u, t):
 
 def reverse_dispersion(t):
     return sde.dispersion(T - t)
-
-
-def rev_sim(key_, uv0):
-    return reverse_simulator(key_, uv0, ts, score, sde.drift, sde.dispersion,
-                             integrator='euler-maruyama', integration_nsteps=10)
 
 
 # Conditional sampling
@@ -180,8 +178,11 @@ gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde
 
 gibbs_samples = np.zeros((nsamples, d))
 accs = np.zeros((nsamples,), dtype=bool)
+for _ in range(args.chain):
+    key, _ = jax.random.split(key)
+
 for i in range(nsamples):
-    key, subkey = jax.random.split(subkey)
+    key, subkey = jax.random.split(key)
     x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, y0, us_star, bs_star)
     gibbs_samples[i] = x0
     accs[i] = acc[-1]
@@ -191,15 +192,13 @@ for i in range(nsamples):
 
 # Save results
 np.savez(f'./toy/results/gibbs{"-eb" if args.explicit_backward else ""}{"-ef" if args.explicit_final else ""}'
-         f'{"-marg" if args.marg else ""}-{args.id}',
+         f'{"-marg" if args.marg else ""}-{args.id}-{args.chain}',
          samples=gibbs_samples, gp_mean=gp_mean, gp_cov=gp_cov)
 
 # Plot
 gibbs_samples = gibbs_samples[burnin:]
 approx_gp_mean = jnp.mean(gibbs_samples, axis=0)
 approx_gp_cov = jnp.cov(gibbs_samples, rowvar=False)
-distance = bures_dist(gp_mean, gp_cov, approx_gp_mean, approx_gp_cov)
-print(f'Bures distance {distance}')
 
 plt.plot(zs, gp_mean)
 plt.fill_between(zs,

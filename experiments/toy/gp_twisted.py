@@ -8,18 +8,18 @@ import math
 import matplotlib.pyplot as plt
 import argparse
 from fbs.samplers import twisted_smc, stratified
-from fbs.sdes import make_linear_sde, StationaryConstLinearSDE
-from fbs.utils import bures_dist
+from fbs.sdes import make_linear_sde, StationaryConstLinearSDE, StationaryLinLinearSDE
 from functools import partial
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--d', type=int, default=10, help='The problem dimension.')
 parser.add_argument('--nparticles', type=int, default=10, help='The number of particles.')
 parser.add_argument('--nsamples', type=int, default=1000, help='The number of samples to draw.')
+parser.add_argument('--sde', type=str, default='const', help='The type of forward SDE.')
 parser.add_argument('--id', type=int, default=666, help='The id of independent MC experiment.')
 args = parser.parse_args()
 
-jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_enable_x64", False)
 
 key = jax.random.PRNGKey(args.id)
 
@@ -66,7 +66,10 @@ nsteps = 200
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
 
-sde = StationaryConstLinearSDE(a=-0.5, b=1.)
+if args.sde == 'lin':
+    sde = StationaryLinLinearSDE(beta_min=0.02, beta_max=4., t0=0., T=T)
+else:
+    sde = StationaryConstLinearSDE(a=-0.5, b=1.)
 discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(sde)
 
 
@@ -160,8 +163,6 @@ np.savez(f'./toy/results/twisted-{args.id}', samples=approx_cond_samples, gp_mea
 # Plot
 approx_gp_mean = jnp.mean(approx_cond_samples, axis=0)
 approx_gp_cov = jnp.cov(approx_cond_samples, rowvar=False)
-distance = bures_dist(gp_mean, gp_cov, approx_gp_mean, approx_gp_cov)
-print(f'Bures distance {distance}')
 
 plt.plot(zs, gp_mean)
 plt.fill_between(zs,

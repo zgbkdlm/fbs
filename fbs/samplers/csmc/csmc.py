@@ -71,8 +71,7 @@ def csmc_kernel(key: JKey,
                                    transition_sampler, measurement_cond_logpdf, cond_resampling, nsamples,
                                    **kwargs)
     if backward:
-        xs_star, bs_star = backward_sampling_pass(key_bwd, transition_logpdf, vs, ts, xss, log_ws,
-                                                  *args, **kwargs)
+        xs_star, bs_star = backward_sampling_pass(key_bwd, transition_logpdf, vs, ts, xss, log_ws, **kwargs)
     else:
         xs_star, bs_star = backward_scanning_pass(key_bwd, As, xss, log_ws[-1])
     return xs_star, bs_star
