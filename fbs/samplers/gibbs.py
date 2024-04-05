@@ -121,8 +121,8 @@ def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JA
         def init_sampler(key_, n_samples):
             return jax.random.normal(key_, (n_samples, *us.shape[1:]))
 
-        def init_likelihood_logpdf(v0, u0, v1, **kwargs):
-            return likelihood_logpdf(v0, u0, v1, ts[0], **kwargs)
+        def init_likelihood_logpdf(v0, u0s, v1, **kwargs):
+            return likelihood_logpdf(v0, u0s, v1, ts[0], **kwargs)
 
     else:
         def init_sampler(*_):
