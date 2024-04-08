@@ -1,13 +1,13 @@
 #!/bin/bash
 #SBATCH -A Berzelius-2024-58
 #SBATCH --gpus=1
-#SBATCH -o imgs-gibbs.log
+#SBATCH -o imgs-pmcmc.log
 #SBATCH -t 20:00:00
 #SBATCH -C "fat"
 
 source ~/.bashrc
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
-export XLA_PYTHON_CLIENT_MEM_FRACTION=.50
+export XLA_PYTHON_CLIENT_MEM_FRACTION=.40
 
 cd $WRKDIR/fbs
 source ./venv/bin/activate

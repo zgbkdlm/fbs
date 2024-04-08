@@ -7,7 +7,7 @@
 
 source ~/.bashrc
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
-export XLA_PYTHON_CLIENT_MEM_FRACTION=.50
+export XLA_PYTHON_CLIENT_MEM_FRACTION=.40
 
 cd $WRKDIR/fbs
 source ./venv/bin/activate
