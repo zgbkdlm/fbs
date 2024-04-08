@@ -156,12 +156,8 @@ def fwd_ys_sampler(key_, y0_):
     return simulate_cond_forward(key_, y0_, ts)
 
 
-def ref_sampler(key_, n):
+def ref_sampler(key_, _, n):
     return jax.random.normal(key_, (n, *x_shape))
-
-
-def ref_logpdf(x):
-    return jnp.sum(jax.scipy.stats.norm.logpdf(x, 0., 1.))
 
 
 if 'pmcmc' in args.method:
