@@ -37,12 +37,12 @@ for method in methods:
         results = np.load(filename)
         samples, gp_mean, gp_cov = results['samples'], results['gp_mean'], results['gp_cov']
 
-        if any(['gibbs', 'pmcmc' in method]):
+        if any([s in method for s in ['gibbs', 'pmcmc']]):
             approx_means = jax.vmap(partial(jnp.mean, axis=0))(samples)
             approx_covs = jax.vmap(partial(jnp.cov, rowvar=False))(samples)
 
             err_m = jnp.mean(jnp.abs(approx_means - gp_mean[None, :]))
-            err_var = jnp.mean(jnp.abs(jnp.diag(approx_covs - gp_cov[None, :, :])))
+            err_var = jnp.mean(jnp.abs(jnp.diagonal(approx_covs - gp_cov[None, :, :], axis1=1, axis2=2)))
             err_kl = jnp.mean(jax.vmap(kl, in_axes=[None, None, 0, 0])(gp_mean, gp_cov, approx_means, approx_covs))
             err_skew = jnp.mean(jnp.abs(scipy.stats.skew(samples, axis=1)))
             err_kurt = jnp.mean(jnp.abs(scipy.stats.kurtosis(samples, axis=1, fisher=True)))

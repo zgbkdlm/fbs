@@ -19,10 +19,15 @@ nparticles = 10
 
 methods = [f'gibbs-eb-{sde}-{nparticles}',
            f'pmcmc-0.005-{sde}-{nparticles}']
-method_labels = ['', '', '']
+method_labels = ['Gibbs-CSMC', 'pMCMC']
 max_mcs = 100
 max_lags = 100
 q = 0.95
+
+
+def autocorr_over_chains(chains):
+    return jnp.mean(np.vectorize(npr.diagnostics.autocorrelation, signature='(m,n)->(m,n)')(chains), axis=0)
+
 
 autocorrs = np.zeros((max_mcs, max_lags))
 
@@ -33,13 +38,12 @@ for method, method_label in zip(methods, method_labels):
         results = np.load(filename)
         samples = results['samples']
 
-        acs = jnp.mean(npr.diagnostics.autocorrelation(samples, axis=1)[:, max_lags, :], axis=0)
+        acs = autocorr_over_chains(samples)[:max_lags, :]
         autocorrs[mc_id] = np.quantile(acs, q=q, axis=-1)
 
     autocorr_mean = jnp.mean(autocorrs, axis=0)
     autocorr_std = jnp.std(autocorrs, axis=0)
-    ax.plot(jnp.arange(max_lags),
-            autocorr_mean, label=method_label)
+    ax.plot(jnp.arange(max_lags), autocorr_mean, c='black', label=method_label)
     ax.fill_between(jnp.arange(max_lags),
                     autocorr_mean - 1.96 * autocorr_std,
                     autocorr_mean + 1.96 * autocorr_std,
