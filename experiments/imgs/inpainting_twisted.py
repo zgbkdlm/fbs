@@ -36,6 +36,7 @@ args = parser.parse_args()
 dataset_name = args.dataset
 resolution = 28 if dataset_name == 'mnist' else int(dataset_name.split('-')[-1])
 nchannels = 1 if dataset_name == 'mnist' else 3
+cmap = 'gray' if nchannels == 1 else 'viridis'
 rect_size = args.rect_size
 
 print(f'Test inpainting-{rect_size} on {args.dataset}')
@@ -54,7 +55,7 @@ ts = jnp.linspace(0, T, nsteps + 1)
 key, subkey = jax.random.split(key)
 if dataset_name == 'mnist':
     d = (resolution, resolution, 1)
-    dataset = MNISTRestore(subkey, 'datasets/mnist.npz', task=f'inpaint-{rect_size}', test=True)
+    dataset = MNISTRestore(subkey, '../datasets/mnist.npz', task=f'inpaint-{rect_size}', test=True)
 elif 'celeba' in dataset_name:
     d = (resolution, resolution, 3)
     dataset = CelebAHQRestore(subkey, f'datasets/celeba_hq{resolution}.npy',
@@ -164,17 +165,18 @@ for k in range(args.ny0s):
     print(f'Running conditional sampler for {k}-th test sample.')
     key, subkey = jax.random.split(key)
     test_img, test_y0, mask = dataset_sampler(subkey)
+    path_head_img = f'./imgs/results_inpainting/imgs/{dataset_name}-{rect_size}-{k}'
+    path_head_arr = f'./imgs/results_inpainting/arrs/{dataset_name}-{rect_size}-{k}'
 
-    plt.imsave(f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_{k}_true.png', to_imsave(test_img),
-               cmap='gray' if nchannels == 1 else 'viridis')
-    plt.imsave(f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_{k}_corrupt.png',
+    plt.imsave(path_head_img + '-true.png', to_imsave(test_img), cmap=cmap)
+    np.save(path_head_arr + '-true', test_img)
+    plt.imsave(path_head_img + '-corrupt.png',
                to_imsave(dataset.concat(jnp.zeros(x_shape), test_y0, mask)),
-               cmap='gray' if nchannels == 1 else 'viridis')
+               cmap=cmap)
 
     for i in range(nsamples):
         key, subkey = jax.random.split(key)
         x0 = conditional_sampler(subkey, test_y0, mask_=mask)
-        plt.imsave(f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_twisted_{k}_{i}.png',
-                   to_imsave(x0),
-                   cmap='gray' if nchannels == 1 else 'viridis')
+        plt.imsave(path_head_img + f'-twisted-{i}.png', to_imsave(x0), cmap=cmap)
+        np.save(path_head_arr + f'-twisted-{i}', x0)
         print(f'Inpainting-{rect_size} | Twisted | iter: {i}')

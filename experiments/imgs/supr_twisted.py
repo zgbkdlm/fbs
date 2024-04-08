@@ -37,6 +37,7 @@ args = parser.parse_args()
 dataset_name = args.dataset
 resolution = 28 if dataset_name == 'mnist' else int(dataset_name.split('-')[-1])
 nchannels = 1 if dataset_name == 'mnist' else 3
+cmap = 'gray' if nchannels == 1 else 'viridis'
 sr_rate = args.rate
 
 print(f'Test super-resolution-x{sr_rate} on {args.dataset}')
@@ -55,7 +56,7 @@ ts = jnp.linspace(0, T, nsteps + 1)
 key, subkey = jax.random.split(key)
 if dataset_name == 'mnist':
     d = (resolution, resolution, 1)
-    dataset = MNISTRestore(subkey, 'datasets/mnist.npz', task=f'supr-{sr_rate}', test=True)
+    dataset = MNISTRestore(subkey, '../datasets/mnist.npz', task=f'supr-{sr_rate}', test=True)
 elif 'celeba' in dataset_name:
     d = (resolution, resolution, 3)
     dataset = CelebAHQRestore(subkey, f'datasets/celeba_hq{resolution}.npy',
@@ -166,17 +167,22 @@ for k in range(args.ny0s):
     print(f'Running conditional sampler for {k}-th test sample.')
     key, subkey = jax.random.split(key)
     test_img, test_y0, mask = dataset_sampler(subkey)
+    path_head_img = f'./imgs/results_supr/imgs/{dataset_name}-{sr_rate}-{"rm" if args.rnd_mask else ""}-{k}'
+    path_head_arr = f'./imgs/results_supr/arrs/{dataset_name}-{sr_rate}-{"rm" if args.rnd_mask else ""}-{k}'
 
-    plt.imsave(f'./tmp_figs/{dataset_name}-supr-{sr_rate}-{k}_true.png', to_imsave(test_img),
-               cmap='gray' if nchannels == 1 else 'viridis')
-    plt.imsave(f'./tmp_figs/{dataset_name}-supr-{sr_rate}-{k}_corrupt.png',
+    plt.imsave(path_head_img + '-true.png', to_imsave(test_img), cmap=cmap)
+    np.save(path_head_arr + '-true', test_img)
+    plt.imsave(path_head_img + '-corrupt.png',
                to_imsave(dataset.concat(jnp.zeros(x_shape), test_y0, mask)),
-               cmap='gray' if nchannels == 1 else 'viridis')
+               cmap=cmap)
+    low_res = resolution // sr_rate
+    plt.imsave(path_head_img + '-corrupt-lr.png',
+               to_imsave(jnp.reshape(test_y0, (low_res, low_res, nchannels))),
+               cmap=cmap)
 
     for i in range(nsamples):
         key, subkey = jax.random.split(key)
         x0 = conditional_sampler(subkey, test_y0, mask_=mask)
-        plt.imsave(f'./tmp_figs/{dataset_name}-supr-{sr_rate}-twisted_{k}_{i}.png',
-                   to_imsave(x0),
-                   cmap='gray' if nchannels == 1 else 'viridis')
+        plt.imsave(path_head_img + f'-twisted-{i}.png', to_imsave(x0), cmap=cmap)
+        np.save(path_head_arr + f'-twisted-{i}', x0)
         print(f'Supr-{sr_rate} | Twisted | iter: {i}')

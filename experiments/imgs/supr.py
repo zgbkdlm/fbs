@@ -27,7 +27,7 @@ parser.add_argument('--rate', type=int, default=4, help='The rate of super-resol
 parser.add_argument('--rnd_mask', action='store_true', default=False, help='Whether to use random sr mask.')
 parser.add_argument('--sde', type=str, default='lin')
 parser.add_argument('--method', type=str, default='gibbs', help='What method to do the conditional sampling. '
-                                                                'Options are filter, gibbs, gibbs-eb, '
+                                                                'Options are filter, gibbs, gibbs-eb, gibbs-eb-ef, '
                                                                 'pmcmc, and pmcmc-x.')
 parser.add_argument('--test_nsteps', type=int, default=500)
 parser.add_argument('--test_epoch', type=int, default=2999)
@@ -43,6 +43,7 @@ args = parser.parse_args()
 dataset_name = args.dataset
 resolution = 28 if dataset_name == 'mnist' else int(dataset_name.split('-')[-1])
 nchannels = 1 if dataset_name == 'mnist' else 3
+cmap = 'gray' if nchannels == 1 else 'viridis'
 sr_rate = args.rate
 
 print(f'Test super-resolution-x{sr_rate} on {args.dataset}')
@@ -61,7 +62,7 @@ ts = jnp.linspace(0, T, nsteps + 1)
 key, subkey = jax.random.split(key)
 if dataset_name == 'mnist':
     d = (resolution, resolution, 1)
-    dataset = MNISTRestore(subkey, 'datasets/mnist.npz', task=f'supr-{sr_rate}', test=True)
+    dataset = MNISTRestore(subkey, '../datasets/mnist.npz', task=f'supr-{sr_rate}', test=True)
 elif 'celeba' in dataset_name:
     d = (resolution, resolution, 3)
     dataset = CelebAHQRestore(subkey, f'datasets/celeba_hq{resolution}.npy',
@@ -163,16 +164,22 @@ def ref_logpdf(x):
     return jnp.sum(jax.scipy.stats.norm.logpdf(x, 0., 1.))
 
 
+if 'pmcmc' in args.method:
+    delta = None if len(args.method.split('-')) == 1 else float(args.method.split('-')[-1])
+else:
+    delta = None
+
+if 'gibbs' in args.method:
+    eb = True if 'eb' in args.method else False
+    ef = True if 'ef' in args.method else False
+else:
+    eb, ef = True, True
+
 pf = jax.jit(partial(gibbs_init, x0_shape=x_shape, ts=ts, fwd_sampler=fwd_sampler,
                      sde=sde, unpack=unpack,
                      transition_sampler=transition_sampler, transition_logpdf=transition_logpdf,
                      likelihood_logpdf=likelihood_logpdf,
                      nparticles=nparticles, method='filter', marg_y=args.marg))
-debug = jax.jit(partial(gibbs_init, x0_shape=x_shape, ts=ts, fwd_sampler=fwd_sampler,
-                        sde=sde, unpack=unpack,
-                        transition_sampler=transition_sampler, transition_logpdf=transition_logpdf,
-                        likelihood_logpdf=likelihood_logpdf,
-                        nparticles=nparticles, method='debug', marg_y=args.marg))
 gibbs_init = jax.jit(partial(gibbs_init, x0_shape=x_shape, ts=ts, fwd_sampler=fwd_sampler,
                              sde=sde, unpack=unpack,
                              transition_sampler=transition_sampler, transition_logpdf=transition_logpdf,
@@ -181,12 +188,7 @@ gibbs_init = jax.jit(partial(gibbs_init, x0_shape=x_shape, ts=ts, fwd_sampler=fw
 gibbs_kernel = jax.jit(partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, unpack=unpack,
                                nparticles=nparticles, transition_sampler=transition_sampler,
                                transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf,
-                               marg_y=args.marg, explicit_backward=True if args.method == 'gibbs-eb' else False,
-                               explicit_final=True))
-if 'pmcmc' in args.method:
-    delta = None if len(args.method.split('-')) == 1 else float(args.method.split('-')[-1])
-else:
-    delta = None
+                               marg_y=args.marg, explicit_backward=eb, explicit_final=ef))
 pmcmc_kernel = jax.jit(partial(pmcmc_kernel, ts=ts, fwd_ys_sampler=fwd_ys_sampler, sde=sde,
                                ref_sampler=ref_sampler, transition_sampler=transition_sampler,
                                likelihood_logpdf=likelihood_logpdf, resampling=stratified,
@@ -207,46 +209,46 @@ for k in range(args.ny0s):
     print(f'Running conditional sampler for {k}-th test sample.')
     key, subkey = jax.random.split(key)
     test_img, test_y0, mask = dataset_sampler(subkey)
+    path_head_img = f'./imgs/results_supr/imgs/{dataset_name}-{sr_rate}-{"rm" if args.rnd_mask else ""}-{k}'
+    path_head_arr = f'./imgs/results_supr/arrs/{dataset_name}-{sr_rate}-{"rm" if args.rnd_mask else ""}-{k}'
 
-    plt.imsave(f'./tmp_figs/{dataset_name}_supr-{sr_rate}_{k}_true.png', to_imsave(test_img),
-               cmap='gray' if nchannels == 1 else 'viridis')
-    plt.imsave(f'./tmp_figs/{dataset_name}-supr-{sr_rate}_{k}_corrupt.png',
+    plt.imsave(path_head_img + '-true.png', to_imsave(test_img), cmap=cmap)
+    np.save(path_head_arr + '-true', test_img)
+    plt.imsave(path_head_img + '-corrupt.png',
                to_imsave(dataset.concat(jnp.zeros(x_shape), test_y0, mask)),
-               cmap='gray' if nchannels == 1 else 'viridis')
+               cmap=cmap)
     low_res = resolution // sr_rate
-    plt.imsave(f'./tmp_figs/{dataset_name}-supr-{sr_rate}_{k}_corrupt_.png',
+    plt.imsave(path_head_img + '-corrupt-lr.png',
                to_imsave(jnp.reshape(test_y0, (low_res, low_res, nchannels))),
-               cmap='gray' if nchannels == 1 else 'viridis')
+               cmap=cmap)
 
     if args.method == 'filter':
         for i in range(nsamples):
             key, subkey = jax.random.split(key)
             x0, _ = pf(subkey, test_y0, mask_=mask)
-            plt.imsave(f'./tmp_figs/{dataset_name}_supr-{sr_rate}'
-                       f'_filter{"_marg" if args.marg else ""}_{k}_{i}.png',
-                       to_imsave(dataset.concat(x0, test_y0, mask)),
-                       cmap='gray' if nchannels == 1 else 'viridis')
+            restored = dataset.concat(x0, test_y0, mask)
+            plt.imsave(path_head_img + f'-filter{"-marg" if args.marg else ""}-{i}.png', to_imsave(restored), cmap=cmap)
+            np.save(path_head_arr + f'-filter{"-marg" if args.marg else ""}-{i}', restored)
             print(f'Supr-{sr_rate} | filter | iter: {i}')
-    elif args.method == 'debug':
-        key, subkey = jax.random.split(key)
-        x0s, _ = debug(subkey, test_y0, mask_=mask)
-        np.save(f'x0s-filter-{k}', x0s)
     elif 'gibbs' in args.method:
         key, subkey = jax.random.split(key)
         x0, us_star = gibbs_init(subkey, test_y0, mask_=mask)
         bs_star = jnp.zeros((nsteps + 1), dtype=int)
-        plt.imsave(f'./tmp_figs/{dataset_name}_supr-{sr_rate}_gibbs_{k}_init.png',
-                   to_imsave(dataset.concat(x0, test_y0, mask)),
-                   cmap='gray' if nchannels == 1 else 'viridis')
+        restored = dataset.concat(x0, test_y0, mask)
+        plt.imsave(path_head_img + '-gibbs-init.png', to_imsave(restored), cmap=cmap)
+        np.save(path_head_arr + '-gibbs-init', restored)
 
         for i in range(nsamples):
             key, subkey = jax.random.split(key)
             x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, test_y0, us_star, bs_star, mask_=mask)
-            sample = us_star[-1]
+            restored = dataset.concat(us_star[-1], test_y0, mask)
             plt.imsave(
-                f'./tmp_figs/{dataset_name}_supr-{sr_rate}_gibbs{"_marg" if args.marg else ""}_{k}_{i}.png',
-                to_imsave(dataset.concat(us_star[-1], test_y0, mask)),
-                cmap='gray' if nchannels == 1 else 'viridis')
+                path_head_img + f'-gibbs{"-eb" if eb else ""}{"-ef" if ef else ""}{"-marg" if args.marg else ""}-{i}.png',
+                to_imsave(restored),
+                cmap=cmap)
+            np.save(
+                path_head_arr + f'-gibbs{"-eb" if eb else ""}{"-ef" if ef else ""}{"-marg" if args.marg else ""}-{i}',
+                restored)
 
             print(f'Inpainting-{sr_rate} | Gibbs | iter: {i}, acc: {acc}')
     elif 'pmcmc' in args.method:
@@ -255,9 +257,9 @@ for k in range(args.ny0s):
         for i in range(nsamples):
             key, subkey = jax.random.split(key)
             x0, log_ell, ys, mcmc_state = pmcmc_kernel(subkey, x0, log_ell, ys, test_y0, mask_=mask)
-            plt.imsave(
-                f'./tmp_figs/{dataset_name}_supr-{sr_rate}_pmcmc_{k}_{i}.png',
-                to_imsave(dataset.concat(x0, test_y0, mask)), cmap='gray' if nchannels == 1 else 'viridis')
+            restored = dataset.concat(x0, test_y0, mask)
+            plt.imsave(path_head_img + f'-pmcmc-{delta}-{i}.png', to_imsave(restored), cmap=cmap)
+            np.save(path_head_arr + f'-pmcmc-{delta}-{i}', restored)
             print(f'Inpainting-{sr_rate} | pMCMC {delta} | iter: {i}, acc_prob: {mcmc_state.acceptance_prob}')
     else:
         raise ValueError(f"Unknown method {args.method}")

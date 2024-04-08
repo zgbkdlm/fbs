@@ -56,7 +56,7 @@ ts = jnp.linspace(0, T, nsteps + 1)
 key, subkey = jax.random.split(key)
 if dataset_name == 'mnist':
     d = (resolution, resolution, 1)
-    dataset = MNISTRestore(subkey, 'datasets/mnist.npz', task='inpaint-15')
+    dataset = MNISTRestore(subkey, '../datasets/mnist.npz', task='inpaint-15')
 elif 'celeba' in dataset_name:
     d = (resolution, resolution, 3)
     dataset = CelebAHQRestore(subkey, f'datasets/celeba_hq{resolution}.npy', task='inpaint-15', resolution=resolution)
