@@ -58,22 +58,18 @@ def bootstrap_filter(transition_sampler: Callable[[JArray, JArray, FloatScalar, 
     def scan_body(carry, elem):
         us_prev, log_nell = carry
         v, v_prev, t_prev, key_ = elem
+        key_proposal, key_resampling = jax.random.split(key_)
 
-        us = transition_sampler(us_prev, v_prev, t_prev, key_, **kwargs)
+        us = transition_sampler(us_prev, v_prev, t_prev, key_proposal, **kwargs)
 
-        if log:
-            log_weights = measurement_cond_pdf(v, us_prev, v_prev, t_prev, **kwargs)
-            _c = jax.scipy.special.logsumexp(log_weights)
-            log_nell -= _c - math.log(nparticles)
-            log_weights = log_weights - _c
-            weights = jnp.exp(log_weights)
-        else:
-            weights = measurement_cond_pdf(v, us_prev, v_prev, t_prev, **kwargs)
-            log_nell -= jnp.log(jnp.mean(weights))
-            weights = weights / jnp.sum(weights)
+        log_weights = measurement_cond_pdf(v, us_prev, v_prev, t_prev, **kwargs)
+        _c = jax.scipy.special.logsumexp(log_weights)
+        log_nell -= _c - math.log(nparticles)
+        log_weights = log_weights - _c
+        inds = resampling(jnp.exp(log_weights), key_resampling)
 
         _, subkey_ = jax.random.split(key_)
-        us = us[resampling(weights, subkey_), ...]
+        us = us[inds, ...]
 
         return (us, log_nell), None if return_last else us
 

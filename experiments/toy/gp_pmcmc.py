@@ -158,7 +158,7 @@ def pmcmc_init(key_):
     path_y = fwd_ys_sampler(key_fwd, y0)
     vs = path_y[::-1]
     x0s, log_ell = bootstrap_filter(transition_sampler, likelihood_logpdf, vs, ts, ref_sampler, key_bf, nparticles,
-                                     stratified, log=True, return_last=True)
+                                    stratified, log=True, return_last=True)
     return x0s[0], log_ell, fwd_ys_sampler(key_ys, y0)
 
 
