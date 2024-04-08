@@ -15,7 +15,7 @@ source ./venv/bin/activate
 cd experiments
 
 dataset=$1
-nparticles=$1
+nparticles=$2
 
 if [[ "$dataset" == "mnist" ]]
 then

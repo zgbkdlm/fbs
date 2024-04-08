@@ -4,7 +4,7 @@ export XLA_PYTHON_CLIENT_PREALLOCATE=false
 export XLA_PYTHON_CLIENT_MEM_FRACTION=.40
 
 dataset=$1
-nparticles=$1
+nparticles=$2
 
 if [[ "$dataset" == "mnist" ]]
 then
