@@ -1,5 +1,11 @@
 #!/bin/bash
 
+mkdir -p imgs/results_supr/arrs
+mkdir -p imgs/results_supr/imgs
+
+mkdir -p imgs/results_inpainting/arrs
+mkdir -p imgs/results_inpainting/imgs
+
 dataset=$1
 nparticles=$1
 
