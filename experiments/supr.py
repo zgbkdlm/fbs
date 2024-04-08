@@ -11,8 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from fbs.data import CelebAHQRestore, MNISTRestore
 from fbs.data.images import normalise
-from fbs.sdes import make_linear_sde, StationaryConstLinearSDE, \
-    StationaryLinLinearSDE, StationaryExpLinearSDE
+from fbs.sdes import make_linear_sde, StationaryConstLinearSDE, StationaryLinLinearSDE
 from fbs.samplers import gibbs_init, gibbs_kernel
 from fbs.samplers.smc import pmcmc_kernel
 from fbs.samplers.resampling import stratified

@@ -1,5 +1,5 @@
 r"""
-Inpainting experiment using the twisted diffusion sampler.
+Super-resolution experiment using the twisted diffusion sampler.
 
 Run the script under the folder `./experiments`.
 """
@@ -11,17 +11,18 @@ import matplotlib.pyplot as plt
 import numpy as np
 from fbs.data import CelebAHQRestore, MNISTRestore
 from fbs.data.images import normalise
-from fbs.sdes import make_linear_sde, StationaryConstLinearSDE, \
-    StationaryLinLinearSDE
+from fbs.sdes import make_linear_sde, StationaryConstLinearSDE, StationaryLinLinearSDE
 from fbs.samplers import twisted_smc, stratified
 from fbs.nn.models import make_st_nn
 from fbs.nn.unet import UNet
 from functools import partial
 
 # Parse arguments
-parser = argparse.ArgumentParser(description='Inpainting using the twisted diffusion sampler.')
+parser = argparse.ArgumentParser(description='Superresolution using the twisted diffusion sampler.')
 parser.add_argument('--dataset', type=str, default='mnist', help='Which dataset. Options are mnist, celeba-64, '
                                                                  'or celeba-128.')
+parser.add_argument('--rate', type=int, default=4, help='The rate of super-resolution.')
+parser.add_argument('--rnd_mask', action='store_true', default=False, help='Whether to use random sr mask.')
 parser.add_argument('--rect_size', type=int, default=15, help='The w/h of the inpainting rectangle.')
 parser.add_argument('--sde', type=str, default='lin')
 parser.add_argument('--test_nsteps', type=int, default=500)
@@ -36,9 +37,9 @@ args = parser.parse_args()
 dataset_name = args.dataset
 resolution = 28 if dataset_name == 'mnist' else int(dataset_name.split('-')[-1])
 nchannels = 1 if dataset_name == 'mnist' else 3
-rect_size = args.rect_size
+sr_rate = args.rate
 
-print(f'Test inpainting-{rect_size} on {args.dataset}')
+print(f'Test super-resolution-x{sr_rate} on {args.dataset}')
 
 # General configs
 # jax.config.update("jax_enable_x64", True)
@@ -54,13 +55,14 @@ ts = jnp.linspace(0, T, nsteps + 1)
 key, subkey = jax.random.split(key)
 if dataset_name == 'mnist':
     d = (resolution, resolution, 1)
-    dataset = MNISTRestore(subkey, 'datasets/mnist.npz', task=f'inpaint-{rect_size}', test=True)
+    dataset = MNISTRestore(subkey, 'datasets/mnist.npz', task=f'supr-{sr_rate}', test=True)
 elif 'celeba' in dataset_name:
     d = (resolution, resolution, 3)
     dataset = CelebAHQRestore(subkey, f'datasets/celeba_hq{resolution}.npy',
-                              task=f'inpaint-{rect_size}', resolution=resolution, test=True)
+                              task=f'supr-{sr_rate}', resolution=resolution, test=True)
 else:
     raise NotImplementedError(f'{dataset_name} not implemented.')
+dataset.sr_random = args.rnd_mask
 
 # Define the forward noising process
 if args.sde == 'const':
@@ -82,8 +84,8 @@ param = np.load(filename)['ema_param' if args.test_ema else 'param']
 # Conditional sampling
 nparticles = args.nparticles
 nsamples = args.nsamples
-x_shape = (rect_size ** 2, nchannels)
-y_shape = (resolution ** 2 - rect_size ** 2, nchannels)
+x_shape = dataset.unobs_shape
+y_shape = (resolution ** 2 - x_shape[0], nchannels)
 xy_shape = (resolution, resolution, nchannels)
 
 
@@ -165,16 +167,16 @@ for k in range(args.ny0s):
     key, subkey = jax.random.split(key)
     test_img, test_y0, mask = dataset_sampler(subkey)
 
-    plt.imsave(f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_{k}_true.png', to_imsave(test_img),
+    plt.imsave(f'./tmp_figs/{dataset_name}-supr-{sr_rate}-{k}_true.png', to_imsave(test_img),
                cmap='gray' if nchannels == 1 else 'viridis')
-    plt.imsave(f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_{k}_corrupt.png',
+    plt.imsave(f'./tmp_figs/{dataset_name}-supr-{sr_rate}-{k}_corrupt.png',
                to_imsave(dataset.concat(jnp.zeros(x_shape), test_y0, mask)),
                cmap='gray' if nchannels == 1 else 'viridis')
 
     for i in range(nsamples):
         key, subkey = jax.random.split(key)
         x0 = conditional_sampler(subkey, test_y0, mask_=mask)
-        plt.imsave(f'./tmp_figs/{dataset_name}_inpainting-{rect_size}_twisted_{k}_{i}.png',
+        plt.imsave(f'./tmp_figs/{dataset_name}-supr-{sr_rate}-twisted_{k}_{i}.png',
                    to_imsave(x0),
                    cmap='gray' if nchannels == 1 else 'viridis')
-        print(f'Inpainting-{rect_size} | Twisted | iter: {i}')
+        print(f'Supr-{sr_rate} | Twisted | iter: {i}')

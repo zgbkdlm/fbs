@@ -2,11 +2,11 @@
 #SBATCH -A Berzelius-2024-58
 #SBATCH --gpus=1
 #SBATCH -o toy-gibbs.log
-#SBATCH -t 02:00:00
+#SBATCH -t 01-10:00
 
 source ~/.bashrc
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
-export XLA_PYTHON_CLIENT_MEM_FRACTION=.05
+export XLA_PYTHON_CLIENT_MEM_FRACTION=.02
 
 cd $WRKDIR/fbs
 source ./venv/bin/activate

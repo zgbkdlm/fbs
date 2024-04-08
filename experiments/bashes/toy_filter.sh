@@ -2,7 +2,7 @@
 #SBATCH -A Berzelius-2024-58
 #SBATCH --gpus=1
 #SBATCH -o toy-filter.log
-#SBATCH -t 02:00:00
+#SBATCH -t 01-10:00
 
 source ~/.bashrc
 export XLA_PYTHON_CLIENT_PREALLOCATE=false

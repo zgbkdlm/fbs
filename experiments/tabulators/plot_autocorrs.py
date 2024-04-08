@@ -16,10 +16,11 @@ jax.config.update("jax_enable_x64", True)
 
 sde = 'const'
 nparticles = 10
+delta = 0.005
 
 methods = [f'gibbs-eb-{sde}-{nparticles}',
-           f'pmcmc-0.005-{sde}-{nparticles}']
-method_labels = ['Gibbs-CSMC', 'pMCMC']
+           f'pmcmc-{delta}-{sde}-{nparticles}']
+method_labels = ['Gibbs-CSMC', f'pMCMC-{delta}']
 max_mcs = 100
 max_lags = 100
 q = 0.95
@@ -47,9 +48,12 @@ for method, method_label in zip(methods, method_labels):
     ax.fill_between(jnp.arange(max_lags),
                     autocorr_mean - 1.96 * autocorr_std,
                     autocorr_mean + 1.96 * autocorr_std,
-                    alpha=0.3, color='black', edgecolor='none')
+                    alpha=0.1, color='black', edgecolor='none')
 
 ax.grid(linestyle='--', alpha=0.3, which='both')
+ax.set_xlabel('Lag')
+ax.set_ylabel('Autocorrelation')
 plt.tight_layout(pad=0.1)
 plt.legend()
+plt.savefig('figs/autocorrs.pdf', transparent=True)
 plt.show()

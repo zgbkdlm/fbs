@@ -1,7 +1,7 @@
 #!/bin/bash
 
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
-export XLA_PYTHON_CLIENT_MEM_FRACTION=.05
+export XLA_PYTHON_CLIENT_MEM_FRACTION=.02
 
 nparticles=$1
 sde=$2
