@@ -2,8 +2,9 @@ import jax.numpy as jnp
 import jax.random
 import numpy.testing as npt
 import scipy
+import pytest
 from fbs.data.base import Dataset
-from fbs.data import Crescent, CelebAHQRestore
+from fbs.data import Crescent, ImageRestore
 from fbs.sdes import euler_maruyama
 
 
@@ -67,3 +68,23 @@ class TestCrescent:
             for dim in range(3):
                 npt.assert_allclose(scipy.stats.wasserstein_distance(true_samples[:, dim], langevin_samples[:, dim]),
                                     0., atol=2e-1)
+
+
+class TestImgs:
+
+    @pytest.mark.parametrize('task', ['inpainting-8', 'supr-4'])
+    def test_concat_unpack(self, task):
+        img_shape = (32, 32, 5)
+        key = jax.random.PRNGKey(666)
+
+        dataset = ImageRestore(task=task, image_shape=img_shape, sr_random=True)
+
+        key, subkey = jax.random.split(key)
+        true_img = jax.random.uniform(subkey, img_shape)
+
+        key, subkey = jax.random.split(key)
+        mask = dataset.gen_mask(subkey)
+        x, y = dataset.unpack(true_img, mask)
+        xy = dataset.concat(x, y, mask)
+
+        npt.assert_array_equal(true_img, xy)

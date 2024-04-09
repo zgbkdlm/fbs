@@ -231,9 +231,12 @@ class ImageRestore(Dataset):
     unobs_shape: Tuple[int, int]
     sr_random: bool = True
 
-    def __init__(self, task: str, sr_random: bool = True):
-        w, h, c = self.image_shape
-        s = int(self.task.split('-')[-1])
+    def __init__(self, task: str, image_shape: Tuple[int, int, int], sr_random: bool = True):
+        self.image_shape = image_shape
+        self.task = task
+
+        w, h, c = image_shape
+        s = int(task.split('-')[-1])
         if 'inpaint' in task:
             self.unobs_shape = (s ** 2, c)
         elif 'supr' in task:
@@ -375,8 +378,7 @@ class MNISTRestore(ImageRestore):
             xs = jnp.reshape(xs, (60000, 28, 28, 1))
 
         self.xs = self.standardise(xs).astype('float32')
-        self.image_shape = (28, 28, 1)
-        super().__init__(task)
+        super().__init__(task, (28, 28, 1))
 
 
 class CelebAHQRestore(ImageRestore):
@@ -399,8 +401,7 @@ class CelebAHQRestore(ImageRestore):
             self.n = 29000
             self.xs = data[1000:]
 
-        self.image_shape = (resolution, resolution, 3)
-        super().__init__(task)
+        super().__init__(task, (resolution, resolution, 3))
 
 
 def normalise(img: JArray, method: str = 'clip') -> JArray:
