@@ -7,7 +7,7 @@ mkdir -p imgs/results_inpainting/arrs
 mkdir -p imgs/results_inpainting/imgs
 
 dataset=$1
-nparticles=$1
+nparticles=$2
 
 sbatch bashes/imgs_filter.sh $dataset $nparticles
 sbatch bashes/imgs_gibbs.sh $dataset $nparticles
