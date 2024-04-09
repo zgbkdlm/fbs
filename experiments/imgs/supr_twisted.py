@@ -166,8 +166,8 @@ for k in range(args.ny0s):
     print(f'Running conditional sampler for {k}-th test sample.')
     key, subkey = jax.random.split(key)
     test_img, test_y0, mask = dataset_sampler(subkey)
-    path_head_img = f'./imgs/results_supr/imgs/{dataset_name}-{sr_rate}{"-rm" if args.rnd_mask else ""}-{k}'
-    path_head_arr = f'./imgs/results_supr/arrs/{dataset_name}-{sr_rate}{"-rm" if args.rnd_mask else ""}-{k}'
+    path_head_img = f'./imgs/results_supr/imgs/{dataset_name}-{sr_rate}{"-rm" if args.rnd_mask else ""}-{args.sde}-{nparticles}-{k}'
+    path_head_arr = f'./imgs/results_supr/arrs/{dataset_name}-{sr_rate}{"-rm" if args.rnd_mask else ""}-{args.sde}-{nparticles}-{k}'
 
     plt.imsave(path_head_img + '-true.png', to_imsave(test_img), cmap=cmap)
     np.savez(path_head_arr + '-true', test_img=test_img, mask=mask)
