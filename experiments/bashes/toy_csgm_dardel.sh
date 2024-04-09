@@ -5,7 +5,7 @@
 #SBATCH -n 20
 #SBATCH --mem=16G
 #SBATCH -a 0-99
-#SBATCH -t 02:00:00
+#SBATCH -t 04:00:00
 
 source ~/.bashrc
 
@@ -16,4 +16,4 @@ cd experiments
 
 sde=$1
 
-python toy/gp_csgm.py --id=$SLURM_ARRAY_TASK_ID --d=100 --nsamples=10000 --sde=$sde
+python -u toy/gp_csgm.py --id=$SLURM_ARRAY_TASK_ID --d=100 --nsamples=10000 --sde=$sde | tee -a logs/toy-csgm.log
