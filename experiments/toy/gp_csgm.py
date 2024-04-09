@@ -113,8 +113,7 @@ nsamples = args.nsamples
 def conditional_sampler(key_):
     key_init, key_sde = jax.random.split(key_, num=2)
     u0 = cond_ref_sampler(key_init)
-    uT = euler_maruyama(key_sde, u0, ts, reverse_drift, reverse_dispersion,
-                        integration_nsteps=1, return_path=False)
+    uT = euler_maruyama(key_sde, u0, ts, reverse_drift, reverse_dispersion, integration_nsteps=1, return_path=False)
     return uT
 
 

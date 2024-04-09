@@ -344,7 +344,7 @@ class ImageRestore(Dataset):
         return x, y
 
     def concat(self, x: JArray, y: JArray, mask: InpaintingMask) -> JArray:
-        """The reverse operation of `unpack2`."""
+        """The reverse operation of `unpack`."""
         img_w, img_h, img_c = self.image_shape
         unobs_inds_ravelled, obs_inds_ravelled = mask.unobs_inds_ravelled, mask.obs_inds_ravelled
 

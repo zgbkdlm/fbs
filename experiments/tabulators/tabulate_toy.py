@@ -18,7 +18,8 @@ nparticles = 10
 methods = [f'filter-{sde}-{nparticles}',
            f'gibbs-eb-{sde}-{nparticles}',
            f'pmcmc-0.005-{sde}-{nparticles}',
-           f'twisted-{sde}-{nparticles}']
+           f'twisted-{sde}-{nparticles}',
+           f'csgm-{sde}']
 max_mcs = 100
 q = 0.95
 
