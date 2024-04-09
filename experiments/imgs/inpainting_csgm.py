@@ -146,6 +146,7 @@ for k in range(args.ny0s):
     for i in range(nsamples):
         key, subkey = jax.random.split(key)
         x0 = conditional_sampler(subkey, test_y0, mask)
-        plt.imsave(path_head_img + f'-csgm-{i}.png', to_imsave(x0), cmap=cmap)
-        np.save(path_head_arr + f'-csgm-{i}', x0)
+        restored = dataset.concat(x0, test_y0, mask)
+        plt.imsave(path_head_img + f'-csgm-{i}.png', to_imsave(restored), cmap=cmap)
+        np.save(path_head_arr + f'-csgm-{i}', restored)
         print(f'Inpainting-{rect_size} | cSGM | iter: {i}')
