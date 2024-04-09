@@ -17,4 +17,4 @@ cd experiments
 nparticles=$1
 sde=$2
 
-python toy/gp_twisted.py --id=$SLURM_ARRAY_TASK_ID --d=100 --nsamples=10000 --nparticles=$nparticles --sde=$sde | tee -a logs/toy-twisted.log
+python -u toy/gp_twisted.py --id=$SLURM_ARRAY_TASK_ID --d=100 --nsamples=10000 --nparticles=$nparticles --sde=$sde | tee -a logs/toy-twisted.log

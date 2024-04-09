@@ -18,4 +18,4 @@ nparticles=$1
 sde=$2
 delta=$3
 
-python toy/gp_pmcmc.py --id=$SLURM_ARRAY_TASK_ID --d=100 --nsamples=10000 --nparticles=$nparticles --sde=$sde --delta=$delta | tee -a logs/toy-pmcmc.log
+python -u toy/gp_pmcmc.py --id=$SLURM_ARRAY_TASK_ID --d=100 --nsamples=10000 --nparticles=$nparticles --sde=$sde --delta=$delta | tee -a logs/toy-pmcmc.log

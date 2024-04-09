@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import math
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import argparse
 from fbs.samplers import bootstrap_filter, stratified
 from fbs.sdes import make_linear_sde, StationaryConstLinearSDE, StationaryLinLinearSDE
@@ -51,14 +51,14 @@ joint_cov = jnp.concatenate([jnp.concatenate([cov_mat, cov_mat], axis=1),
                              jnp.concatenate([cov_mat, cov_mat + obs_var * jnp.eye(d)], axis=1)],
                             axis=0)
 
-plt.plot(zs, fs)
-plt.scatter(zs, y0, s=1)
-plt.plot(zs, gp_mean)
-plt.fill_between(zs,
-                 gp_mean - 1.96 * jnp.sqrt(jnp.diag(gp_cov)),
-                 gp_mean + 1.96 * jnp.sqrt(jnp.diag(gp_cov)),
-                 alpha=0.3, color='black', edgecolor='none')
-plt.show()
+# plt.plot(zs, fs)
+# plt.scatter(zs, y0, s=1)
+# plt.plot(zs, gp_mean)
+# plt.fill_between(zs,
+#                  gp_mean - 1.96 * jnp.sqrt(jnp.diag(gp_cov)),
+#                  gp_mean + 1.96 * jnp.sqrt(jnp.diag(gp_cov)),
+#                  alpha=0.3, color='black', edgecolor='none')
+# plt.show()
 
 # SDE noising process
 T = 1.
@@ -164,17 +164,17 @@ np.savez(f'./toy/results/filter-{args.sde}-{args.nparticles}-{args.id}',
          samples=approx_cond_samples, gp_mean=gp_mean, gp_cov=gp_cov)
 
 # Plot
-approx_gp_mean = jnp.mean(approx_cond_samples, axis=0)
-approx_gp_cov = jnp.cov(approx_cond_samples, rowvar=False)
-
-plt.plot(zs, gp_mean)
-plt.fill_between(zs,
-                 gp_mean - 1.96 * jnp.sqrt(jnp.diag(gp_cov)),
-                 gp_mean + 1.96 * jnp.sqrt(jnp.diag(gp_cov)),
-                 alpha=0.3, color='black', edgecolor='none')
-plt.plot(zs, approx_gp_mean)
-plt.fill_between(zs,
-                 approx_gp_mean - 1.96 * jnp.sqrt(jnp.diag(approx_gp_cov)),
-                 approx_gp_mean + 1.96 * jnp.sqrt(jnp.diag(approx_gp_cov)),
-                 alpha=0.3, color='tab:red', edgecolor='none')
-plt.show()
+# approx_gp_mean = jnp.mean(approx_cond_samples, axis=0)
+# approx_gp_cov = jnp.cov(approx_cond_samples, rowvar=False)
+#
+# plt.plot(zs, gp_mean)
+# plt.fill_between(zs,
+#                  gp_mean - 1.96 * jnp.sqrt(jnp.diag(gp_cov)),
+#                  gp_mean + 1.96 * jnp.sqrt(jnp.diag(gp_cov)),
+#                  alpha=0.3, color='black', edgecolor='none')
+# plt.plot(zs, approx_gp_mean)
+# plt.fill_between(zs,
+#                  approx_gp_mean - 1.96 * jnp.sqrt(jnp.diag(approx_gp_cov)),
+#                  approx_gp_mean + 1.96 * jnp.sqrt(jnp.diag(approx_gp_cov)),
+#                  alpha=0.3, color='tab:red', edgecolor='none')
+# plt.show()
