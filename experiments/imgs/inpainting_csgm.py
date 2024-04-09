@@ -78,7 +78,6 @@ filename = f'./checkpoints/{dataset_name}_{args.sde}_{args.test_epoch}.npz'
 param = np.load(filename)['ema_param' if args.test_ema else 'param']
 
 # Conditional sampling
-nparticles = args.nparticles
 nsamples = args.nsamples
 x_shape = (rect_size ** 2, nchannels)
 y_shape = (resolution ** 2 - rect_size ** 2, nchannels)

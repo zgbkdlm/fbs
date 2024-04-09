@@ -12,10 +12,8 @@ import numpy as np
 from fbs.data import CelebAHQRestore, MNISTRestore
 from fbs.data.images import normalise
 from fbs.sdes import make_linear_sde, StationaryConstLinearSDE, StationaryLinLinearSDE
-from fbs.samplers import twisted_smc, stratified
 from fbs.nn.models import make_st_nn
 from fbs.nn.unet import UNet
-from functools import partial
 
 # Parse arguments
 parser = argparse.ArgumentParser(description='Superresolution using the standard conditional score matching.')
@@ -82,7 +80,6 @@ filename = f'./checkpoints/{dataset_name}_{args.sde}_{args.test_epoch}.npz'
 param = np.load(filename)['ema_param' if args.test_ema else 'param']
 
 # Conditional sampling
-nparticles = args.nparticles
 nsamples = args.nsamples
 x_shape = dataset.unobs_shape
 y_shape = (resolution ** 2 - x_shape[0], nchannels)
