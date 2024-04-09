@@ -25,7 +25,8 @@ path_head = f'./imgs/results_{task.split("-")[0]}/arrs/{dataset}-{task.split("-"
 methods = [f'filter',
            f'gibbs-eb-ef',
            f'pmcmc-0.005',
-           f'twisted']
+           f'twisted',
+           f'csgm']
 q = 0.95
 
 ssims = np.zeros((ny0s, nsamples))

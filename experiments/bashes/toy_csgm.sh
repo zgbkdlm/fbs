@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -A Berzelius-2024-58
 #SBATCH --gpus=1
-#SBATCH -o toy-filter.log
+#SBATCH -o toy-csgm.log
 #SBATCH -t 01-10:00
 
 source ~/.bashrc

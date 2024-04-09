@@ -21,7 +21,6 @@ parser.add_argument('--dataset', type=str, default='mnist', help='Which dataset.
                                                                  'or celeba-128.')
 parser.add_argument('--rate', type=int, default=4, help='The rate of super-resolution.')
 parser.add_argument('--rnd_mask', action='store_true', default=False, help='Whether to use random sr mask.')
-parser.add_argument('--rect_size', type=int, default=15, help='The w/h of the inpainting rectangle.')
 parser.add_argument('--sde', type=str, default='lin')
 parser.add_argument('--test_nsteps', type=int, default=500)
 parser.add_argument('--test_epoch', type=int, default=2999)
