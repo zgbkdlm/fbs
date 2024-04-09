@@ -209,7 +209,7 @@ for k in range(args.ny0s):
     path_head_arr = f'./imgs/results_supr/arrs/{dataset_name}-{sr_rate}{"-rm" if args.rnd_mask else ""}-{k}'
 
     plt.imsave(path_head_img + '-true.png', to_imsave(test_img), cmap=cmap)
-    np.save(path_head_arr + '-true', test_img)
+    np.savez(path_head_arr + '-true', test_img=test_img, mask=mask)
     plt.imsave(path_head_img + '-corrupt.png',
                to_imsave(dataset.concat(jnp.zeros(x_shape), test_y0, mask)),
                cmap=cmap)

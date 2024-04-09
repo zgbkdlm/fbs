@@ -351,10 +351,10 @@ class ImageRestore(Dataset):
         img_w, img_h, img_c = self.image_shape
         unobs_inds_ravelled, obs_inds_ravelled = mask.unobs_inds_ravelled, mask.obs_inds_ravelled
 
-        img = jnp.zeros((*x.shape[:-3], img_w * img_h, img_c))
+        img = jnp.zeros((*x.shape[:-2], img_w * img_h, img_c))
         img = img.at[..., unobs_inds_ravelled, :].set(x)
         img = img.at[..., obs_inds_ravelled, :].set(y)
-        return img.reshape(*img.shape[:-3], img_w, img_h, img_c)
+        return img.reshape(*img.shape[:-2], img_w, img_h, img_c)
 
 
 class MNISTRestore(ImageRestore):

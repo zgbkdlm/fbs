@@ -74,13 +74,13 @@ class TestImgs:
 
     @pytest.mark.parametrize('task', ['inpainting-8', 'supr-4'])
     def test_concat_unpack(self, task):
-        img_shape = (32, 32, 5)
+        img_shape = (32, 32, 3)
         key = jax.random.PRNGKey(666)
 
         dataset = ImageRestore(task=task, image_shape=img_shape, sr_random=True)
 
         key, subkey = jax.random.split(key)
-        true_img = jax.random.uniform(subkey, img_shape)
+        true_img = jax.random.uniform(subkey, (4, *img_shape))
 
         key, subkey = jax.random.split(key)
         mask = dataset.gen_mask(subkey)
