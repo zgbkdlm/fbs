@@ -132,7 +132,7 @@ def dataset_sampler(key_):
 
 for k in range(args.ny0s):
     print(f'Running conditional sampler for {k}-th test sample.')
-    key, subkey = jax.random.split(key)
+    data_key, subkey = jax.random.split(data_key)
     test_img, test_y0, mask = dataset_sampler(subkey)
     path_head_img = f'./imgs/results_inpainting/imgs/{dataset_name}-{rect_size}-{args.sde}-{k}'
     path_head_arr = f'./imgs/results_inpainting/arrs/{dataset_name}-{rect_size}-{args.sde}-{k}'

@@ -202,7 +202,7 @@ def dataset_sampler(key_):
 
 for k in range(args.ny0s):
     print(f'Running conditional sampler for {k}-th test sample.')
-    key, subkey = jax.random.split(key)
+    data_key, subkey = jax.random.split(data_key)
     test_img, test_y0, mask = dataset_sampler(subkey)
     path_head_img = f'./imgs/results_inpainting/imgs/{dataset_name}-{rect_size}-{args.sde}-{nparticles}-{k}'
     path_head_arr = f'./imgs/results_inpainting/arrs/{dataset_name}-{rect_size}-{args.sde}-{nparticles}-{k}'
@@ -237,8 +237,9 @@ for k in range(args.ny0s):
                 path_head_img + f'-gibbs{"-eb" if eb else ""}{"-ef" if ef else ""}{"-marg" if args.marg else ""}-{i}.png',
                 to_imsave(restored),
                 cmap=cmap)
-            np.save(path_head_arr + f'-gibbs{"-eb" if eb else ""}{"-ef" if ef else ""}{"-marg" if args.marg else ""}-{i}',
-                    restored)
+            np.save(
+                path_head_arr + f'-gibbs{"-eb" if eb else ""}{"-ef" if ef else ""}{"-marg" if args.marg else ""}-{i}',
+                restored)
 
             print(f'Inpainting-{rect_size} | Gibbs | iter: {i}, acc: {acc}')
     elif 'pmcmc' in args.method:
