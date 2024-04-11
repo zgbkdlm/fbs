@@ -2,7 +2,7 @@
 #SBATCH -A Berzelius-2024-58
 #SBATCH --gpus=1
 #SBATCH -o imgs-twisted.log
-#SBATCH -t 22:00:00
+#SBATCH -t 01-05:00:00
 
 source ~/.bashrc
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
