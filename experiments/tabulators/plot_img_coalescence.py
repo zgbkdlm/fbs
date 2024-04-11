@@ -170,7 +170,7 @@ plt.rcParams.update({
     'font.size': 16})
 
 # Plot the coalescence of one dimension
-fig, axes = plt.subplots(ncols=2)
+fig, axes = plt.subplots(ncols=2, figsize=(12, 5))
 
 for p in range(nparticles):
     line = axes[0].plot(ts, x0s[:, p, which_d], linewidth=1, c='black', alpha=0.5)
