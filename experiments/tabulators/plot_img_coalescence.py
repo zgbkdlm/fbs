@@ -171,28 +171,35 @@ plt.rcParams.update({
 
 # Plot the coalescence of one dimension
 fig, axes = plt.subplots(ncols=2, figsize=(12, 5))
-every = 10  # Reduce image size
+every = 100  # Reduce image size
 
 for p in range(nparticles):
-    line, = axes[0].plot(ts[::every], x0s[::every, p, which_d], linewidth=1, c='black', alpha=0.5)
+    if p == 0:
+        line1, = axes[0].plot(ts[::every], x0s[::every, p, which_d], linewidth=1, c='black', alpha=0.5,
+                              label='Particle trajectory')
+    else:
+        axes[0].plot(ts[::every], x0s[::every, p, which_d], linewidth=1, c='black', alpha=0.5)
 
 axes[0].grid(linestyle='--', alpha=0.3, which='both')
 axes[0].set_xlabel('$t$')
 axes[0].set_ylabel('Particle value')
-axes[0].legend([line, ], ['Trajectory of particle', ])
+axes[0].legend(handles=[line1])
 
 # Plot the variances of the particles for all dimensions
 variances = np.var(x0s, axis=1)
 quantile = np.quantile(variances, 0.95, axis=-1)
 for d in range(x0s.shape[-1]):
-    line, = axes[1].plot(ts[::every], variances[::every, d], linewidth=1, c='black', alpha=0.1)
-ql, = axes[1].plot(ts[::every], quantile[::every], linewidth=3, c='black')
+    if d == 0:
+        line2, = axes[1].plot(ts[::every], variances[::every, d], linewidth=1, c='black', alpha=0.1,
+                              label='Particle variance for each dimension')
+    else:
+        axes[1].plot(ts[::every], variances[::every, d], linewidth=1, c='black', alpha=0.1)
+ql, = axes[1].plot(ts[::every], quantile[::every], linewidth=3, c='black', label='0.95 quantile of variances')
 
 axes[1].grid(linestyle='--', alpha=0.3, which='both')
 axes[1].set_xlabel('$t$')
 axes[1].set_ylabel('Particle variances')
-axes[1].legend([line, ql], ['Particle variance for each dimension',
-                            '0.95 quantile of variances'])
+axes[1].legend(handles=[line2, ql])
 
 plt.tight_layout(pad=0.1)
 plt.legend()
