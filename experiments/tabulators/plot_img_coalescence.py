@@ -170,30 +170,29 @@ plt.rcParams.update({
     'font.size': 16})
 
 # Plot the coalescence of one dimension
-fig, ax = plt.subplots()
+fig, axes = plt.subplots(ncols=2)
 
 for p in range(nparticles):
-    ax.plot(ts, x0s[:, p, which_d], linewidth=1, c='black', alpha=0.5)
+    line = axes[0].plot(ts, x0s[:, p, which_d], linewidth=1, c='black', alpha=0.5)
 
-ax.grid(linestyle='--', alpha=0.3, which='both')
-ax.set_xlabel('$t$')
-ax.set_ylabel('Particle value')
-plt.tight_layout(pad=0.1)
-plt.legend()
-plt.savefig(f'tmp_figs/coalescence-particles-{args.sde}.pdf', transparent=True)
-plt.show()
+axes[0].grid(linestyle='--', alpha=0.3, which='both')
+axes[0].set_xlabel('$t$')
+axes[0].set_ylabel('Particle value')
+axes[0].legend([line, ], ['Trajectories of particles', ])
 
 # Plot the variances of the particles for all dimensions
-fig, ax = plt.subplots()
-
 variances = np.var(x0s, axis=1)
+quantile = np.quantile(x0s, 0.95, axis=-1)
 for d in range(x0s.shape[-1]):
-    ax.plot(ts, variances[:, d], linewidth=1, c='black', alpha=0.5)
+    line = axes[1].plot(ts, variances[:, d], linewidth=1, c='black', alpha=0.2)
+ql = axes[1].plot(ts, quantile, linewidth=2, c='black')
 
-ax.grid(linestyle='--', alpha=0.3, which='both')
-ax.set_xlabel('$t$')
-ax.set_ylabel('Particle variance')
+axes[1].grid(linestyle='--', alpha=0.3, which='both')
+axes[1].set_xlabel('$t$')
+axes[1].set_ylabel('Variances')
+axes[0].legend([ql, ], ['0.95 quantile of variances', ])
+
 plt.tight_layout(pad=0.1)
 plt.legend()
-plt.savefig(f'tmp_figs/coalescence-variances-{args.sde}.pdf', transparent=True)
+plt.savefig(f'tmp_figs/coalescence-{args.sde}-{args.nparticles}.pdf', transparent=True)
 plt.show()
