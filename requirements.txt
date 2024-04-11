@@ -9,3 +9,4 @@ pytest
 einops
 numpyro
 scikit-image
+lpips==0.1.4

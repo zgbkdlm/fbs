@@ -42,20 +42,20 @@ for method in methods:
             approx_means = jax.vmap(partial(jnp.mean, axis=0))(samples)
             approx_covs = jax.vmap(partial(jnp.cov, rowvar=False))(samples)
 
-            err_m = jnp.mean(jnp.abs(approx_means - gp_mean[None, :]))
-            err_var = jnp.mean(jnp.abs(jnp.diagonal(approx_covs - gp_cov[None, :, :], axis1=1, axis2=2)))
-            err_kl = jnp.mean(jax.vmap(kl, in_axes=[None, None, 0, 0])(gp_mean, gp_cov, approx_means, approx_covs))
-            err_skew = jnp.mean(jnp.abs(scipy.stats.skew(samples, axis=1)))
-            err_kurt = jnp.mean(jnp.abs(scipy.stats.kurtosis(samples, axis=1, fisher=True)))
+            err_m = np.mean(jnp.abs(approx_means - gp_mean[None, :]))
+            err_var = np.mean(jnp.abs(jnp.diagonal(approx_covs - gp_cov[None, :, :], axis1=1, axis2=2)))
+            err_kl = np.mean(jax.vmap(kl, in_axes=[None, None, 0, 0])(gp_mean, gp_cov, approx_means, approx_covs))
+            err_skew = np.mean(jnp.abs(scipy.stats.skew(samples, axis=1)))
+            err_kurt = np.mean(jnp.abs(scipy.stats.kurtosis(samples, axis=1, fisher=True)))
         else:
-            approx_mean = jnp.mean(samples, axis=0)
-            approx_cov = jnp.cov(samples, rowvar=False)
+            approx_mean = np.mean(samples, axis=0)
+            approx_cov = np.cov(samples, rowvar=False)
 
-            err_m = jnp.mean(jnp.abs(approx_mean - gp_mean))
-            err_var = jnp.mean(jnp.abs(jnp.diag(approx_cov) - jnp.diag(gp_cov)))
+            err_m = np.mean(jnp.abs(approx_mean - gp_mean))
+            err_var = np.mean(jnp.abs(jnp.diag(approx_cov) - jnp.diag(gp_cov)))
             err_kl = kl(gp_mean, gp_cov, approx_mean, approx_cov)
-            err_skew = jnp.mean(jnp.abs(scipy.stats.skew(samples, axis=0)))
-            err_kurt = jnp.mean(jnp.abs(scipy.stats.kurtosis(samples, axis=0, fisher=True)))
+            err_skew = np.mean(jnp.abs(scipy.stats.skew(samples, axis=0)))
+            err_kurt = np.mean(jnp.abs(scipy.stats.kurtosis(samples, axis=0, fisher=True)))
 
         errs_m[mc_id] = err_m
         errs_vars[mc_id] = err_var
@@ -64,9 +64,9 @@ for method in methods:
         errs_kurt[mc_id] = err_kurt
 
     print(f'Method {method} | '
-          f'Mean {jnp.mean(errs_m):.4f} {jnp.std(errs_m):.4f} | '
-          f'Var {jnp.mean(errs_vars):.4f} {jnp.std(errs_vars):.4f} | '
-          f'KL | {jnp.mean(errs_kl):.4f} {jnp.std(errs_kl):.4f} | '
-          f'Skew | {jnp.mean(errs_skew):.4f} {jnp.std(errs_skew):.4f} | '
-          f'Kurt | {jnp.mean(errs_kurt):.4f} {jnp.std(errs_kurt):.4f}')
+          f'Mean {np.mean(errs_m):.4f} {np.std(errs_m):.4f} | '
+          f'Var {np.mean(errs_vars):.4f} {np.std(errs_vars):.4f} | '
+          f'KL | {np.mean(errs_kl):.4f} {np.std(errs_kl):.4f} | '
+          f'Skew | {np.mean(errs_skew):.4f} {np.std(errs_skew):.4f} | '
+          f'Kurt | {np.mean(errs_kurt):.4f} {np.std(errs_kurt):.4f}')
 

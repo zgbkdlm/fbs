@@ -11,7 +11,7 @@ from fbs.data.images import normalise
 
 
 def to_img(img):
-    img = normalise(img, method='clip')
+    img = np.asarray(normalise(img, method='clip'))
     return img[..., 0] if dataset == 'mnist' else img
 
 
@@ -23,11 +23,11 @@ def to_torch_tensor(img):
 
 
 dataset = 'mnist'
-task = 'supr-4'
+task = 'inpainting-15'
 rnd_mask = False
 sde = 'lin'
 nparticles = 10
-ny0s = 10
+ny0s = 2
 nsamples = 100
 
 methods = [f'filter',
@@ -46,24 +46,26 @@ loss_fn = lpips.LPIPS(net='alex')
 for method in methods:
     path_head = f'./imgs/results_{task.split("-")[0]}/arrs/{dataset}-{task.split("-")[1]}'
     path_head = path_head + '-rm' if 'supr' in task and rnd_mask else path_head
-    if 'csgm' in method:
-        path_head = path_head + f'-{sde}-'
-    else:
-        path_head = path_head + f'-{sde}-{nparticles}-'
+    path_head = path_head + f'-{sde}-'
 
     for i in range(ny0s):
-        true_img = np.load(path_head + f'{i}-true.npy')
+        true_img = to_img(np.load(path_head + f'{i}-true.npz')[
+                              'test_img'])  # The true img should not depend on sde, this was a legacy mistake
         for k in range(nsamples):
-            restored_img = to_img(np.load(path_head + f'{i}-{method}-{k}.npy'))
+            if 'csgm' in method:
+                filename = path_head + f'{i}-{method}-{k}.npy'
+            else:
+                filename = path_head + f'{nparticles}-{i}-{method}-{k}.npy'
+            restored_img = to_img(np.load(filename))
             psnr = peak_signal_noise_ratio(true_img, restored_img, data_range=1)
-            ssim, *_ = structural_similarity(true_img, restored_img, data_range=1,
-                                             channel_axis=None if dataset == 'mnist' else -1)
+            ssim = structural_similarity(true_img, restored_img, data_range=1,
+                                         channel_axis=None if dataset == 'mnist' else -1)
             psnrs[i, k] = psnr
             ssims[i, k] = ssim
 
             # Compute LPIPS
-            tensor0 = to_torch_tensor(true_img)
-            tensor1 = to_torch_tensor(restored_img)
-            lpipss[i, k] = loss_fn.forward(tensor0, tensor1)  # To ndarray
+            # tensor0 = to_torch_tensor(true_img)
+            # tensor1 = to_torch_tensor(restored_img)
+            # lpipss[i, k] = loss_fn.forward(tensor0, tensor1)  # To ndarray
 
-    print(f'{method} | PSNR: {np.mean(psnrs):.4f} | SSIM: {np.mean(ssims):.4f}')
+    print(f'{method} | PSNR: {np.mean(psnrs):.4f} {np.std(psnrs):.4f} | SSIM: {np.mean(ssims):.4f} {np.std(ssims):.4f}')
