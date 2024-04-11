@@ -171,7 +171,7 @@ plt.rcParams.update({
 
 # Plot the coalescence of one dimension
 fig, axes = plt.subplots(ncols=2, figsize=(12, 5))
-every = 100  # Reduce image size
+every = nsteps // 100  # Reduce image size
 
 for p in range(nparticles):
     if p == 0:
@@ -187,6 +187,7 @@ axes[0].legend(handles=[line1])
 
 # Plot the variances of the particles for all dimensions
 variances = np.var(x0s, axis=1)
+print(np.max(variances[-1]))
 quantile = np.quantile(variances, 0.95, axis=-1)
 for d in range(x0s.shape[-1]):
     if d == 0:
