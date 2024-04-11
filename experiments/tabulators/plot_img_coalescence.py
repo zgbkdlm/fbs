@@ -175,10 +175,10 @@ every = 100  # Reduce image size
 
 for p in range(nparticles):
     if p == 0:
-        line1, = axes[0].plot(ts[::every], x0s[::every, p, which_d], linewidth=1, c='black', alpha=0.5,
+        line1, = axes[0].plot(ts[::every], x0s[::every, p, which_d], linewidth=1, c='black', alpha=0.3,
                               label='Particle trajectory')
     else:
-        axes[0].plot(ts[::every], x0s[::every, p, which_d], linewidth=1, c='black', alpha=0.5)
+        axes[0].plot(ts[::every], x0s[::every, p, which_d], linewidth=1, c='black', alpha=0.3)
 
 axes[0].grid(linestyle='--', alpha=0.3, which='both')
 axes[0].set_xlabel('$t$')
@@ -194,7 +194,9 @@ for d in range(x0s.shape[-1]):
                               label='Particle variance for each dimension')
     else:
         axes[1].plot(ts[::every], variances[::every, d], linewidth=1, c='black', alpha=0.1)
-ql, = axes[1].plot(ts[::every], quantile[::every], linewidth=3, c='black', label='0.95 quantile of variances')
+ql, = axes[1].plot(ts[::every], quantile[::every], linewidth=3, c='black', label='0.95 quantile over all dimensions')
+axes[1].annotate(f'{quantile[-1]:.2f}', xy=(ts[-1], quantile[-1]), xytext=(ts[-1] - 0.3, quantile[-1] + 0.8),
+                 arrowprops=dict(facecolor='black', width=2, shrink=0.05, alpha=0.5))
 
 axes[1].grid(linestyle='--', alpha=0.3, which='both')
 axes[1].set_xlabel('$t$')
