@@ -18,16 +18,18 @@ def to_img(img):
 def to_torch_tensor(img):
     """img: (h, w, c) to torch tensor (1, c, h, w), and scale to [-1, 1].
     """
+    if dataset == 'mnist':
+        raise AssertionError('MNIST is not compatable with LPIPS')
     img = np.expand_dims(np.swapaxes(img, -1, 0), 0) * 2 - 1
     return torch.Tensor(img)
 
 
-dataset = 'mnist'
-task = 'inpainting-15'
+dataset = 'celeba-64'
+task = 'inpainting-32'
 rnd_mask = False
 sde = 'lin'
-nparticles = 10
-ny0s = 2
+nparticles = 100
+ny0s = 10
 nsamples = 100
 
 methods = [f'filter',
@@ -49,8 +51,7 @@ for method in methods:
     path_head = path_head + f'-{sde}-'
 
     for i in range(ny0s):
-        true_img = to_img(np.load(path_head + f'{i}-true.npz')[
-                              'test_img'])  # The true img should not depend on sde, this was a legacy mistake
+        true_img = to_img(np.load(path_head + f'{i}-true.npz')['test_img'])
         for k in range(nsamples):
             if 'csgm' in method:
                 filename = path_head + f'{i}-{method}-{k}.npy'
@@ -63,9 +64,11 @@ for method in methods:
             psnrs[i, k] = psnr
             ssims[i, k] = ssim
 
-            # Compute LPIPS
-            # tensor0 = to_torch_tensor(true_img)
-            # tensor1 = to_torch_tensor(restored_img)
-            # lpipss[i, k] = loss_fn.forward(tensor0, tensor1)  # To ndarray
+            if dataset != 'mnist':
+                # Compute LPIPS (not for MNIST, as it is not compatible with LPIPS)
+                tensor0 = to_torch_tensor(true_img)
+                tensor1 = to_torch_tensor(restored_img)
+                lpipss[i, k] = loss_fn.forward(tensor0, tensor1)
 
-    print(f'{method} | PSNR: {np.mean(psnrs):.4f} {np.std(psnrs):.4f} | SSIM: {np.mean(ssims):.4f} {np.std(ssims):.4f}')
+    print(f'{method} | PSNR: {np.mean(psnrs):.4f} {np.std(psnrs):.4f} | SSIM: {np.mean(ssims):.4f} {np.std(ssims):.4f} '
+          f'| LPIPS {np.mean(lpipss):.4f} {np.std(lpipss):.4f}')

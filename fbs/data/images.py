@@ -392,7 +392,7 @@ class CelebAHQRestore(ImageRestore):
         self.task = task
         data = jnp.load(data_path)
         data = jax.random.permutation(key, data, axis=0)
-        data = self.standardise(data)
+        data = self.standardise(data).astype('float32')
 
         if test:
             self.n = 1000
