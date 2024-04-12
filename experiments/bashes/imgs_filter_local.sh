@@ -23,6 +23,6 @@ else
     exit 1
 fi
 
-python imgs/inpainting.py --dataset="$dataset" --rect_size=$rect_size --sde="lin" --method="filter" --test_nsteps=1000 --test_epoch=2999 --test_ema --test_seed=996 --ny0s=10 --nparticles=$nparticles --nsamples=100 &
-python imgs/supr.py --dataset="$dataset" --rate=$sr_rate --sde="lin" --method="filter" --test_nsteps=1000 --test_epoch=2999 --test_ema --test_seed=996 --ny0s=10 --nparticles=$nparticles --nsamples=100 &
+python imgs/inpainting.py --dataset="$dataset" --rect_size=$rect_size --sde="lin" --method="filter" --test_nsteps=1000 --test_epoch=2999 --test_ema --test_seed=996 --ny0s=100 --nparticles=$nparticles --nsamples=100 &
+python imgs/supr.py --dataset="$dataset" --rate=$sr_rate --sde="lin" --method="filter" --test_nsteps=1000 --test_epoch=2999 --test_ema --test_seed=996 --ny0s=100 --nparticles=$nparticles --nsamples=100 &
 wait
