@@ -2,7 +2,7 @@ numpy
 scipy
 matplotlib
 tme
-flax
+flax==0.8.2
 optax
 jaxopt
 pytest
