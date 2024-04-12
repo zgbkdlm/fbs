@@ -83,6 +83,7 @@ param = np.load(filename)['ema_param' if args.test_ema else 'param']
 # Conditional sampling
 nparticles = args.nparticles
 nsamples = args.nsamples
+data_variance = 0.06  # According to the original paper, the variance of the dataset.
 x_shape = (rect_size ** 2, nchannels)
 y_shape = (resolution ** 2 - rect_size ** 2, nchannels)
 xy_shape = (resolution, resolution, nchannels)
@@ -119,7 +120,8 @@ def init_sampler(key_, nparticles_):
 def twisting_logpdf(y, uv, t, mask_):
     denoising_estimate = uv + reverse_drift(uv, t) * dt
     _, obs_part = unpack(denoising_estimate, mask_)
-    return jnp.sum(jax.scipy.stats.norm.logpdf(y, obs_part, reverse_dispersion(t)))
+    F, Q = discretise_linear_sde(T - t, ts[0])
+    return jnp.sum(jax.scipy.stats.norm.logpdf(y, obs_part, jnp.sqrt(F ** 2 * data_variance + Q)))
 
 
 def twisting_logpdf_vmap(y, uvs, t, mask_):

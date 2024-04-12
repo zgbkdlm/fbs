@@ -25,10 +25,10 @@ def to_torch_tensor(img):
 
 
 dataset = 'celeba-64'
-task = 'inpainting-32'
+task = 'supr-2'
 rnd_mask = False
 sde = 'lin'
-nparticles = 100
+nparticles = 10
 ny0s = 10
 nsamples = 100
 
