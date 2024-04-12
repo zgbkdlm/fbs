@@ -213,14 +213,17 @@ for k in range(args.ny0s):
                to_imsave(dataset.concat(jnp.zeros(x_shape), test_y0, mask)),
                cmap=cmap)
 
+    restored_imgs = np.zeros((nsamples, resolution, resolution, nchannels))
+
     if args.method == 'filter':
         for i in range(nsamples):
             key, subkey = jax.random.split(key)
             x0, _ = pf(subkey, test_y0, mask_=mask)
             restored = dataset.concat(x0, test_y0, mask)
+            restored_imgs[i] = restored
             plt.imsave(path_head_img + f'-filter{"-marg" if args.marg else ""}-{i}.png', to_imsave(restored), cmap=cmap)
-            np.save(path_head_arr + f'-filter{"-marg" if args.marg else ""}-{i}', restored)
             print(f'Inpainting-{rect_size} | filter | iter: {i}')
+        np.save(path_head_arr + f'-filter{"-marg" if args.marg else ""}', restored_imgs)
     elif 'gibbs' in args.method:
         key, subkey = jax.random.split(key)
         x0, us_star = gibbs_init(subkey, test_y0, mask_=mask)
@@ -233,15 +236,15 @@ for k in range(args.ny0s):
             key, subkey = jax.random.split(key)
             x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, test_y0, us_star, bs_star, mask_=mask)
             restored = dataset.concat(us_star[-1], test_y0, mask)
+            restored_imgs[i] = restored
             plt.imsave(
                 path_head_img + f'-gibbs{"-eb" if eb else ""}{"-ef" if ef else ""}{"-marg" if args.marg else ""}-{i}.png',
                 to_imsave(restored),
                 cmap=cmap)
-            np.save(
-                path_head_arr + f'-gibbs{"-eb" if eb else ""}{"-ef" if ef else ""}{"-marg" if args.marg else ""}-{i}',
-                restored)
-
             print(f'Inpainting-{rect_size} | Gibbs | iter: {i}, acc: {acc}')
+        np.save(
+            path_head_arr + f'-gibbs{"-eb" if eb else ""}{"-ef" if ef else ""}{"-marg" if args.marg else ""}',
+            restored_imgs)
     elif 'pmcmc' in args.method:
         key, subkey = jax.random.split(key)
         x0, log_ell, ys = jnp.zeros(x_shape), 0., fwd_ys_sampler(subkey, test_y0)
@@ -249,8 +252,9 @@ for k in range(args.ny0s):
             key, subkey = jax.random.split(key)
             x0, log_ell, ys, mcmc_state = pmcmc_kernel(subkey, x0, log_ell, ys, test_y0, mask_=mask)
             restored = dataset.concat(x0, test_y0, mask)
+            restored_imgs[i] = restored
             plt.imsave(path_head_img + f'-pmcmc-{delta}-{i}.png', to_imsave(restored), cmap=cmap)
-            np.save(path_head_arr + f'-pmcmc-{delta}-{i}', restored)
             print(f'Inpainting-{rect_size} | pMCMC {delta} | iter: {i}, acc_prob: {mcmc_state.acceptance_prob}')
+        np.save(path_head_arr + f'-pmcmc-{delta}', restored_imgs)
     else:
         raise ValueError(f"Unknown method {args.method}")

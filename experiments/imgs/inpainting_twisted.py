@@ -176,9 +176,12 @@ for k in range(args.ny0s):
                to_imsave(dataset.concat(jnp.zeros(x_shape), test_y0, mask)),
                cmap=cmap)
 
+    restored_imgs = np.zeros((nsamples, resolution, resolution, nchannels))
+
     for i in range(nsamples):
         key, subkey = jax.random.split(key)
         x0 = conditional_sampler(subkey, test_y0, mask_=mask)
+        restored_imgs[i] = x0
         plt.imsave(path_head_img + f'-twisted-{i}.png', to_imsave(x0), cmap=cmap)
-        np.save(path_head_arr + f'-twisted-{i}', x0)
         print(f'Inpainting-{rect_size} | Twisted | iter: {i}')
+    np.save(path_head_arr + f'-twisted', restored_imgs)

@@ -181,9 +181,12 @@ for k in range(args.ny0s):
                to_imsave(jnp.reshape(test_y0, (low_res, low_res, nchannels))),
                cmap=cmap)
 
+    restored_imgs = np.zeros((nsamples, resolution, resolution, nchannels))
+
     for i in range(nsamples):
         key, subkey = jax.random.split(key)
         x0 = conditional_sampler(subkey, test_y0, mask_=mask)
+        restored_imgs[i] = x0
         plt.imsave(path_head_img + f'-twisted-{i}.png', to_imsave(x0), cmap=cmap)
-        np.save(path_head_arr + f'-twisted-{i}', x0)
         print(f'Supr-{sr_rate} | Twisted | iter: {i}')
+    np.save(path_head_arr + f'-twisted', restored_imgs)

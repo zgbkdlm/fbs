@@ -143,10 +143,13 @@ for k in range(args.ny0s):
                to_imsave(dataset.concat(jnp.zeros(x_shape), test_y0, mask)),
                cmap=cmap)
 
+    restored_imgs = np.zeros((nsamples, resolution, resolution, nchannels))
+
     for i in range(nsamples):
         key, subkey = jax.random.split(key)
         x0 = conditional_sampler(subkey, test_y0, mask)
         restored = dataset.concat(x0, test_y0, mask)
+        restored_imgs[i] = restored
         plt.imsave(path_head_img + f'-csgm-{i}.png', to_imsave(restored), cmap=cmap)
-        np.save(path_head_arr + f'-csgm-{i}', restored)
         print(f'Inpainting-{rect_size} | cSGM | iter: {i}')
+    np.save(path_head_arr + f'-csgm', restored_imgs)
