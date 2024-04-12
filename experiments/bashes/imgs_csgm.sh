@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -A Berzelius-2024-58
+#SBATCH -A Berzelius-2024-28
 #SBATCH --gpus=1
 #SBATCH -o imgs-csgm.log
 #SBATCH -t 10:00:00
