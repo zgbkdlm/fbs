@@ -29,6 +29,7 @@ parser.add_argument('--test_epoch', type=int, default=2999)
 parser.add_argument('--test_ema', action='store_true', default=False)
 parser.add_argument('--test_seed', type=int, default=666)
 parser.add_argument('--ny0s', type=int, default=10)
+parser.add_argument('--start_from', type=int, default=0, help='Star from which y0.')
 parser.add_argument('--nparticles', type=int, default=100)
 parser.add_argument('--nsamples', type=int, default=10)
 
@@ -167,6 +168,8 @@ def dataset_sampler(key_):
 for k in range(args.ny0s):
     print(f'Running conditional sampler for {k}-th test sample.')
     data_key, subkey = jax.random.split(data_key)
+    if k < args.start_from:
+        continue
     test_img, test_y0, mask = dataset_sampler(subkey)
     path_head_img = f'./imgs/results_supr/imgs/{dataset_name}-{sr_rate}{"-rm" if args.rnd_mask else ""}-{args.sde}-{nparticles}-{k}'
     path_head_arr = f'./imgs/results_supr/arrs/{dataset_name}-{sr_rate}{"-rm" if args.rnd_mask else ""}-{args.sde}-{nparticles}-{k}'
