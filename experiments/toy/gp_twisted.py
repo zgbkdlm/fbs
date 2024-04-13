@@ -105,7 +105,6 @@ def reverse_dispersion(t):
 # Conditional sampling
 nparticles = args.nparticles
 nsamples = args.nsamples
-data_variance = 1.  # According to the original paper, the variance of the dataset.
 
 
 @partial(jax.vmap, in_axes=[0, 0, None])
@@ -123,8 +122,7 @@ def init_sampler(key_, nparticles_):
 
 def twisting_logpdf(y, u, t):
     denoising_estimate = u + reverse_drift(u, t) * dt
-    F, Q = discretise_linear_sde(T - t, ts[0])
-    return jnp.sum(jax.scipy.stats.norm.logpdf(y, denoising_estimate, jnp.sqrt(F ** 2 * data_variance + Q)))
+    return jnp.sum(jax.scipy.stats.norm.logpdf(y, denoising_estimate, jnp.sqrt(obs_var)))
 
 
 twisting_logpdf_vmap = jax.vmap(twisting_logpdf, in_axes=[None, 0, None])
