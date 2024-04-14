@@ -152,6 +152,7 @@ def fwd_sampler(key_, x0_, y0_, mask_):
     return simulate_cond_forward(key_, xy0, ts)
 
 
+@jax.jit
 def fwd_ys_sampler(key_, y0_):
     return simulate_cond_forward(key_, y0_, ts)
 
