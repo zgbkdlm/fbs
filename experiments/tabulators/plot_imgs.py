@@ -10,12 +10,12 @@ def to_img(img):
     return img[..., 0] if dataset == 'mnist' else img
 
 
-dataset = 'mnist'
-task = 'supr-4'
+dataset = 'celeba-64'
+task = 'supr-2'
 rnd_mask = False
 sde = 'lin'
-nparticles = 100
-ny0s = 10
+nparticles = 10
+ny0s = 20
 nsamples = 100
 
 img_hw = (28, 28) if dataset == 'mnist' else (64, 64)

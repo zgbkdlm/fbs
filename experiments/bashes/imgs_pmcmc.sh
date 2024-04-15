@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -A Berzelius-2024-28
+#SBATCH -A Berzelius-2024-58
 #SBATCH --gpus=1
 #SBATCH -o imgs-pmcmc.log
 #SBATCH -t 22:00:00
@@ -16,6 +16,7 @@ cd experiments
 dataset=$1
 nparticles=$2
 start_from=${3:-0}
+delta=${4:-0.005}
 
 if [[ "$dataset" == "mnist" ]]
 then
@@ -34,6 +35,6 @@ else
     exit 1
 fi
 
-python imgs/inpainting.py --dataset="$dataset" --rect_size=$rect_size --sde="lin" --method="pmcmc-0.005" --test_nsteps=1000 --test_epoch=2999 --test_ema --test_seed=996 --ny0s=100 --start_from=$start_from --nparticles=$nparticles --nsamples=100 &
-python imgs/supr.py --dataset="$dataset" --rate=$sr_rate --sde="lin" --method="pmcmc-0.005" --test_nsteps=1000 --test_epoch=2999 --test_ema --test_seed=996 --ny0s=100 --start_from=$start_from --nparticles=$nparticles --nsamples=100 &
+python imgs/inpainting.py --dataset="$dataset" --rect_size=$rect_size --sde="lin" --method="pmcmc-$delta" --test_nsteps=1000 --test_epoch=2999 --test_ema --test_seed=996 --ny0s=100 --start_from=$start_from --nparticles=$nparticles --nsamples=100 &
+python imgs/supr.py --dataset="$dataset" --rate=$sr_rate --sde="lin" --method="pmcmc-$delta" --test_nsteps=1000 --test_epoch=2999 --test_ema --test_seed=996 --ny0s=100 --start_from=$start_from --nparticles=$nparticles --nsamples=100 &
 wait

@@ -15,12 +15,16 @@ fig, ax = plt.subplots()
 jax.config.update("jax_enable_x64", True)
 
 sde = 'const'
-nparticles = 10
+nparticles = 100
 delta = 0.005
 
-methods = [f'gibbs-eb-{sde}-{nparticles}',
-           f'pmcmc-{delta}-{sde}-{nparticles}']
-method_labels = ['Gibbs-CSMC', f'pMCMC-{delta}']
+methods = [f'gibbs-eb-{sde}-10',
+           f'gibbs-eb-{sde}-100',
+           f'pmcmc-{delta}-{sde}-10',
+           f'pmcmc-{delta}-{sde}-100']
+method_labels = ['Gibbs-CSMC-10', 'Gibbs-CSMC-100', 'PMCMC-10', 'PMCMC-100']
+method_line_styles = ['-', '-', '--', '--']
+method_line_alphas = [1., 0.5, 1., 0.5]
 max_mcs = 100
 max_lags = 100
 q = 0.95
@@ -32,7 +36,7 @@ def autocorr_over_chains(chains):
 
 autocorrs = np.zeros((max_mcs, max_lags))
 
-for method, method_label in zip(methods, method_labels):
+for method, label, style, alpha in zip(methods, method_labels, method_line_styles, method_line_alphas):
     for mc_id in range(max_mcs):
         # Load
         filename = f'./toy/results/{method}-{mc_id}.npz'
@@ -44,7 +48,8 @@ for method, method_label in zip(methods, method_labels):
 
     autocorr_mean = jnp.mean(autocorrs, axis=0)
     autocorr_std = jnp.std(autocorrs, axis=0)
-    ax.plot(jnp.arange(max_lags), autocorr_mean, c='black', label=method_label)
+    ax.plot(jnp.arange(max_lags), autocorr_mean, c='black', linewidth=2,
+            linestyle=style, alpha=alpha, label=label)
     ax.fill_between(jnp.arange(max_lags),
                     autocorr_mean - 1.96 * autocorr_std,
                     autocorr_mean + 1.96 * autocorr_std,

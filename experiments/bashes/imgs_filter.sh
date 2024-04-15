@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -A Berzelius-2024-28
+#SBATCH -A Berzelius-2024-58
 #SBATCH --gpus=1
 #SBATCH -o imgs-filter.log
 #SBATCH -t 22:00:00

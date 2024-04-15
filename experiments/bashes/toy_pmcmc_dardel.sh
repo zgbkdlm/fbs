@@ -5,7 +5,7 @@
 #SBATCH -n 30
 #SBATCH --mem=8G
 #SBATCH -a 0-99
-#SBATCH -t 05:00:00
+#SBATCH -t 10:00:00
 
 source ~/.bashrc
 

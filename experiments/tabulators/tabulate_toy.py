@@ -13,7 +13,7 @@ from functools import partial
 jax.config.update("jax_enable_x64", True)
 
 sde = 'const'
-nparticles = 10
+nparticles = 100
 
 methods = [f'filter-{sde}-{nparticles}',
            f'gibbs-eb-{sde}-{nparticles}',
