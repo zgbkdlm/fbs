@@ -140,6 +140,32 @@ def ipf_loss(reverse_param: JArray,
     return jnp.mean(errs) / (ts.shape[0] - 1)
 
 
+def ipf_loss_disc(reverse_param: JArray,
+                  forward_param: JArray,
+                  x0s: JArray,
+                  ks: JArray,
+                  gamma: FloatScalar,
+                  reverse_fn: Callable[[JArray, FloatScalar, JArray], JArray],
+                  forward_fn: Callable[[JArray, FloatScalar, JArray], JArray],
+                  key: JKey) -> JFloat:
+    nsamples, d = x0s.shape
+    nsteps = ks.shape[0] - 1
+
+    def scan_body(carry, elem):
+        x, err = carry
+        k, k_next, rnd = elem
+
+        x_next = forward_fn(x, k, forward_param) + jnp.sqrt(gamma) * rnd
+        err = err + jnp.mean((reverse_fn(x_next, k_next, reverse_param) - (
+                x_next + forward_fn(x, k, forward_param) - forward_fn(x_next, k, forward_param))) ** 2)
+        return (x, err), None
+
+    key, subkey = jax.random.split(key)
+    rnds = jax.random.normal(subkey, (nsteps, nsamples, d))
+    (_, err_final), _ = jax.lax.scan(scan_body, (x0s, 0.), (ks[:-1], ks[1:], rnds))
+    return jnp.mean(err_final)
+
+
 def ipf(f0, f, b, f_param, b_param, x0s, xTs, ts, sigma, key):
     """
 
