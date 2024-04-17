@@ -10,7 +10,6 @@ from fbs.sdes import make_linear_sde, StationaryConstLinearSDE
 from fbs.dsb.base import ipf_loss_disc
 from fbs.nn.models import make_st_nn, GMSBMLP
 from fbs.nn.utils import make_optax_kernel
-from functools import partial
 
 jax.config.update("jax_enable_x64", False)
 
