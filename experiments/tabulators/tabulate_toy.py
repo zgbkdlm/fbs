@@ -13,11 +13,12 @@ from functools import partial
 jax.config.update("jax_enable_x64", True)
 
 sde = 'const'
-nparticles = 100
+nparticles = 10
 
 methods = [f'filter-{sde}-{nparticles}',
            f'gibbs-eb-{sde}-{nparticles}',
            f'pmcmc-0.005-{sde}-{nparticles}',
+           f'pmcmc-0.001-{sde}-{nparticles}',
            f'twisted-{sde}-{nparticles}',
            f'csgm-{sde}']
 max_mcs = 100
@@ -69,4 +70,3 @@ for method in methods:
           f'KL | {np.mean(errs_kl):.4f} {np.std(errs_kl):.4f} | '
           f'Skew | {np.mean(errs_skew):.4f} {np.std(errs_skew):.4f} | '
           f'Kurt | {np.mean(errs_kurt):.4f} {np.std(errs_kurt):.4f}')
-

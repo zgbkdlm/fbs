@@ -24,10 +24,14 @@ def posterior_sampler(key_, y_):
     return jax.random.choice(key_choice, jnp.vstack([g1, g2]), axis=0)
 
 
-def joint_sampler(key_):
+def data_sampler(key_):
     key_y, key_cond = jax.random.split(key_, num=2)
     y_ = 1. * jax.random.normal(key_y, (1,))
     return jnp.concatenate([posterior_sampler(key_cond, y_), y_], axis=-1)
+
+
+def ref_sampler(key_):
+    return jax.random.normal(key_, (2,))
 
 
 nsamples = 10000
@@ -41,14 +45,16 @@ plt.hist(samples[:, 0], density=True, bins=100, alpha=0.5)
 plt.show()
 
 # SB settings
-nsteps = 100
+nsbs = 10  # number of SB iterations
+nsteps = 20
 ks = jnp.arange(nsteps + 1)
-T = 1.
+T = 0.5
 dt = T / nsteps
 
 sde = StationaryConstLinearSDE(a=-0.5, b=1.)
 discretise_linear_sde, _, _ = make_linear_sde(sde)
 F, Q = discretise_linear_sde(dt, 0.)
+print(F, Q)
 
 # NN setting
 batch_size = 256
@@ -73,54 +79,89 @@ def simulate_disc(key_, z0s_, ks_, param_, fn):
     return jax.lax.scan(scan_body, z0s_, (ks_[:-1], rnds))[0]
 
 
-# Optax
-niters = 1000
-schedule = optax.cosine_decay_schedule(init_value=1e-2, decay_steps=niters // 100, alpha=1e-2)
-# schedule = optax.constant_schedule(1e-3)
+# Optax setting
+niters = 2000
+# schedule = optax.cosine_decay_schedule(init_value=1e-2, decay_steps=niters // 10)
+schedule = optax.constant_schedule(1e-3)
+# schedule = optax.exponential_decay(1e-2, niters // 100, .96)
 optimiser = optax.adam(learning_rate=schedule)
-optimiser = optax.chain(optax.clip_by_global_norm(1.),
-                        optimiser)
 
 
-# Initial SB
-def init_loss_fn(param_, key_):
-    key_0, key_loss = jax.random.split(key_)
-    keys = jax.random.split(key_0, num=batch_size)
-    z0s = jax.vmap(joint_sampler)(keys)
-    fwd_fn = lambda x, k, p: F * x
-    return ipf_loss_disc(param_, None, z0s, ks, Q, nn_fn_bwd, fwd_fn, key_)
+# optimiser = optax.chain(optax.clip_by_global_norm(1.),
+#                         optimiser)
+
+def bwd_loss_fn(param_bwd_, param_fwd_, fwd_fn, bwd_fn, key_):
+    """Simulate the forward data -> sth. to learn its backward.
+    """
+    key_data, key_loss = jax.random.split(key_)
+    keys_ = jax.random.split(key_data, num=batch_size)
+    data_samples = jax.vmap(data_sampler)(keys_)
+    return ipf_loss_disc(param_bwd_, param_fwd_, data_samples, ks, Q, bwd_fn, fwd_fn, key_loss)
 
 
-optax_kernel_init, ema_kernel_init = make_optax_kernel(optimiser, init_loss_fn, jit=True)
+def fwd_loss_fn(param_fwd_, param_bwd_, fwd_fn, bwd_fn, key_):
+    """Simulate the backward sth. <- ref to learn its forward.
+    """
+    key_ref, key_loss = jax.random.split(key_)
+    keys_ = jax.random.split(key_ref, num=batch_size)
+    ref_samples = jax.vmap(ref_sampler)(keys_)
+    return ipf_loss_disc(param_fwd_, param_bwd_, ref_samples, ks[::-1], Q, fwd_fn, bwd_fn, key_loss)
 
-param_bwd_ema = param_bwd
-opt_state = optimiser.init(param_bwd)
-for i in range(niters):
+
+optax_kernel_bwd, _ = make_optax_kernel(optimiser, bwd_loss_fn, jit=False)
+optax_kernel_fwd, _ = make_optax_kernel(optimiser, fwd_loss_fn, jit=False)
+optax_kernel_bwd = jax.jit(optax_kernel_bwd, static_argnums=[3, 4])
+optax_kernel_fwd = jax.jit(optax_kernel_fwd, static_argnums=[3, 4])
+
+
+def sb_kernel(param_fwd_, param_bwd_, fwd_fn, bwd_fn, key_, sb_step):
+    # Compute the backward
+    opt_state = optimiser.init(param_bwd_)
+    for i in range(niters):
+        key_, subkey_ = jax.random.split(key_)
+        param_bwd_, opt_state, loss = optax_kernel_bwd(param_bwd_, opt_state, param_fwd_, fwd_fn, bwd_fn, subkey_)
+        print(f'Learning backward | SB: {sb_step} | iter: {i} | loss: {loss}')
+
+    # Compute the forward
+    opt_state = optimiser.init(param_fwd_)
+    for i in range(niters):
+        key_, subkey_ = jax.random.split(key_)
+        param_fwd_, opt_state, loss = optax_kernel_fwd(param_fwd_, opt_state, param_bwd_, fwd_fn, bwd_fn, subkey_)
+        print(f'Learning forward | SB: {sb_step} | iter: {i} | loss: {loss}')
+
+    return param_fwd_, param_bwd_
+
+
+# Init SB step
+key, subkey = jax.random.split(key)
+param_fwd, param_bwd = sb_kernel(param_fwd, param_bwd, lambda x, k, p: F * x, nn_fn_bwd, subkey, 0)
+
+# SB iterations
+for j in range(1, nsbs):
     key, subkey = jax.random.split(key)
-    param_bwd, opt_state, loss = optax_kernel_init(param_bwd, opt_state, subkey)
-    param_bwd_ema = ema_kernel_init(param_bwd_ema, param_bwd, i, 100, 2, 0.99)
-    print(f'Iter: {i} | loss: {loss}')
+    param_fwd, param_bwd = sb_kernel(param_fwd, param_bwd, nn_fn_fwd, nn_fn_bwd, subkey, j)
 
 # Plot
 key, subkey = jax.random.split(key)
-keys = jax.random.split(subkey, num=nsamples)
-z0s = jax.vmap(joint_sampler)(keys)
+keys = jax.random.split(subkey, nsamples)
+data_samples = jax.vmap(data_sampler)(keys)
 
 key, subkey = jax.random.split(key)
-zTs = simulate_disc(subkey, z0s, ks, None, lambda x, k, p: F * x)
-
-fig, axes = plt.subplots(ncols=2)
-axes[0].scatter(z0s[:, 0], z0s[:, 1], s=1)
-axes[1].scatter(zTs[:, 0], zTs[:, 1], s=1)
-plt.tight_layout(pad=0.1)
-plt.show()
+keys = jax.random.split(subkey, nsamples)
+ref_samples = jax.vmap(ref_sampler)(keys)
 
 key, subkey = jax.random.split(key)
-approx_z0s = simulate_disc(subkey, zTs, ks[::-1], param_bwd, nn_fn_bwd)
+approx_ref_samples = simulate_disc(subkey, data_samples, ks, param_fwd, nn_fn_fwd)
 
-fig, axes = plt.subplots(ncols=2)
-axes[0].scatter(approx_z0s[:, 0], approx_z0s[:, 1], s=1)
-axes[1].scatter(z0s[:, 0], z0s[:, 1], s=1)
+key, subkey = jax.random.split(key)
+approx_data_samples = simulate_disc(subkey, ref_samples, ks[::-1], param_bwd, nn_fn_bwd)
+
+fig, axes = plt.subplots(nrows=2, ncols=2)
+axes[0, 0].scatter(data_samples[:, 0], data_samples[:, 1], s=1, alpha=0.7)
+axes[0, 1].scatter(approx_data_samples[:, 0], approx_data_samples[:, 1], s=1, alpha=0.7)
+
+axes[1, 0].scatter(ref_samples[:, 0], ref_samples[:, 1], s=1, alpha=0.7)
+axes[1, 1].scatter(approx_ref_samples[:, 0], approx_ref_samples[:, 1], s=1, alpha=0.7)
+
 plt.tight_layout(pad=0.1)
-plt.savefig('gm_sb.png')
 plt.show()

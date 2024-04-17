@@ -140,13 +140,13 @@ def ipf_loss(reverse_param: JArray,
     return jnp.mean(errs) / (ts.shape[0] - 1)
 
 
-def ipf_loss_disc(reverse_param: JArray,
-                  forward_param: JArray,
+def ipf_loss_disc(param: JArray,
+                  simulator_param: JArray,
                   x0s: JArray,
                   ks: JArray,
                   gamma: FloatScalar,
-                  reverse_fn: Callable[[JArray, FloatScalar, JArray], JArray],
-                  forward_fn: Callable[[JArray, FloatScalar, JArray], JArray],
+                  parametric_fn: Callable[[JArray, FloatScalar, JArray], JArray],
+                  simulator_fn: Callable[[JArray, FloatScalar, JArray], JArray],
                   key: JKey) -> JFloat:
     nsamples, d = x0s.shape
     nsteps = ks.shape[0] - 1
@@ -155,9 +155,9 @@ def ipf_loss_disc(reverse_param: JArray,
         x, err = carry
         k, k_next, rnd = elem
 
-        x_next = forward_fn(x, k, forward_param) + jnp.sqrt(gamma) * rnd
-        err = err + jnp.mean((reverse_fn(x_next, k_next, reverse_param) - (
-                x_next + forward_fn(x, k, forward_param) - forward_fn(x_next, k, forward_param))) ** 2)
+        x_next = simulator_fn(x, k, simulator_param) + jnp.sqrt(gamma) * rnd
+        err = err + jnp.mean((parametric_fn(x_next, k_next, param) - (
+                x_next + simulator_fn(x, k, simulator_param) - simulator_fn(x_next, k, simulator_param))) ** 2)
         return (x, err), None
 
     key, subkey = jax.random.split(key)
