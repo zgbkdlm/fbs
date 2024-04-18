@@ -18,14 +18,14 @@ def posterior_sampler(key_, y_):
     key_choice, key_g1, key_g2 = jax.random.split(key_, num=3)
     std_1 = 0.5
     std_2 = 0.5
-    g1 = y_ + std_1 * jax.random.normal(key_g1, (1,))
-    g2 = -y_ + std_2 * jax.random.normal(key_g2, (1,))
+    g1 = 0.5 * (y_ + std_1 * jax.random.normal(key_g1, (1,)))
+    g2 = 0.5 * (-y_ + std_2 * jax.random.normal(key_g2, (1,)))
     return jax.random.choice(key_choice, jnp.vstack([g1, g2]), axis=0)
 
 
 def data_sampler(key_):
     key_y, key_cond = jax.random.split(key_, num=2)
-    y_ = 1. * jax.random.normal(key_y, (1,))
+    y_ = 0.5 * jax.random.normal(key_y, (1,))
     return jnp.concatenate([posterior_sampler(key_cond, y_), y_], axis=-1)
 
 
@@ -41,6 +41,21 @@ y = jnp.array([1.])
 samples = jax.vmap(posterior_sampler, in_axes=[0, None])(keys, y)
 
 plt.hist(samples[:, 0], density=True, bins=100, alpha=0.5)
+plt.show()
+
+# Plot the data and ref samples
+key, subkey = jax.random.split(key)
+keys = jax.random.split(subkey, nsamples)
+data_samples = jax.vmap(data_sampler)(keys)
+
+key, subkey = jax.random.split(key)
+keys = jax.random.split(subkey, nsamples)
+ref_samples = jax.vmap(ref_sampler)(keys)
+
+fig, axes = plt.subplots(ncols=2, sharey='col')
+axes[0].scatter(data_samples[:, 0], data_samples[:, 1], s=1, alpha=0.7)
+axes[1].scatter(ref_samples[:, 0], ref_samples[:, 1], s=1, alpha=0.7)
+plt.tight_layout(pad=0.1)
 plt.show()
 
 # SB settings
@@ -119,14 +134,16 @@ def sb_kernel(param_fwd_, param_bwd_, fwd_fn, bwd_fn, key_, sb_step):
     for i in range(niters):
         key_, subkey_ = jax.random.split(key_)
         param_bwd_, opt_state, loss = optax_kernel_bwd(param_bwd_, opt_state, param_fwd_, fwd_fn, bwd_fn, subkey_)
-        print(f'Learning backward | SB: {sb_step} | iter: {i} | loss: {loss}')
+        if i % 100 == 0:
+            print(f'Learning backward | SB: {sb_step} | iter: {i} | loss: {loss}')
 
     # Compute the forward
     opt_state = optimiser.init(param_fwd_)
     for i in range(niters):
         key_, subkey_ = jax.random.split(key_)
         param_fwd_, opt_state, loss = optax_kernel_fwd(param_fwd_, opt_state, param_bwd_, fwd_fn, bwd_fn, subkey_)
-        print(f'Learning forward | SB: {sb_step} | iter: {i} | loss: {loss}')
+        if i % 100 == 0:
+            print(f'Learning forward | SB: {sb_step} | iter: {i} | loss: {loss}')
 
     return param_fwd_, param_bwd_
 
@@ -140,27 +157,19 @@ for j in range(1, nsbs):
     key, subkey = jax.random.split(key)
     param_fwd, param_bwd = sb_kernel(param_fwd, param_bwd, nn_fn_fwd, nn_fn_bwd, subkey, j)
 
-# Plot
-key, subkey = jax.random.split(key)
-keys = jax.random.split(subkey, nsamples)
-data_samples = jax.vmap(data_sampler)(keys)
+    key, subkey = jax.random.split(key)
+    approx_ref_samples = simulate_disc(subkey, data_samples, ks, param_fwd, nn_fn_fwd)
 
-key, subkey = jax.random.split(key)
-keys = jax.random.split(subkey, nsamples)
-ref_samples = jax.vmap(ref_sampler)(keys)
+    key, subkey = jax.random.split(key)
+    approx_data_samples = simulate_disc(subkey, ref_samples, ks[::-1], param_bwd, nn_fn_bwd)
 
-key, subkey = jax.random.split(key)
-approx_ref_samples = simulate_disc(subkey, data_samples, ks, param_fwd, nn_fn_fwd)
+    fig, axes = plt.subplots(nrows=2, ncols=2)
+    axes[0, 0].scatter(data_samples[:, 0], data_samples[:, 1], s=1, alpha=0.7)
+    axes[0, 1].scatter(approx_data_samples[:, 0], approx_data_samples[:, 1], s=1, alpha=0.7)
 
-key, subkey = jax.random.split(key)
-approx_data_samples = simulate_disc(subkey, ref_samples, ks[::-1], param_bwd, nn_fn_bwd)
+    axes[1, 0].scatter(ref_samples[:, 0], ref_samples[:, 1], s=1, alpha=0.7)
+    axes[1, 1].scatter(approx_ref_samples[:, 0], approx_ref_samples[:, 1], s=1, alpha=0.7)
 
-fig, axes = plt.subplots(nrows=2, ncols=2)
-axes[0, 0].scatter(data_samples[:, 0], data_samples[:, 1], s=1, alpha=0.7)
-axes[0, 1].scatter(approx_data_samples[:, 0], approx_data_samples[:, 1], s=1, alpha=0.7)
-
-axes[1, 0].scatter(ref_samples[:, 0], ref_samples[:, 1], s=1, alpha=0.7)
-axes[1, 1].scatter(approx_ref_samples[:, 0], approx_ref_samples[:, 1], s=1, alpha=0.7)
-
-plt.tight_layout(pad=0.1)
-plt.show()
+    plt.title(f'SB step {j}')
+    plt.tight_layout(pad=0.1)
+    plt.show()

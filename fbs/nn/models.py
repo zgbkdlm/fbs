@@ -76,12 +76,18 @@ class GMSBMLP(nn.Module):
 
         x0 = x
 
+        # x1 = _GMSBMLPResBlock(dim=16)(x, time_emb)
+        # x2 = _GMSBMLPResBlock(dim=32)(x1, time_emb)
+        # x3 = _GMSBMLPResBlock(dim=64)(x2, time_emb)
+        #
+        # x3_ = x3 + _GMSBMLPResBlock(dim=64)(x3, time_emb)
+        # x2_ = x2 + _GMSBMLPResBlock(dim=32)(x3_, time_emb)
+        # x1_ = x1 + _GMSBMLPResBlock(dim=16)(x2_, time_emb)
+
         x1 = _GMSBMLPResBlock(dim=16)(x, time_emb)
         x2 = _GMSBMLPResBlock(dim=32)(x1, time_emb)
-        x3 = _GMSBMLPResBlock(dim=64)(x2, time_emb)
 
-        x3_ = x3 + _GMSBMLPResBlock(dim=64)(x3, time_emb)
-        x2_ = x2 + _GMSBMLPResBlock(dim=32)(x3_, time_emb)
+        x2_ = x2 + _GMSBMLPResBlock(dim=32)(x2, time_emb)
         x1_ = x1 + _GMSBMLPResBlock(dim=16)(x2_, time_emb)
 
         x = x0 + nn.Dense(features=self.dim, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x1_)
