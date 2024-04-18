@@ -95,7 +95,7 @@ def simulate_disc(key_, z0s_, ts_, param_, fn):
 
 
 # Optax setting
-niters = 2000
+niters = 1000
 # schedule = optax.cosine_decay_schedule(init_value=1e-2, decay_steps=niters // 10)
 schedule = optax.constant_schedule(1e-3)
 # schedule = optax.exponential_decay(1e-2, niters // 100, .96)
@@ -115,7 +115,7 @@ def bwd_loss_fn(param_bwd_, param_fwd_, fwd_fn, bwd_fn, key_):
                          jnp.sort(jax.random.uniform(key_ts, (nsteps - 1,), minval=0. + 1e-5, maxval=T)),
                          T])
     ks = rnd_ts / dt
-    Qs = jnp.sqrt(jnp.diff(rnd_ts))
+    Qs = jnp.diff(rnd_ts)
     return ipf_loss_disc(param_bwd_, param_fwd_, data_samples, ks, Qs, bwd_fn, fwd_fn, key_loss)
 
 
@@ -129,7 +129,7 @@ def fwd_loss_fn(param_fwd_, param_bwd_, fwd_fn, bwd_fn, key_):
                          jnp.sort(jax.random.uniform(key_ts, (nsteps - 1,), minval=0. + 1e-5, maxval=T)),
                          T])
     ks = rnd_ts / dt
-    Qs = jnp.sqrt(jnp.diff(rnd_ts))
+    Qs = jnp.diff(rnd_ts)
     return ipf_loss_disc(param_fwd_, param_bwd_, ref_samples, ks[::-1], Qs[::-1], fwd_fn, bwd_fn, key_loss)
 
 

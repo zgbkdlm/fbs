@@ -52,12 +52,12 @@ class _GMSBMLPResBlock(nn.Module):
     @nn.compact
     def __call__(self, x, time_emb):
         time_emb = nn.Dense(features=2 * self.dim, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(time_emb)
-        time_emb = nn.swish(time_emb)
+        time_emb = nn.gelu(time_emb)
         scale, shift = jnp.split(time_emb, 2, axis=-1)
 
         x = nn.Dense(features=self.dim, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
         x = nn.gelu(x)
-        x = x * (1 + scale) + shift
+        x = x * scale + shift
         x = nn.Dense(features=self.dim, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
         x = nn.gelu(x)
         return x
@@ -74,23 +74,31 @@ class GMSBMLP(nn.Module):
         else:
             time_emb = jax.vmap(lambda z: sinusoidal_embedding(z, out_dim=32))(k)
 
-        x0 = x
-
-        # x1 = _GMSBMLPResBlock(dim=16)(x, time_emb)
-        # x2 = _GMSBMLPResBlock(dim=32)(x1, time_emb)
-        # x3 = _GMSBMLPResBlock(dim=64)(x2, time_emb)
+        # x0 = x
         #
-        # x3_ = x3 + _GMSBMLPResBlock(dim=64)(x3, time_emb)
-        # x2_ = x2 + _GMSBMLPResBlock(dim=32)(x3_, time_emb)
+        # # x1 = _GMSBMLPResBlock(dim=16)(x, time_emb)
+        # # x2 = _GMSBMLPResBlock(dim=32)(x1, time_emb)
+        # # x3 = _GMSBMLPResBlock(dim=64)(x2, time_emb)
+        # #
+        # # x3_ = x3 + _GMSBMLPResBlock(dim=64)(x3, time_emb)
+        # # x2_ = x2 + _GMSBMLPResBlock(dim=32)(x3_, time_emb)
+        # # x1_ = x1 + _GMSBMLPResBlock(dim=16)(x2_, time_emb)
+        #
+        # x1 = _GMSBMLPResBlock(dim=16)(x, time_emb)
+        # x2 = _GMSBMLPResBlock(dim=64)(x1, time_emb)
+        #
+        # x2_ = x2 + _GMSBMLPResBlock(dim=64)(x2, time_emb)
         # x1_ = x1 + _GMSBMLPResBlock(dim=16)(x2_, time_emb)
+        #
+        # x = x0 + nn.Dense(features=self.dim, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x1_)
 
-        x1 = _GMSBMLPResBlock(dim=16)(x, time_emb)
-        x2 = _GMSBMLPResBlock(dim=64)(x1, time_emb)
-
-        x2_ = x2 + _GMSBMLPResBlock(dim=64)(x2, time_emb)
-        x1_ = x1 + _GMSBMLPResBlock(dim=16)(x2_, time_emb)
-
-        x = x0 + nn.Dense(features=self.dim, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x1_)
+        x = _GMSBMLPResBlock(dim=16)(x, time_emb)
+        x = _GMSBMLPResBlock(dim=64)(x, time_emb)
+        x = nn.Dense(features=32, param_dtype=jnp.float32, kernel_init=nn_param_init)(x)
+        x = nn.gelu(x)
+        x = nn.Dense(features=16, param_dtype=jnp.float32, kernel_init=nn_param_init)(x)
+        x = nn.gelu(x)
+        x = nn.Dense(features=self.dim, param_dtype=jnp.float32, kernel_init=nn_param_init)(x)
         return x
 
 
