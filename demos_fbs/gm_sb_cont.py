@@ -7,7 +7,7 @@ import numpy as np
 import optax
 import matplotlib.pyplot as plt
 from fbs.sdes import make_linear_sde, StationaryConstLinearSDE
-from fbs.dsb.base import ipf_loss_disc
+from fbs.dsb.base import ipf_loss_cont
 from fbs.nn.models import make_st_nn, GMSBMLP
 from fbs.nn.utils import make_optax_kernel
 
@@ -60,51 +60,47 @@ plt.show()
 
 # SB settings
 nsbs = 10  # number of SB iterations
-nsteps = 20
-ks = jnp.arange(nsteps + 1)
+nsteps = 50
 T = 0.5
 dt = T / nsteps
 ts = jnp.linspace(0., T, nsteps + 1)
 
 sde = StationaryConstLinearSDE(a=-0.5, b=1.)
 discretise_linear_sde, _, _ = make_linear_sde(sde)
-F, Q = discretise_linear_sde(dt, 0.)
-F = 0.99
-print(F, Q)
 
 # NN setting
 batch_size = 256
 key, subkey = jax.random.split(key)
-nn_fwd = GMSBMLP(dim=2)
+nn_fwd = GMSBMLP(dim=2, dt=dt)
 param_fwd, _, nn_fn_fwd = make_st_nn(subkey, nn=nn_fwd, dim_in=(2,), batch_size=batch_size)
 
 key, subkey = jax.random.split(key)
-nn_bwd = GMSBMLP(dim=2)
+nn_bwd = GMSBMLP(dim=2, dt=dt)
 param_bwd, _, nn_fn_bwd = make_st_nn(subkey, nn=nn_bwd, dim_in=(2,), batch_size=batch_size)
 
 
-def simulate_disc(key_, z0s_, ts_, param_, fn):
+def simulate_disc(key_, z0s_, ts_, param_, drift):
     def scan_body(carry, elem):
         z = carry
-        k, rnd = elem
-        z = fn(z, k, param_) + jnp.sqrt(dt) * rnd
+        t, rnd = elem
+        z = z + drift(z, t, param_) * dt + jnp.sqrt(dt) * rnd
         return z, None
 
     n, d = z0s_.shape
     rnds = jax.random.normal(key_, (nsteps, n, d))
-    return jax.lax.scan(scan_body, z0s_, (ts_[:-1] / dt, rnds))[0]
+    return jax.lax.scan(scan_body, z0s_, (ts_[:-1], rnds))[0]
 
 
 # Optax setting
 niters = 1000
-# schedule = optax.cosine_decay_schedule(init_value=1e-2, decay_steps=niters // 10)
-schedule = optax.constant_schedule(1e-3)
+schedule = optax.cosine_decay_schedule(init_value=1e-2, decay_steps=niters // 10)
+# schedule = optax.constant_schedule(1e-2)
 # schedule = optax.exponential_decay(1e-2, niters // 100, .96)
 optimiser = optax.adam(learning_rate=schedule)
 
+optimiser = optax.chain(optax.clip_by_global_norm(1.),
+                        optimiser)
 
-# optimiser = optax.chain(optax.clip_by_global_norm(1.),
-#                         optimiser)
 
 def bwd_loss_fn(param_bwd_, param_fwd_, fwd_fn, bwd_fn, key_):
     """Simulate the forward data -> sth. to learn its backward.
@@ -115,9 +111,7 @@ def bwd_loss_fn(param_bwd_, param_fwd_, fwd_fn, bwd_fn, key_):
     rnd_ts = jnp.hstack([0.,
                          jnp.sort(jax.random.uniform(key_ts, (nsteps - 1,), minval=0. + 1e-5, maxval=T)),
                          T])
-    ks = rnd_ts / dt
-    Qs = jnp.diff(rnd_ts)
-    return ipf_loss_disc(param_bwd_, param_fwd_, data_samples, ks, Qs, bwd_fn, fwd_fn, key_loss)
+    return ipf_loss_cont(param_bwd_, param_fwd_, data_samples, rnd_ts, bwd_fn, fwd_fn, key_loss)
 
 
 def fwd_loss_fn(param_fwd_, param_bwd_, fwd_fn, bwd_fn, key_):
@@ -129,9 +123,7 @@ def fwd_loss_fn(param_fwd_, param_bwd_, fwd_fn, bwd_fn, key_):
     rnd_ts = jnp.hstack([0.,
                          jnp.sort(jax.random.uniform(key_ts, (nsteps - 1,), minval=0. + 1e-5, maxval=T)),
                          T])
-    ks = rnd_ts / dt
-    Qs = jnp.diff(rnd_ts)
-    return ipf_loss_disc(param_fwd_, param_bwd_, ref_samples, ks[::-1], Qs[::-1], fwd_fn, bwd_fn, key_loss)
+    return ipf_loss_cont(param_fwd_, param_bwd_, ref_samples, rnd_ts[::-1], fwd_fn, bwd_fn, key_loss)
 
 
 optax_kernel_bwd, _ = make_optax_kernel(optimiser, bwd_loss_fn, jit=False)
@@ -146,7 +138,7 @@ def sb_kernel(param_fwd_, param_bwd_, key_, sb_step):
     for i in range(niters):
         key_, subkey_ = jax.random.split(key_)
         param_bwd_, opt_state, loss = optax_kernel_bwd(param_bwd_, opt_state, param_fwd_,
-                                                       nn_fn_fwd if sb_step > 0 else lambda x, k, p: F * x,
+                                                       nn_fn_fwd if sb_step > 0 else lambda x, k, p: -0.5 * x,
                                                        nn_fn_bwd, subkey_)
         if i % 100 == 0:
             print(f'Learning backward | SB: {sb_step} | iter: {i} | loss: {loss}')
@@ -160,7 +152,6 @@ def sb_kernel(param_fwd_, param_bwd_, key_, sb_step):
             print(f'Learning forward | SB: {sb_step} | iter: {i} | loss: {loss}')
 
     return param_fwd_, param_bwd_
-
 
 # SB iterations
 for j in range(nsbs):
