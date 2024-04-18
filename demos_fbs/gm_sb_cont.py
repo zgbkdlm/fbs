@@ -92,17 +92,17 @@ def simulate_disc(key_, z0s_, ts_, param_, drift):
 
 
 # Optax setting
-niters = 1000
-schedule = optax.cosine_decay_schedule(init_value=1e-2, decay_steps=niters // 10)
-# schedule = optax.constant_schedule(1e-2)
+niters = 10000
+# schedule = optax.cosine_decay_schedule(init_value=1e-2, decay_steps=niters // 10)
+schedule = optax.constant_schedule(1e-4)
 # schedule = optax.exponential_decay(1e-2, niters // 100, .96)
 optimiser = optax.adam(learning_rate=schedule)
 
-optimiser = optax.chain(optax.clip_by_global_norm(1.),
-                        optimiser)
+# optimiser = optax.chain(optax.clip_by_global_norm(1.),
+#                         optimiser)
 
 
-def bwd_loss_fn(param_bwd_, param_fwd_, fwd_fn, bwd_fn, key_):
+def init_loss_fn(param_bwd_, param_fwd_, key_):
     """Simulate the forward data -> sth. to learn its backward.
     """
     key_data, key_loss, key_ts = jax.random.split(key_, num=3)
@@ -111,10 +111,22 @@ def bwd_loss_fn(param_bwd_, param_fwd_, fwd_fn, bwd_fn, key_):
     rnd_ts = jnp.hstack([0.,
                          jnp.sort(jax.random.uniform(key_ts, (nsteps - 1,), minval=0. + 1e-5, maxval=T)),
                          T])
-    return ipf_loss_cont(param_bwd_, param_fwd_, data_samples, rnd_ts, bwd_fn, fwd_fn, key_loss)
+    return ipf_loss_cont(param_bwd_, param_fwd_, data_samples, rnd_ts, nn_fn_bwd, lambda x, k, p: -0.5 * x, key_loss)
 
 
-def fwd_loss_fn(param_fwd_, param_bwd_, fwd_fn, bwd_fn, key_):
+def bwd_loss_fn(param_bwd_, param_fwd_, key_):
+    """Simulate the forward data -> sth. to learn its backward.
+    """
+    key_data, key_loss, key_ts = jax.random.split(key_, num=3)
+    keys_ = jax.random.split(key_data, num=batch_size)
+    data_samples = jax.vmap(data_sampler)(keys_)
+    rnd_ts = jnp.hstack([0.,
+                         jnp.sort(jax.random.uniform(key_ts, (nsteps - 1,), minval=0. + 1e-5, maxval=T)),
+                         T])
+    return ipf_loss_cont(param_bwd_, param_fwd_, data_samples, rnd_ts, nn_fn_bwd, nn_fn_fwd, key_loss)
+
+
+def fwd_loss_fn(param_fwd_, param_bwd_, key_):
     """Simulate the backward sth. <- ref to learn its forward.
     """
     key_ref, key_loss, key_ts = jax.random.split(key_, num=3)
@@ -123,13 +135,12 @@ def fwd_loss_fn(param_fwd_, param_bwd_, fwd_fn, bwd_fn, key_):
     rnd_ts = jnp.hstack([0.,
                          jnp.sort(jax.random.uniform(key_ts, (nsteps - 1,), minval=0. + 1e-5, maxval=T)),
                          T])
-    return ipf_loss_cont(param_fwd_, param_bwd_, ref_samples, rnd_ts[::-1], fwd_fn, bwd_fn, key_loss)
+    return ipf_loss_cont(param_fwd_, param_bwd_, ref_samples, rnd_ts[::-1], nn_fn_fwd, nn_fn_bwd, key_loss)
 
 
-optax_kernel_bwd, _ = make_optax_kernel(optimiser, bwd_loss_fn, jit=False)
-optax_kernel_fwd, _ = make_optax_kernel(optimiser, fwd_loss_fn, jit=False)
-optax_kernel_bwd = jax.jit(optax_kernel_bwd, static_argnums=[3, 4])
-optax_kernel_fwd = jax.jit(optax_kernel_fwd, static_argnums=[3, 4])
+optax_kernel_init, _ = make_optax_kernel(optimiser, init_loss_fn, jit=True)
+optax_kernel_bwd, _ = make_optax_kernel(optimiser, bwd_loss_fn, jit=True)
+optax_kernel_fwd, _ = make_optax_kernel(optimiser, fwd_loss_fn, jit=True)
 
 
 def sb_kernel(param_fwd_, param_bwd_, key_, sb_step):
@@ -137,9 +148,10 @@ def sb_kernel(param_fwd_, param_bwd_, key_, sb_step):
     opt_state = optimiser.init(param_bwd_)
     for i in range(niters):
         key_, subkey_ = jax.random.split(key_)
-        param_bwd_, opt_state, loss = optax_kernel_bwd(param_bwd_, opt_state, param_fwd_,
-                                                       nn_fn_fwd if sb_step > 0 else lambda x, k, p: -0.5 * x,
-                                                       nn_fn_bwd, subkey_)
+        if sb_step == 0:
+            param_bwd_, opt_state, loss = optax_kernel_init(param_bwd_, opt_state, param_fwd_, subkey_)
+        else:
+            param_bwd_, opt_state, loss = optax_kernel_bwd(param_bwd_, opt_state, param_fwd_, subkey_)
         if i % 100 == 0:
             print(f'Learning backward | SB: {sb_step} | iter: {i} | loss: {loss}')
 
@@ -147,7 +159,7 @@ def sb_kernel(param_fwd_, param_bwd_, key_, sb_step):
     opt_state = optimiser.init(param_fwd_)
     for i in range(niters):
         key_, subkey_ = jax.random.split(key_)
-        param_fwd_, opt_state, loss = optax_kernel_fwd(param_fwd_, opt_state, param_bwd_, nn_fn_fwd, nn_fn_bwd, subkey_)
+        param_fwd_, opt_state, loss = optax_kernel_fwd(param_fwd_, opt_state, param_bwd_, subkey_)
         if i % 100 == 0:
             print(f'Learning forward | SB: {sb_step} | iter: {i} | loss: {loss}')
 
