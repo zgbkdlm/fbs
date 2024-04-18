@@ -52,7 +52,7 @@ key, subkey = jax.random.split(key)
 keys = jax.random.split(subkey, nsamples)
 ref_samples = jax.vmap(ref_sampler)(keys)
 
-fig, axes = plt.subplots(ncols=2, sharey='col')
+fig, axes = plt.subplots(ncols=2, sharey='row')
 axes[0].scatter(data_samples[:, 0], data_samples[:, 1], s=1, alpha=0.7)
 axes[1].scatter(ref_samples[:, 0], ref_samples[:, 1], s=1, alpha=0.7)
 plt.tight_layout(pad=0.1)
@@ -64,6 +64,7 @@ nsteps = 20
 ks = jnp.arange(nsteps + 1)
 T = 0.5
 dt = T / nsteps
+ts = jnp.linspace(0., T, nsteps + 1)
 
 sde = StationaryConstLinearSDE(a=-0.5, b=1.)
 discretise_linear_sde, _, _ = make_linear_sde(sde)
@@ -81,16 +82,16 @@ nn_bwd = GMSBMLP(dim=2)
 param_bwd, _, nn_fn_bwd = make_st_nn(subkey, nn=nn_bwd, dim_in=(2,), batch_size=batch_size)
 
 
-def simulate_disc(key_, z0s_, ks_, param_, fn):
+def simulate_disc(key_, z0s_, ts_, param_, fn):
     def scan_body(carry, elem):
         z = carry
         k, rnd = elem
-        z = fn(z, k, param_) + jnp.sqrt(Q) * rnd
+        z = fn(z, k, param_) + jnp.sqrt(dt) * rnd
         return z, None
 
     n, d = z0s_.shape
     rnds = jax.random.normal(key_, (nsteps, n, d))
-    return jax.lax.scan(scan_body, z0s_, (ks_[:-1], rnds))[0]
+    return jax.lax.scan(scan_body, z0s_, (ts_[:-1] / dt, rnds))[0]
 
 
 # Optax setting
@@ -107,19 +108,29 @@ optimiser = optax.adam(learning_rate=schedule)
 def bwd_loss_fn(param_bwd_, param_fwd_, fwd_fn, bwd_fn, key_):
     """Simulate the forward data -> sth. to learn its backward.
     """
-    key_data, key_loss = jax.random.split(key_)
+    key_data, key_loss, key_ts = jax.random.split(key_, num=3)
     keys_ = jax.random.split(key_data, num=batch_size)
     data_samples = jax.vmap(data_sampler)(keys_)
-    return ipf_loss_disc(param_bwd_, param_fwd_, data_samples, ks, Q, bwd_fn, fwd_fn, key_loss)
+    rnd_ts = jnp.hstack([0.,
+                         jnp.sort(jax.random.uniform(key_ts, (nsteps - 1,), minval=0. + 1e-5, maxval=T)),
+                         T])
+    ks = rnd_ts / dt
+    Qs = jnp.sqrt(jnp.diff(rnd_ts))
+    return ipf_loss_disc(param_bwd_, param_fwd_, data_samples, ks, Qs, bwd_fn, fwd_fn, key_loss)
 
 
 def fwd_loss_fn(param_fwd_, param_bwd_, fwd_fn, bwd_fn, key_):
     """Simulate the backward sth. <- ref to learn its forward.
     """
-    key_ref, key_loss = jax.random.split(key_)
+    key_ref, key_loss, key_ts = jax.random.split(key_, num=3)
     keys_ = jax.random.split(key_ref, num=batch_size)
     ref_samples = jax.vmap(ref_sampler)(keys_)
-    return ipf_loss_disc(param_fwd_, param_bwd_, ref_samples, ks[::-1], Q, fwd_fn, bwd_fn, key_loss)
+    rnd_ts = jnp.hstack([0.,
+                         jnp.sort(jax.random.uniform(key_ts, (nsteps - 1,), minval=0. + 1e-5, maxval=T)),
+                         T])
+    ks = rnd_ts / dt
+    Qs = jnp.sqrt(jnp.diff(rnd_ts))
+    return ipf_loss_disc(param_fwd_, param_bwd_, ref_samples, ks[::-1], Qs[::-1], fwd_fn, bwd_fn, key_loss)
 
 
 optax_kernel_bwd, _ = make_optax_kernel(optimiser, bwd_loss_fn, jit=False)
@@ -152,16 +163,32 @@ def sb_kernel(param_fwd_, param_bwd_, fwd_fn, bwd_fn, key_, sb_step):
 key, subkey = jax.random.split(key)
 param_fwd, param_bwd = sb_kernel(param_fwd, param_bwd, lambda x, k, p: F * x, nn_fn_bwd, subkey, 0)
 
+key, subkey = jax.random.split(key)
+approx_ref_samples = simulate_disc(subkey, data_samples, ts, param_fwd, nn_fn_fwd)
+
+key, subkey = jax.random.split(key)
+approx_data_samples = simulate_disc(subkey, ref_samples, ts[::-1], param_bwd, nn_fn_bwd)
+
+fig, axes = plt.subplots(nrows=2, ncols=2)
+axes[0, 0].scatter(data_samples[:, 0], data_samples[:, 1], s=1, alpha=0.7)
+axes[0, 1].scatter(approx_data_samples[:, 0], approx_data_samples[:, 1], s=1, alpha=0.7)
+
+axes[1, 0].scatter(ref_samples[:, 0], ref_samples[:, 1], s=1, alpha=0.7)
+axes[1, 1].scatter(approx_ref_samples[:, 0], approx_ref_samples[:, 1], s=1, alpha=0.7)
+
+plt.tight_layout(pad=0.1)
+plt.show()
+
 # SB iterations
 for j in range(1, nsbs):
     key, subkey = jax.random.split(key)
     param_fwd, param_bwd = sb_kernel(param_fwd, param_bwd, nn_fn_fwd, nn_fn_bwd, subkey, j)
 
     key, subkey = jax.random.split(key)
-    approx_ref_samples = simulate_disc(subkey, data_samples, ks, param_fwd, nn_fn_fwd)
+    approx_ref_samples = simulate_disc(subkey, data_samples, ts, param_fwd, nn_fn_fwd)
 
     key, subkey = jax.random.split(key)
-    approx_data_samples = simulate_disc(subkey, ref_samples, ks[::-1], param_bwd, nn_fn_bwd)
+    approx_data_samples = simulate_disc(subkey, ref_samples, ts[::-1], param_bwd, nn_fn_bwd)
 
     fig, axes = plt.subplots(nrows=2, ncols=2)
     axes[0, 0].scatter(data_samples[:, 0], data_samples[:, 1], s=1, alpha=0.7)

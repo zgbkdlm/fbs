@@ -144,7 +144,7 @@ def ipf_loss_disc(param: JArray,
                   simulator_param: JArray,
                   x0s: JArray,
                   ks: JArray,
-                  gamma: FloatScalar,
+                  gammas: FloatScalar,
                   parametric_fn: Callable[[JArray, FloatScalar, JArray], JArray],
                   simulator_fn: Callable[[JArray, FloatScalar, JArray], JArray],
                   key: JKey) -> JFloat:
@@ -153,7 +153,7 @@ def ipf_loss_disc(param: JArray,
 
     def scan_body(carry, elem):
         x, err = carry
-        k, k_next, rnd = elem
+        k, k_next, gamma, rnd = elem
 
         x_next = simulator_fn(x, k, simulator_param) + jnp.sqrt(gamma) * rnd
         err = err + jnp.mean((parametric_fn(x_next, k_next, param) - (
@@ -162,7 +162,7 @@ def ipf_loss_disc(param: JArray,
 
     key, subkey = jax.random.split(key)
     rnds = jax.random.normal(subkey, (nsteps, nsamples, d))
-    (_, err_final), _ = jax.lax.scan(scan_body, (x0s, 0.), (ks[:-1], ks[1:], rnds))
+    (_, err_final), _ = jax.lax.scan(scan_body, (x0s, 0.), (ks[:-1], ks[1:], gammas, rnds))
     return jnp.mean(err_final)
 
 
