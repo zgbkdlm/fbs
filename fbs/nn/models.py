@@ -55,10 +55,10 @@ class _GMSBMLPResBlock(nn.Module):
         time_emb = nn.gelu(time_emb)
         scale, shift = jnp.split(time_emb, 2, axis=-1)
 
-        x = nn.Dense(features=self.dim, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
+        x = nn.Dense(features=self.dim, kernel_init=nn_param_init)(x)
         x = nn.gelu(x)
         x = x * scale + shift
-        x = nn.Dense(features=self.dim, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
+        x = nn.Dense(features=self.dim, kernel_init=nn_param_init)(x)
         x = nn.gelu(x)
         return x
 
@@ -94,11 +94,11 @@ class GMSBMLP(nn.Module):
 
         x = _GMSBMLPResBlock(dim=16)(x, time_emb)
         x = _GMSBMLPResBlock(dim=64)(x, time_emb)
-        x = nn.Dense(features=32, param_dtype=jnp.float32, kernel_init=nn_param_init)(x)
+        x = nn.Dense(features=32, kernel_init=nn_param_init)(x)
         x = nn.gelu(x)
-        x = nn.Dense(features=16, param_dtype=jnp.float32, kernel_init=nn_param_init)(x)
+        x = nn.Dense(features=16, kernel_init=nn_param_init)(x)
         x = nn.gelu(x)
-        x = nn.Dense(features=self.dim, param_dtype=jnp.float32, kernel_init=nn_param_init)(x)
+        x = nn.Dense(features=self.dim, kernel_init=nn_param_init)(x)
         return x
 
 

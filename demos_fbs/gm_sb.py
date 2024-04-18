@@ -60,7 +60,7 @@ plt.show()
 
 # SB settings
 nsbs = 10  # number of SB iterations
-nsteps = 20
+nsteps = 50
 ks = jnp.arange(nsteps + 1)
 T = 0.5
 dt = T / nsteps
@@ -96,8 +96,8 @@ def simulate_disc(key_, z0s_, ts_, param_, fn):
 
 # Optax setting
 niters = 1000
-# schedule = optax.cosine_decay_schedule(init_value=1e-2, decay_steps=niters // 10)
-schedule = optax.constant_schedule(1e-3)
+schedule = optax.cosine_decay_schedule(init_value=1e-2, decay_steps=niters // 10)
+# schedule = optax.constant_schedule(1e-2)
 # schedule = optax.exponential_decay(1e-2, niters // 100, .96)
 optimiser = optax.adam(learning_rate=schedule)
 
