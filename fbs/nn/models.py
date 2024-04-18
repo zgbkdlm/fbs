@@ -52,14 +52,14 @@ class _GMSBMLPResBlock(nn.Module):
     @nn.compact
     def __call__(self, x, time_emb):
         time_emb = nn.Dense(features=2 * self.dim, kernel_init=nn_param_init)(time_emb)
-        time_emb = nn.leaky_relu(time_emb)
+        time_emb = nn.relu(time_emb)
         scale, shift = jnp.split(time_emb, 2, axis=-1)
 
         x = nn.Dense(features=self.dim, kernel_init=nn_param_init)(x)
-        x = nn.leaky_relu(x)
+        x = nn.relu(x)
         x = x * scale + shift
         x = nn.Dense(features=self.dim, kernel_init=nn_param_init)(x)
-        x = nn.leaky_relu(x)
+        x = nn.relu(x)
         return x
 
 
@@ -71,9 +71,9 @@ class GMSBMLP(nn.Module):
     @nn.compact
     def __call__(self, x, k):
         if k.ndim < 1:
-            time_emb = jnp.expand_dims(sinusoidal_embedding(k / self.dt, out_dim=16), 0)
+            time_emb = jnp.expand_dims(sinusoidal_embedding(k / self.dt, out_dim=32), 0)
         else:
-            time_emb = jax.vmap(lambda z: sinusoidal_embedding(z, out_dim=16))(k / self.dt)
+            time_emb = jax.vmap(lambda z: sinusoidal_embedding(z, out_dim=32))(k / self.dt)
 
         # x0 = x
         #
@@ -100,17 +100,18 @@ class GMSBMLP(nn.Module):
         # x = nn.Dense(features=16, kernel_init=nn_param_init)(x)
         # x = nn.leaky_relu(x)
         # x = nn.Dense(features=self.dim, kernel_init=nn_param_init)(x)
-        time_emb = nn.Dense(features=16, kernel_init=nn_param_init)(time_emb)
-        time_emb = nn.leaky_relu(time_emb)
+
         time_emb = nn.Dense(features=32, kernel_init=nn_param_init)(time_emb)
-        time_emb = nn.leaky_relu(time_emb)
+        time_emb = nn.relu(time_emb)
         x = nn.Dense(features=16, kernel_init=nn_param_init)(x)
-        x = nn.leaky_relu(x)
+        x = nn.relu(x)
         x = nn.Dense(features=32, kernel_init=nn_param_init)(x)
-        x = nn.leaky_relu(x)
+        x = nn.relu(x)
         x = jnp.concatenate([x, jnp.broadcast_to(time_emb, (x.shape[0], 32))], axis=-1)
         x = nn.Dense(features=64, kernel_init=nn_param_init)(x)
-        x = nn.leaky_relu(x)
+        x = nn.relu(x)
+        x = nn.Dense(features=16, kernel_init=nn_param_init)(x)
+        x = nn.relu(x)
         x = nn.Dense(features=self.dim, kernel_init=nn_param_init)(x)
         return x
 
