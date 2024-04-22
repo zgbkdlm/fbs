@@ -168,5 +168,5 @@ for i in range(nsamples):
     print(f'ID: {args.id} | Sample {i}')
 
 # Save results
-np.savez(f'./sb/results/filter-{args.nparticles}-{args.x0}-{args.id}',
+np.savez(f'./sb/results/filter-{args.x0}-{args.nparticles}-{args.id}',
          samples=approx_cond_samples, gp_mean=gp_posterior_mean, gp_cov=gp_posterior_cov)
