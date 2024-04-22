@@ -61,7 +61,7 @@ plt.show()
 # SB settings
 nsbs = 10  # number of SB iterations
 nsteps = 50
-T = 0.5
+T = 1.
 dt = T / nsteps
 ts = jnp.linspace(0., T, nsteps + 1)
 

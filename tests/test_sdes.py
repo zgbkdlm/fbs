@@ -8,7 +8,8 @@ from fbs.nn import sinusoidal_embedding
 from fbs.nn.models import make_simple_st_nn
 from fbs.sdes.linear import make_linear_sde, StationaryConstLinearSDE, StationaryLinLinearSDE, StationaryExpLinearSDE, \
     make_linear_sde_law_loss, make_ou_sde, make_ou_score_matching_loss
-from fbs.sdes.simulators import reverse_simulator, doob_bridge_simulator
+from fbs.sdes.simulators import reverse_simulator, doob_bridge_simulator, euler_maruyama
+from fbs.sdes.linear import make_gaussian_bw_sb
 
 jax.config.update("jax_enable_x64", True)
 
@@ -266,3 +267,48 @@ def test_reverse_simulators():
 
     npt.assert_allclose(jnp.mean(uTs), stationary_mean, atol=2)
     npt.assert_allclose(jnp.var(uTs), stationary_var, rtol=2)
+
+
+def test_gaussian_sb():
+    key = jax.random.PRNGKey(666)
+
+    mu0 = jnp.array([1.5, -1.8])
+    cov0 = jnp.array([[1., 0.3],
+                      [0.3, 1.5]])
+    mu1 = jnp.array([-1., 2.2])
+    cov1 = jnp.array([[0.5, -0.2],
+                      [-0.2, 0.7]])
+
+    marginal_mean, marginal_cov, drift = make_gaussian_bw_sb(mu0, cov0, mu1, cov1, sig=1.)
+
+    # Test marginals
+    npt.assert_allclose(mu0, marginal_mean(0.), rtol=1e-8)
+    npt.assert_allclose(mu1, marginal_mean(1.), rtol=1e-8)
+
+    npt.assert_allclose(cov0, marginal_cov(0.), rtol=1e-8)
+    npt.assert_allclose(cov1, marginal_cov(1.), rtol=1e-8)
+
+    # Test drift
+    t0 = 0.
+    T = 1.
+    nsteps = 100
+    ts = jnp.linspace(t0, T, nsteps + 1)
+    nsamples = 10000
+
+    def dispersion(t):
+        return 1.
+
+    def terminal_simulator(key_, x0):
+        return euler_maruyama(key_, x0, ts, drift, dispersion, integration_nsteps=10, return_path=False)
+
+    key, subkey = jax.random.split(key)
+    init_samples = mu0 + jax.random.normal(subkey, (nsamples, 2)) @ jnp.linalg.cholesky(cov0)
+
+    key, subkey = jax.random.split(key)
+    keys = jax.random.split(subkey, num=nsamples)
+    terminal_samples = jax.vmap(terminal_simulator, in_axes=[0, 0])(keys, init_samples)
+    approx_m1 = jnp.mean(terminal_samples, axis=0)
+    approx_cov1 = jnp.cov(terminal_samples, rowvar=False)
+
+    npt.assert_allclose(mu1, approx_m1, rtol=1e-1)
+    npt.assert_allclose(cov1, approx_cov1, rtol=1e-1)

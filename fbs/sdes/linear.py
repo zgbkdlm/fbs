@@ -352,3 +352,48 @@ def make_ou_score_matching_loss(a, b, nn_score, t0=0., T=2., nsteps: int = 100, 
         return jnp.mean(jnp.mean((nn_evals - cond_score_evals) ** 2, axis=-1) * scales[None, :])
 
     return loss_fn
+
+
+def make_gaussian_bw_sb(mean0, cov0, mean1, cov1, sig: float = 1.):
+    """Generate a Gaussian Schrodinger bridge with a Brownian motion reference at time interval [0, 1].
+
+    Notes
+    -----
+    Table 1, The Schrödinger Bridge between Gaussian Measures has a Closed Form, 2023.
+    """
+    d = mean0.shape[0]
+    sqrt0 = jnp.real(jax.scipy.linalg.sqrtm(cov0))
+
+    D_sig = jnp.real(jax.scipy.linalg.sqrtm(4 * sqrt0 @ cov1 @ sqrt0 + sig ** 4 * jnp.eye(d)))
+    C_sig = 0.5 * (sqrt0 @ jnp.linalg.solve(sqrt0.T, D_sig.T).T - sig ** 2 * jnp.eye(d))
+
+    def kappa(t, _):
+        return t * sig ** 2
+
+    def r(t):
+        return t
+
+    def r_bar(t):
+        return 1 - t
+
+    def rho(t):
+        return t
+
+    def marginal_mean(t):
+        return r_bar(t) * mean0 + r(t) * mean1
+
+    def marginal_cov(t):
+        return r_bar(t) ** 2 * cov0 + r(t) ** 2 * cov1 + r(t) * r_bar(t) * (C_sig + C_sig.T) + kappa(t, t) * (
+                    1 - rho(t)) * jnp.eye(d)
+
+    def s(t):
+        pt = r(t) * cov1 + r_bar(t) * C_sig
+        qt = r_bar(t) * cov0 + r(t) * C_sig
+        return pt - qt.T - sig ** 2 * rho(t) * jnp.eye(d)
+
+    def drift(x, t):
+        mt = marginal_mean(t)
+        chol_t = jax.scipy.linalg.cho_factor(marginal_cov(t))
+        return s(t).T @ jax.scipy.linalg.cho_solve(chol_t, x - mt) - mean0 + mean1
+
+    return marginal_mean, marginal_cov, drift

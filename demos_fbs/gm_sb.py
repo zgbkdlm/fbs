@@ -60,16 +60,16 @@ plt.show()
 
 # SB settings
 nsbs = 10  # number of SB iterations
-nsteps = 20
+nsteps = 100
 ks = jnp.arange(nsteps + 1)
-T = 0.5
+T = 1.
 dt = T / nsteps
 ts = jnp.linspace(0., T, nsteps + 1)
 
 sde = StationaryConstLinearSDE(a=-0.5, b=1.)
 discretise_linear_sde, _, _ = make_linear_sde(sde)
 F, Q = discretise_linear_sde(dt, 0.)
-F = 0.5
+F = 0.8
 print(F, Q)
 
 # NN setting
@@ -83,7 +83,7 @@ nn_bwd = GMSBMLP(dim=2)
 param_bwd, _, nn_fn_bwd = make_st_nn(subkey, nn=nn_bwd, dim_in=(2,), batch_size=batch_size)
 
 
-def simulate_disc(key_, z0s_, ts_, param_, fn):
+def simulate_disc(key_, z0s_, ks_, param_, fn):
     def scan_body(carry, elem):
         z = carry
         k, rnd = elem
@@ -92,7 +92,7 @@ def simulate_disc(key_, z0s_, ts_, param_, fn):
 
     n, d = z0s_.shape
     rnds = jax.random.normal(key_, (nsteps, n, d))
-    return jax.lax.scan(scan_body, z0s_, (ts_[:-1] / dt, rnds))[0]
+    return jax.lax.scan(scan_body, z0s_, (ks_[:-1] / dt, rnds))[0]
 
 
 # Optax setting
@@ -188,10 +188,10 @@ for j in range(nsbs):
                                                                    subkey, j)
 
     key, subkey = jax.random.split(key)
-    approx_ref_samples = simulate_disc(subkey, data_samples, ts, param_fwd, nn_fn_fwd)
+    approx_ref_samples = simulate_disc(subkey, data_samples, ks, param_fwd, nn_fn_fwd)
 
     key, subkey = jax.random.split(key)
-    approx_data_samples = simulate_disc(subkey, ref_samples, ts[::-1], param_bwd, nn_fn_bwd)
+    approx_data_samples = simulate_disc(subkey, ref_samples, ks[::-1], param_bwd, nn_fn_bwd)
 
     fig, axes = plt.subplots(nrows=2, ncols=2)
     axes[0, 0].scatter(data_samples[:, 0], data_samples[:, 1], s=1, alpha=0.7)

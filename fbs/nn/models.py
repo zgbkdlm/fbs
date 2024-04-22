@@ -52,14 +52,14 @@ class _GMSBMLPResBlock(nn.Module):
     @nn.compact
     def __call__(self, x, time_emb):
         time_emb = nn.Dense(features=2 * self.dim, kernel_init=nn_param_init)(time_emb)
-        time_emb = nn.relu(time_emb)
+        time_emb = nn.gelu(time_emb)
         scale, shift = jnp.split(time_emb, 2, axis=-1)
 
         x = nn.Dense(features=self.dim, kernel_init=nn_param_init)(x)
-        x = nn.relu(x)
+        x = nn.gelu(x)
         x = x * scale + shift
         x = nn.Dense(features=self.dim, kernel_init=nn_param_init)(x)
-        x = nn.relu(x)
+        x = nn.gelu(x)
         return x
 
 
@@ -102,18 +102,18 @@ class GMSBMLP(nn.Module):
         # x = nn.Dense(features=self.dim, kernel_init=nn_param_init)(x)
 
         time_emb = nn.Dense(features=32, kernel_init=nn_param_init)(time_emb)
-        time_emb = nn.relu(time_emb)
+        time_emb = nn.gelu(time_emb)
         x = nn.Dense(features=16, kernel_init=nn_param_init)(x)
-        x = nn.relu(x)
+        x = nn.gelu(x)
         x = nn.Dense(features=32, kernel_init=nn_param_init)(x)
-        x = nn.relu(x)
-        x = jnp.concatenate([x, jnp.broadcast_to(time_emb, (x.shape[0], 32))], axis=-1)
-        x = nn.Dense(features=64, kernel_init=nn_param_init)(x)
-        x = nn.relu(x)
-        x = nn.Dense(features=16, kernel_init=nn_param_init)(x)
-        x = nn.relu(x)
-        x = nn.Dense(features=self.dim, kernel_init=nn_param_init)(x)
-        return x
+        x = nn.gelu(x)
+        h = jnp.concatenate([x, jnp.broadcast_to(time_emb, (x.shape[0], 32))], axis=-1)
+        h = nn.Dense(features=64, kernel_init=nn_param_init)(h)
+        h = nn.gelu(h)
+        h = nn.Dense(features=16, kernel_init=nn_param_init)(h)
+        h = nn.gelu(h)
+        h = nn.Dense(features=self.dim, kernel_init=nn_param_init)(h)
+        return h
 
 
 class MNISTAutoEncoder(nn.Module):
