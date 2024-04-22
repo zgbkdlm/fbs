@@ -20,8 +20,8 @@ def discretise_lti_sde(A: JArray, gamma: JArray, dt: FloatScalar) -> Tuple[JArra
 def bures_dist(m0, cov0, m1, cov1):
     """The Wasserstein distance between two Gaussians.
     """
-    chol = jnp.linalg.cholesky(cov0)
-    A = cov0 + cov1 - 2 * jnp.linalg.cholesky(chol @ cov1 @ chol)
+    sqrt = jnp.real(jax.scipy.linalg.sqrtm(cov0))
+    A = cov0 + cov1 - 2 * jnp.real(jax.scipy.linalg.sqrtm(sqrt @ cov1 @ sqrt))
     return jnp.sum((m0 - m1) ** 2) + jnp.trace(A)
 
 
