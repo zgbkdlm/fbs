@@ -1,5 +1,6 @@
 import jax
 import jax.numpy as jnp
+from fbs.utils import sqrtm
 from fbs.typings import JArray, JKey, FloatScalar
 from functools import partial
 from typing import NamedTuple, Tuple
@@ -362,9 +363,9 @@ def make_gaussian_bw_sb(mean0, cov0, mean1, cov1, sig: float = 1.):
     Table 1, The Schrödinger Bridge between Gaussian Measures has a Closed Form, 2023.
     """
     d = mean0.shape[0]
-    sqrt0 = jnp.real(jax.scipy.linalg.sqrtm(cov0))
+    sqrt0 = sqrtm(cov0)
 
-    D_sig = jnp.real(jax.scipy.linalg.sqrtm(4 * sqrt0 @ cov1 @ sqrt0 + sig ** 4 * jnp.eye(d)))
+    D_sig = sqrtm(4 * sqrt0 @ cov1 @ sqrt0 + sig ** 4 * jnp.eye(d))
     C_sig = 0.5 * (sqrt0 @ jnp.linalg.solve(sqrt0.T, D_sig.T).T - sig ** 2 * jnp.eye(d))
 
     def kappa(t, _):

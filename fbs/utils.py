@@ -17,11 +17,19 @@ def discretise_lti_sde(A: JArray, gamma: JArray, dt: FloatScalar) -> Tuple[JArra
     return F, cov
 
 
+def sqrtm(mat: JArray, method: str = 'eigh') -> JArray:
+    if method == 'eigh':
+        eigenvals, eigenvecs = jnp.linalg.eigh(mat)
+        return eigenvecs @ jnp.diag(jnp.sqrt(eigenvals)) @ eigenvecs.T
+    else:
+        return jnp.real(jax.scipy.linalg.sqrtm(mat))
+
+
 def bures_dist(m0, cov0, m1, cov1):
     """The Wasserstein distance between two Gaussians.
     """
-    sqrt = jnp.real(jax.scipy.linalg.sqrtm(cov0))
-    A = cov0 + cov1 - 2 * jnp.real(jax.scipy.linalg.sqrtm(sqrt @ cov1 @ sqrt))
+    sqrt = sqrtm(cov0)
+    A = cov0 + cov1 - 2 * sqrtm(sqrt @ cov1 @ sqrt)
     return jnp.sum((m0 - m1) ** 2) + jnp.trace(A)
 
 
