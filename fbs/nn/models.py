@@ -23,6 +23,7 @@ class _CrescentTimeBlock(nn.Module):
 
 class CrescentMLP(nn.Module):
     dt: float
+    dim: int = 3
 
     @nn.compact
     def __call__(self, x, t):
@@ -41,7 +42,7 @@ class CrescentMLP(nn.Module):
         x = nn.gelu(x)
         x = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
         x = nn.gelu(x)
-        x = nn.Dense(features=3, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
+        x = nn.Dense(features=self.dim, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
 
         return jnp.squeeze(x)
 
