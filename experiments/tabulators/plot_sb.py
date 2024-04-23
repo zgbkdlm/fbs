@@ -15,7 +15,7 @@ else:
 methods = ['filter-proper',
            'filter-heuristic',
            'gibbs-eb']
-nparticles_used = [4, 8, 16, 32, 64]
+nparticles_used = [4, 8, 16, 32]
 max_mcs = 100
 q = 0.95
 
@@ -57,31 +57,30 @@ ax.plot(nparticles_used, np.mean(errs_filter_proper, axis=0),
         c='black', linewidth=2, marker='o', markerfacecolor='none', markersize=10,
         alpha=0.5, label='PF (ideal)')
 ax.fill_between(nparticles_used,
-                np.mean(errs_filter_proper, axis=0) - 1.96 * np.quantile(errs_filter_proper, q=0.05, axis=0),
-                np.mean(errs_filter_proper, axis=0) + 1.96 * np.quantile(errs_filter_proper, q=0.95, axis=0),
+                np.quantile(errs_filter_proper, q=0.05, axis=0),
+                np.quantile(errs_filter_proper, q=0.95, axis=0),
                 alpha=0.2, color='black', edgecolor='none')
 
 ax.plot(nparticles_used, np.mean(errs_filter_heuristic, axis=0),
         c='black', linewidth=2, linestyle='--', marker='x', markerfacecolor='none', markersize=10,
-        alpha=0.5, label='PF (heuristic)')
+        alpha=0.5, label='PF (standard)')
 ax.fill_between(nparticles_used,
-                np.mean(errs_filter_heuristic, axis=0) - 1.96 * np.quantile(errs_filter_heuristic, q=0.05, axis=0),
-                np.mean(errs_filter_heuristic, axis=0) + 1.96 * np.quantile(errs_filter_heuristic, q=0.95, axis=0),
+                np.quantile(errs_filter_heuristic, q=0.05, axis=0),
+                np.quantile(errs_filter_heuristic, q=0.95, axis=0),
                 alpha=0.2, color='black', edgecolor='none')
 
 ax.plot(nparticles_used, np.mean(errs_filter_gibbs, axis=0),
         c='black', linewidth=2, marker='*', markerfacecolor='none', markersize=10,
         alpha=0.5, label='Gibbs-CSMC')
 ax.fill_between(nparticles_used,
-                np.mean(errs_filter_gibbs, axis=0) - 1.96 * np.quantile(errs_filter_gibbs, q=0.05, axis=0),
-                np.mean(errs_filter_gibbs, axis=0) + 1.96 * np.quantile(errs_filter_gibbs, q=0.95, axis=0),
+                np.quantile(errs_filter_gibbs, q=0.05, axis=0),
+                np.quantile(errs_filter_gibbs, q=0.95, axis=0),
                 alpha=0.2, color='black', edgecolor='none')
 
 ax.set_xscale('log', base=2)
 ax.set_yscale('log')
 ax.grid(linestyle='--', alpha=0.3, which='both')
 ax.set_xlabel('Number of particles')
-# ax.set_xticks(nparticles_used, np.log(nparticles_used))
 ax.set_ylabel(f'{"KL divergence" if measure == "kl" else "Wasserstein--Bures distance"}')
 plt.tight_layout(pad=0.1)
 plt.legend()

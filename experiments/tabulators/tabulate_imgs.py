@@ -27,12 +27,12 @@ def to_torch_tensor(img):
     return torch.Tensor(img)
 
 
-dataset = 'mnist'
-task = 'inpainting-15'
+dataset = 'celeba-64'
+task = 'supr-2'
 rnd_mask = False
 sde = 'lin'
-nparticles = 100
-ny0s = 50
+nparticles = 2
+ny0s = 100
 nsamples = 100
 
 methods = [f'filter',
