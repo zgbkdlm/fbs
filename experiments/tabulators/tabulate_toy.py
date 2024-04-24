@@ -22,7 +22,6 @@ methods = [f'filter-{sde}-{nparticles}',
            f'twisted-{sde}-{nparticles}',
            f'csgm-{sde}']
 max_mcs = 100
-q = 0.95
 
 errs_m = np.zeros((max_mcs,))
 errs_vars = np.zeros((max_mcs,))  # marginal variances
@@ -70,9 +69,7 @@ for method in methods:
         errs_kurt[mc_id] = err_kurt
 
     print(f'Method {method} | '
-          f'Mean {np.mean(errs_m):.4f} {np.std(errs_m):.4f} | '
-          f'Var {np.mean(errs_vars):.4f} {np.std(errs_vars):.4f} | '
           f'KL | {np.mean(errs_kl):.4f} {np.std(errs_kl):.4f} | ' 
           f'Bures | {np.mean(errs_bures):.4f} {np.std(errs_bures):.4f} | '
-          f'Skew | {np.mean(errs_skew):.4f} {np.std(errs_skew):.4f} | '
-          f'Kurt | {np.mean(errs_kurt):.4f} {np.std(errs_kurt):.4f}')
+          f'Mean {np.mean(errs_m):.4f} {np.std(errs_m):.4f} | '
+          f'Var {np.mean(errs_vars):.4f} {np.std(errs_vars):.4f}')

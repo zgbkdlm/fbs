@@ -27,11 +27,11 @@ def to_torch_tensor(img):
     return torch.Tensor(img)
 
 
-dataset = 'celeba-64'
-task = 'supr-2'
+dataset = 'mnist'
+task = 'supr-4'
 rnd_mask = False
 sde = 'lin'
-nparticles = 2
+nparticles = 100
 ny0s = 100
 nsamples = 100
 
@@ -53,6 +53,10 @@ for method in methods:
     path_head = path_head + '-rm' if 'supr' in task and rnd_mask else path_head
     path_head = path_head + f'-{sde}-'
 
+    if 'twisted' in method and nparticles == 100:
+        ny0s = 50
+    else:
+        ny0s = 100
     for i in range(ny0s):
         true_img = np.asarray(to_img(np.load(path_head + f'{i}-true.npz')['test_img']))
         if 'csgm' in method:

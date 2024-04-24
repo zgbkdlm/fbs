@@ -15,7 +15,7 @@ else:
 methods = ['filter-proper',
            'filter-heuristic',
            'gibbs-eb']
-nparticles_used = [4, 8, 16, 32]
+nparticles_used = [4, 8, 16, 32, 64]
 max_mcs = 100
 q = 0.95
 
@@ -63,7 +63,7 @@ ax.fill_between(nparticles_used,
 
 ax.plot(nparticles_used, np.mean(errs_filter_heuristic, axis=0),
         c='black', linewidth=2, linestyle='--', marker='x', markerfacecolor='none', markersize=10,
-        alpha=0.5, label='PF (standard)')
+        alpha=0.5, label='PF (approximate)')
 ax.fill_between(nparticles_used,
                 np.quantile(errs_filter_heuristic, q=0.05, axis=0),
                 np.quantile(errs_filter_heuristic, q=0.95, axis=0),
@@ -84,4 +84,5 @@ ax.set_xlabel('Number of particles')
 ax.set_ylabel(f'{"KL divergence" if measure == "kl" else "Wasserstein--Bures distance"}')
 plt.tight_layout(pad=0.1)
 plt.legend()
+plt.savefig('figs/gaussian-sb.pdf', transparent=True)
 plt.show()
