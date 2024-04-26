@@ -9,7 +9,9 @@ from fbs.nn.models import make_simple_st_nn
 from fbs.sdes.linear import make_linear_sde, StationaryConstLinearSDE, StationaryLinLinearSDE, StationaryExpLinearSDE, \
     make_linear_sde_law_loss, make_ou_sde, make_ou_score_matching_loss
 from fbs.sdes.simulators import reverse_simulator, doob_bridge_simulator, euler_maruyama
+from fbs.dsb.base import ipf_loss_cont
 from fbs.sdes.linear import make_gaussian_bw_sb
+from functools import partial
 
 jax.config.update("jax_enable_x64", True)
 
@@ -270,6 +272,8 @@ def test_reverse_simulators():
 
 
 def test_gaussian_sb():
+    """Test the Gaussian Schrodinger bridge.
+    """
     key = jax.random.PRNGKey(666)
 
     mu0 = jnp.array([1.5, -1.8])
@@ -312,3 +316,49 @@ def test_gaussian_sb():
 
     npt.assert_allclose(mu1, approx_m1, rtol=1e-1)
     npt.assert_allclose(cov1, approx_cov1, rtol=1e-1)
+
+
+def test_sb_loss():
+    """Test the Schrodinger bridge loss function.
+    """
+    key = jax.random.PRNGKey(666)
+
+    mu0 = jnp.array([1.5, -1.8])
+    cov0 = jnp.array([[1., 0.3],
+                      [0.3, 1.5]])
+    mu1 = jnp.array([-1., 2.2])
+    cov1 = jnp.array([[0.5, -0.2],
+                      [-0.2, 0.7]])
+
+    t0 = 0.
+    T = 1.
+    ts = jnp.linspace(t0, T, 1000)
+    nsamples = 10000
+
+    marginal_mean, marginal_cov, sb_drift = make_gaussian_bw_sb(mu0, cov0, mu1, cov1, sig=1.)
+
+    # Test the forward loss
+    key, subkey = jax.random.split(key)
+    init_samples = mu0 + jax.random.normal(subkey, (nsamples, 2)) @ jnp.linalg.cholesky(cov0)
+
+    def fwd_drift(x, t, _):
+        return sb_drift(x, t)
+
+    def score(x, t):
+        mt, covt = marginal_mean(t), marginal_cov(t)
+        chol = jax.scipy.linalg.cho_factor(covt)
+        return -jax.scipy.linalg.cho_solve(chol, x - mt)
+
+    @partial(jax.vmap, in_axes=[0, None, None])
+    def reverse_drift(x, t, p):
+        return fwd_drift(x, t, p) - score(x, t) + p
+
+    key, subkey = jax.random.split(key)
+
+    def loss_fn(p):
+        return ipf_loss_cont(subkey, p, None, init_samples, ts,
+                             reverse_drift,
+                             jax.vmap(fwd_drift, in_axes=[0, None, None]))
+
+    # The loss function should be at a stationary point when p = 0
+    npt.assert_allclose(jax.grad(loss_fn)(jnp.array(0.)), 0., atol=3e-2)

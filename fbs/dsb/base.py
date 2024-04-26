@@ -166,16 +166,21 @@ def ipf_loss_disc(param: JArray,
     return jnp.mean(err_final)
 
 
-def ipf_loss_cont(param: JArray,
+def ipf_loss_cont(key: JKey,
+                  param: JArray,
                   simulator_param: JArray,
-                  x0s: JArray,
+                  init_samples: JArray,
                   ts: JArray,
                   parametric_drift: Callable[[JArray, FloatScalar, JArray], JArray],
-                  simulator_drift: Callable[[JArray, FloatScalar, JArray], JArray],
-                  key: JKey) -> JFloat:
-    nsamples, d = x0s.shape
+                  simulator_drift: Callable[[JArray, FloatScalar, JArray], JArray]) -> JFloat:
+    """Proposition 29, de Bortoli et al., 2021.
+
+    Notes
+    -----
+    Note the weird square root two in the dispersion, though in principle it can merge in the neural network.
+    """
     nsteps = ts.shape[0] - 1
-    F = lambda t, x, dt: x + simulator_drift(x, t, simulator_param) * dt
+    fn = lambda x, t, dt: x + simulator_drift(x, t, simulator_param) * dt
 
     def scan_body(carry, elem):
         x, err = carry
@@ -184,12 +189,12 @@ def ipf_loss_cont(param: JArray,
 
         x_next = x + simulator_drift(x, t, simulator_param) * dt + jnp.sqrt(dt) * rnd
         err = err + jnp.mean(
-            (parametric_drift(x_next, t_next, param) - (F(t, x, dt) - F(t, x_next, dt)) / dt) ** 2) * dt
+            (parametric_drift(x_next, t_next, param) * dt * 2 - (fn(x, t, dt) - fn(x_next, t, dt))) ** 2)
         return (x, err), None
 
     key, subkey = jax.random.split(key)
-    rnds = jax.random.normal(subkey, (nsteps, nsamples, d))
-    (_, err_final), _ = jax.lax.scan(scan_body, (x0s, 0.), (ts[:-1], ts[1:], rnds))
+    rnds = jax.random.normal(subkey, (nsteps, *init_samples.shape))
+    (_, err_final), _ = jax.lax.scan(scan_body, (init_samples, 0.), (ts[:-1], ts[1:], rnds))
     return jnp.mean(err_final)
 
 
