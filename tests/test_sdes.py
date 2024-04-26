@@ -361,4 +361,5 @@ def test_sb_loss():
                              jax.vmap(fwd_drift, in_axes=[0, None, None]))
 
     # The loss function should be at a stationary point when p = 0
-    npt.assert_allclose(jax.grad(loss_fn)(jnp.array(0.)), 0., atol=3e-2)
+    print(jax.grad(loss_fn)(jnp.array(0.)))
+    npt.assert_allclose(jax.grad(loss_fn)(jnp.array(0.)), 0., atol=1e-2)

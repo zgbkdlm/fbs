@@ -24,6 +24,7 @@ class _CrescentTimeBlock(nn.Module):
 class CrescentMLP(nn.Module):
     dt: float
     dim: int = 3
+    hiddens = [128, 64, 32, 16]
 
     @nn.compact
     def __call__(self, x, t):
@@ -32,16 +33,10 @@ class CrescentMLP(nn.Module):
         else:
             time_emb = jax.vmap(lambda z: sinusoidal_embedding(z, out_dim=32))(t / self.dt)
 
-        x = nn.Dense(features=64, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
-        x = (x * _CrescentTimeBlock(dt=self.dt, nfeatures=64)(time_emb) +
-             _CrescentTimeBlock(dt=self.dt, nfeatures=64)(time_emb))
-        x = nn.gelu(x)
-        x = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
-        x = (x * _CrescentTimeBlock(dt=self.dt, nfeatures=32)(time_emb) +
-             _CrescentTimeBlock(dt=self.dt, nfeatures=32)(time_emb))
-        x = nn.gelu(x)
-        x = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
-        x = nn.gelu(x)
+        for h in self.hiddens:
+            x = (x * _CrescentTimeBlock(dt=self.dt, nfeatures=h)(time_emb) +
+                 _CrescentTimeBlock(dt=self.dt, nfeatures=h)(time_emb))
+            x = nn.gelu(x)
         x = nn.Dense(features=self.dim, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
 
         return jnp.squeeze(x)

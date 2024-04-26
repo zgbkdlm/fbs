@@ -173,23 +173,35 @@ def ipf_loss_cont(key: JKey,
                   ts: JArray,
                   parametric_drift: Callable[[JArray, FloatScalar, JArray], JArray],
                   simulator_drift: Callable[[JArray, FloatScalar, JArray], JArray]) -> JFloat:
-    """Proposition 29, de Bortoli et al., 2021.
+    r"""Proposition 29, de Bortoli et al., 2021.
+
+    Forward
+    .. math::
+
+        X_{k+1} = X_k + f(k, X_k) \delta_k / 2 + \xi_k.
+
+    Backward
+    .. math::
+
+        X_k = X_{k+1} - b(k+1, X_{k+1}) \delta_k / 2 + \zeta_k,
+
+    where :math:`\delta_k = \lvert t_{k+1} - t_k \rvert`.
 
     Notes
     -----
     Note the weird square root two in the dispersion, though in principle it can merge in the neural network.
     """
     nsteps = ts.shape[0] - 1
-    fn = lambda x, t, dt: x + simulator_drift(x, t, simulator_param) * dt
+    fn = lambda x, t, dt: x + simulator_drift(x, t, simulator_param) * dt * 0.5
 
     def scan_body(carry, elem):
         x, err = carry
         t, t_next, rnd = elem
-        dt = jnp.abs(t_next - t)
 
-        x_next = x + simulator_drift(x, t, simulator_param) * dt + jnp.sqrt(dt) * rnd
+        dt = t_next - t
+        x_next = x + simulator_drift(x, t, simulator_param) * dt * 0.5 + jnp.sqrt(jnp.abs(dt)) * rnd
         err = err + jnp.mean(
-            (parametric_drift(x_next, t_next, param) * dt * 2 - (fn(x, t, dt) - fn(x_next, t, dt))) ** 2)
+            (-parametric_drift(x_next, t_next, param) * dt * 0.5 - (fn(x, t, dt) - fn(x_next, t, dt))) ** 2)
         return (x, err), None
 
     key, subkey = jax.random.split(key)
