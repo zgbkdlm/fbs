@@ -3,7 +3,7 @@ import jax.numpy as jnp
 import flax.linen as nn
 from fbs.nn import sinusoidal_embedding, make_st_nn
 from fbs.nn.utils import PixelShuffle
-from typing import Sequence
+from typing import Sequence, Tuple
 
 nn_param_dtype = jnp.float64
 nn_param_init = nn.initializers.xavier_normal()
@@ -24,7 +24,7 @@ class _CrescentTimeBlock(nn.Module):
 class CrescentMLP(nn.Module):
     dt: float
     dim: int = 3
-    hiddens = [128, 64, 32, 16]
+    hiddens: Tuple[int] = [128, 64, 32, 16]
 
     @nn.compact
     def __call__(self, x, t):
