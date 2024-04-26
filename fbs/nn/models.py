@@ -33,13 +33,12 @@ class CrescentMLP(nn.Module):
         else:
             time_emb = jax.vmap(lambda z: sinusoidal_embedding(z, out_dim=32))(t / self.dt)
 
-        x = nn.Dense(features=self.hiddens[0], kernel_init=nn_param_init)(x)
         for h in self.hiddens:
+            x = nn.Dense(features=self.hiddens[0], kernel_init=nn_param_init)(x)
             x = (x * _CrescentTimeBlock(dt=self.dt, nfeatures=h)(time_emb) +
                  _CrescentTimeBlock(dt=self.dt, nfeatures=h)(time_emb))
             x = nn.gelu(x)
         x = nn.Dense(features=self.dim, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
-
         return jnp.squeeze(x)
 
 
