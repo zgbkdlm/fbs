@@ -24,7 +24,7 @@ class _CrescentTimeBlock(nn.Module):
 class CrescentMLP(nn.Module):
     dt: float
     dim: int = 3
-    hiddens: Tuple[int] = [128, 64, 32, 16]
+    hiddens: Sequence[int] = [128, 64, 32, 16]
 
     @nn.compact
     def __call__(self, x, t):
