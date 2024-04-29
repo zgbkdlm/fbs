@@ -24,7 +24,7 @@ parser.add_argument('--dataset', type=str, default='mnist', help='Which dataset.
                                                                  'or celeba-128.')
 parser.add_argument('--T', type=float, default=1.)
 parser.add_argument('--sde', type=str, default='lin', help='The reference SDE.')
-parser.add_argument('--vmap_loss', type=bool, default=False)
+parser.add_argument('--vmap_loss', action='store_true', default=False)
 parser.add_argument('--upsampling', type=str, default='pixel_shuffle')
 parser.add_argument('--lr', type=float, default=2e-4)
 parser.add_argument('--batch_size', type=int, default=2)

@@ -235,7 +235,7 @@ def ipf_loss_cont_v(key: JKey,
     _, trajs = jax.lax.scan(scan_body, init_samples, (ts[:-1], ts[1:], rnds))
     trajs = jnp.concatenate([jnp.expand_dims(init_samples, axis=0), trajs], axis=0)  # (nsteps + 1, batch, d)
 
-    dts = jnp.abs(jnp.diff(ts))[:, None, None]
+    dts = jnp.expand_dims(jnp.abs(jnp.diff(ts)), axis=list([i + 1 for i in range(init_samples.ndim)]))
     errs = jax.vmap(parametric_drift, in_axes=[0, 0, None])(trajs[1:], ts[1:], param) * dts - (
             jax.vmap(fn, in_axes=[0, 0, 0])(trajs[:-1], ts[:-1], dts) - jax.vmap(fn, in_axes=[0, 0, 0])(trajs[1:],
                                                                                                         ts[:-1],
