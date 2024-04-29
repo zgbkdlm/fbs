@@ -89,7 +89,7 @@ def euler_maruyama(key: JKey, x0: JArray, ts: JArray,
             x = x + drift(x, t_) * ddt + dispersion(t_) * jnp.sqrt(ddt) * rnd
             return x, None
 
-        ddt = (t_next - t) / integration_nsteps
+        ddt = jnp.abs(t_next - t) / integration_nsteps
         rnds = jax.random.normal(key_, (integration_nsteps, *x0.shape))
         return jax.lax.scan(scan_body_, xt, (rnds, jnp.linspace(t, t_next - ddt, integration_nsteps)))[0]
 

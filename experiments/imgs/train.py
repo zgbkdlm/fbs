@@ -11,14 +11,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import optax
 from fbs.data import CelebAHQRestore, MNISTRestore
-from fbs.data.images import normalise
 from fbs.sdes import make_linear_sde, make_linear_sde_law_loss, StationaryConstLinearSDE, \
     StationaryLinLinearSDE, StationaryExpLinearSDE, reverse_simulator
-from fbs.samplers import gibbs_init, gibbs_kernel
 from fbs.nn.models import make_st_nn
 from fbs.nn.unet import UNet
 from fbs.nn.utils import make_optax_kernel
-from functools import partial
 
 # Parse arguments
 parser = argparse.ArgumentParser(description='Training forward noising model.')

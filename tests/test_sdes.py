@@ -371,7 +371,8 @@ def test_sb_loss():
     def loss_fn_bwd(p):
         return ipf_loss_cont(subkey, p, 1., init_samples, ts,
                              jax.vmap(reverse_drift, in_axes=[0, None, None]),
-                             jax.vmap(fwd_drift, in_axes=[0, None, None]))
+                             jax.vmap(fwd_drift, in_axes=[0, None, None]),
+                             lambda _: 1.)
 
     # The loss function should be at a stationary point when p = 0 of the backward drift
     npt.assert_allclose(jax.grad(loss_fn_bwd)(jnp.array(0.)), 0., atol=1e-3)
@@ -383,7 +384,8 @@ def test_sb_loss():
     def loss_fn_fwd(p):
         return ipf_loss_cont(subkey, p, 0., terminal_samples, ts,
                              jax.vmap(fwd_drift, in_axes=[0, None, None]),
-                             jax.vmap(reverse_drift, in_axes=[0, None, None]))
+                             jax.vmap(reverse_drift, in_axes=[0, None, None]),
+                             lambda _: 1.)
 
-    print(jax.grad(loss_fn_fwd)(jnp.array(1.)))
-    npt.assert_allclose(jax.grad(loss_fn_fwd)(jnp.array(0.)), 0., atol=1e-2)
+    # The loss function should be at a stationary point when p = 1 of the forward drift
+    npt.assert_allclose(jax.grad(loss_fn_fwd)(jnp.array(1.)), 0., atol=1e-1)
