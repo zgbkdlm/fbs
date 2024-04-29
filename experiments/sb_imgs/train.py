@@ -27,6 +27,7 @@ parser.add_argument('--sde', type=str, default='lin', help='The reference SDE.')
 parser.add_argument('--vmap_loss', action='store_true', default=False)
 parser.add_argument('--upsampling', type=str, default='pixel_shuffle')
 parser.add_argument('--lr', type=float, default=2e-4)
+parser.add_argument('--nn_dim', type=int, default=16)
 parser.add_argument('--batch_size', type=int, default=2)
 parser.add_argument('--nsteps', type=int, default=2)
 parser.add_argument('--schedule', type=str, default='cos')
@@ -82,7 +83,7 @@ nepochs = args.nepochs
 data_size = dataset.n
 
 key, subkey = jax.random.split(key)
-my_nn = UNet(dt=nn_dt, dim=32, upsampling=args.upsampling)
+my_nn = UNet(dt=nn_dt, dim=args.nn_dim, upsampling=args.upsampling)
 param_fwd, _, nn_drift = make_st_nn(subkey,
                                     nn=my_nn, dim_in=d, batch_size=train_nsamples)
 param_bwd, _, _ = make_st_nn(subkey,
