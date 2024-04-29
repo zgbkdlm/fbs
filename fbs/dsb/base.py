@@ -208,7 +208,39 @@ def ipf_loss_cont(key: JKey,
     key, subkey = jax.random.split(key)
     rnds = jax.random.normal(subkey, (nsteps, *init_samples.shape))
     (_, err_final), _ = jax.lax.scan(scan_body, (init_samples, 0.), (ts[:-1], ts[1:], rnds))
-    return jnp.mean(err_final)
+    return jnp.mean(err_final / nsteps)
+
+
+def ipf_loss_cont_v(key: JKey,
+                    param: JArray,
+                    simulator_param: JArray,
+                    init_samples: JArray,
+                    ts: JArray,
+                    parametric_drift: Callable[[JArray, FloatScalar, JArray], JArray],
+                    simulator_drift: Callable[[JArray, FloatScalar, JArray], JArray],
+                    dispersion: Callable) -> JFloat:
+    nsteps = ts.shape[0] - 1
+    fn = lambda x, t, dt: x + simulator_drift(x, t, simulator_param) * dt
+
+    def scan_body(carry, elem):
+        x = carry
+        t, t_next, rnd = elem
+
+        dt = jnp.abs(t_next - t)
+        x = x + simulator_drift(x, t, simulator_param) * dt + jnp.sqrt(dt) * dispersion(t) * rnd
+        return x, x
+
+    key, subkey = jax.random.split(key)
+    rnds = jax.random.normal(subkey, (nsteps, *init_samples.shape))
+    _, trajs = jax.lax.scan(scan_body, init_samples, (ts[:-1], ts[1:], rnds))
+    trajs = jnp.concatenate([jnp.expand_dims(init_samples, axis=0), trajs], axis=0)  # (nsteps + 1, batch, d)
+
+    dts = jnp.abs(jnp.diff(ts))[:, None, None]
+    errs = jax.vmap(parametric_drift, in_axes=[0, 0, None])(trajs[1:], ts[1:], param) * dts - (
+            jax.vmap(fn, in_axes=[0, 0, 0])(trajs[:-1], ts[:-1], dts) - jax.vmap(fn, in_axes=[0, 0, 0])(trajs[1:],
+                                                                                                        ts[:-1],
+                                                                                                        dts))
+    return jnp.mean(errs ** 2)
 
 
 def ipf(f0, f, b, f_param, b_param, x0s, xTs, ts, sigma, key):

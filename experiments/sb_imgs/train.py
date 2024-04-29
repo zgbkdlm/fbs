@@ -14,7 +14,7 @@ import numpy as np
 import optax
 from fbs.data import CelebAHQRestore, MNISTRestore
 from fbs.sdes import StationaryConstLinearSDE, StationaryLinLinearSDE, euler_maruyama
-from fbs.dsb.base import ipf_loss_cont
+from fbs.dsb.base import ipf_loss_cont, ipf_loss_cont_v
 from fbs.nn.models import make_st_nn
 from fbs.nn.unet import UNet
 
@@ -22,7 +22,9 @@ from fbs.nn.unet import UNet
 parser = argparse.ArgumentParser(description='Training a Schrodinger bridge for images.')
 parser.add_argument('--dataset', type=str, default='mnist', help='Which dataset. Options are mnist, celeba-64, '
                                                                  'or celeba-128.')
+parser.add_argument('--T', type=float, default=1.)
 parser.add_argument('--sde', type=str, default='lin', help='The reference SDE.')
+parser.add_argument('--vmap_loss', type=bool, default=False)
 parser.add_argument('--upsampling', type=str, default='pixel_shuffle')
 parser.add_argument('--lr', type=float, default=2e-4)
 parser.add_argument('--batch_size', type=int, default=2)
@@ -43,7 +45,7 @@ print(f'Train Schrodinger bridge on {args.dataset}')
 key = jax.random.PRNGKey(666)
 key, key_sb = jax.random.split(key)
 
-T = 0.5
+T = args.T
 nsteps = 128
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
@@ -63,7 +65,7 @@ else:
 if args.sde == 'const':
     sde = StationaryConstLinearSDE(a=-0.5, b=1.)
 elif args.sde == 'lin':
-    sde = StationaryLinLinearSDE(beta_min=0.02, beta_max=5., t0=0., T=T)
+    sde = StationaryLinLinearSDE(beta_min=0.02, beta_max=2., t0=0., T=T)
 else:
     raise NotImplementedError('...')
 
@@ -80,7 +82,7 @@ nepochs = args.nepochs
 data_size = dataset.n
 
 key, subkey = jax.random.split(key)
-my_nn = UNet(dt=nn_dt, dim=64, upsampling=args.upsampling)
+my_nn = UNet(dt=nn_dt, dim=32, upsampling=args.upsampling)
 param_fwd, _, nn_drift = make_st_nn(subkey,
                                     nn=my_nn, dim_in=d, batch_size=train_nsamples)
 param_bwd, _, _ = make_st_nn(subkey,
@@ -103,8 +105,10 @@ if args.grad_clip:
 else:
     optimiser = optax.adam(learning_rate=schedule)
 
-
 # Make loss functions
+ipf_loss = ipf_loss_cont_v if args.vmap_loss else ipf_loss_cont
+
+
 def loss_fn_init(param_bwd_, param_fwd_, key_, data_samples):
     """Simulate the forward data -> sth. to learn its backward.
     This loss is for the first iteration that uses the reference SDE.
@@ -113,8 +117,8 @@ def loss_fn_init(param_bwd_, param_fwd_, key_, data_samples):
     rnd_ts = jnp.hstack([0.,
                          jnp.sort(jax.random.uniform(key_ts, (train_nsteps - 1,), minval=0. + 1e-5, maxval=T)),
                          T])
-    return ipf_loss_cont(key_loss, param_bwd_, param_fwd_, data_samples, rnd_ts, nn_drift,
-                         reference_drift, sde.dispersion)
+    return ipf_loss(key_loss, param_bwd_, param_fwd_, data_samples, rnd_ts, nn_drift,
+                    reference_drift, sde.dispersion)
 
 
 def loss_fn_bwd(param_bwd_, param_fwd_, key_, data_samples):
@@ -124,7 +128,7 @@ def loss_fn_bwd(param_bwd_, param_fwd_, key_, data_samples):
     rnd_ts = jnp.hstack([0.,
                          jnp.sort(jax.random.uniform(key_ts, (train_nsteps - 1,), minval=0. + 1e-5, maxval=T)),
                          T])
-    return ipf_loss_cont(key_loss, param_bwd_, param_fwd_, data_samples, rnd_ts, nn_drift, nn_drift, sde.dispersion)
+    return ipf_loss(key_loss, param_bwd_, param_fwd_, data_samples, rnd_ts, nn_drift, nn_drift, sde.dispersion)
 
 
 def loss_fn_fwd(param_fwd_, param_bwd_, key_, ref_samples):
@@ -134,7 +138,7 @@ def loss_fn_fwd(param_fwd_, param_bwd_, key_, ref_samples):
     rnd_ts = jnp.hstack([0.,
                          jnp.sort(jax.random.uniform(key_ts, (train_nsteps - 1,), minval=0. + 1e-5, maxval=T)),
                          T])
-    return ipf_loss_cont(key_loss, param_fwd_, param_bwd_, ref_samples, T - rnd_ts, nn_drift, nn_drift, sde.dispersion)
+    return ipf_loss(key_loss, param_fwd_, param_bwd_, ref_samples, T - rnd_ts, nn_drift, nn_drift, sde.dispersion)
 
 
 # Make optax kernels

@@ -9,7 +9,7 @@ from fbs.nn.models import make_simple_st_nn
 from fbs.sdes.linear import make_linear_sde, StationaryConstLinearSDE, StationaryLinLinearSDE, StationaryExpLinearSDE, \
     make_linear_sde_law_loss, make_ou_sde, make_ou_score_matching_loss
 from fbs.sdes.simulators import reverse_simulator, doob_bridge_simulator, euler_maruyama
-from fbs.dsb.base import ipf_loss_cont
+from fbs.dsb.base import ipf_loss_cont, ipf_loss_cont_v
 from fbs.sdes.linear import make_gaussian_bw_sb
 from functools import partial
 
