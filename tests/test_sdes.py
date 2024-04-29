@@ -317,6 +317,20 @@ def test_gaussian_sb():
     npt.assert_allclose(mu1, approx_m1, rtol=1e-1)
     npt.assert_allclose(cov1, approx_cov1, rtol=1e-1)
 
+    # Test if the reverse of the reverse is the forward
+    def score(x, t):
+        mt, covt = marginal_mean(t), marginal_cov(t)
+        chol = jax.scipy.linalg.cho_factor(covt)
+        return -jax.scipy.linalg.cho_solve(chol, x - mt)
+
+    def reverse_drift(x, t):
+        return -drift(x, 1 - t) + score(x, 1 - t)
+
+    def reverse_reverse_drift(x, t):
+        return -reverse_drift(x, t) + score(x, t)
+
+    npt.assert_allclose(reverse_reverse_drift(mu0, 0.5), drift(mu0, 0.5))
+
 
 def test_sb_loss():
     """Test the Schrodinger bridge loss function.
@@ -332,34 +346,44 @@ def test_sb_loss():
 
     t0 = 0.
     T = 1.
-    ts = jnp.linspace(t0, T, 1000)
+    ts = jnp.linspace(t0, T, 100)
     nsamples = 10000
 
     marginal_mean, marginal_cov, sb_drift = make_gaussian_bw_sb(mu0, cov0, mu1, cov1, sig=1.)
 
-    # Test the forward loss
+    # Test the loss for learning the backward
     key, subkey = jax.random.split(key)
     init_samples = mu0 + jax.random.normal(subkey, (nsamples, 2)) @ jnp.linalg.cholesky(cov0)
 
-    def fwd_drift(x, t, _):
-        return sb_drift(x, t)
+    def fwd_drift(x, t, p):
+        return sb_drift(x, t) * p
 
     def score(x, t):
         mt, covt = marginal_mean(t), marginal_cov(t)
         chol = jax.scipy.linalg.cho_factor(covt)
         return -jax.scipy.linalg.cho_solve(chol, x - mt)
 
-    @partial(jax.vmap, in_axes=[0, None, None])
     def reverse_drift(x, t, p):
-        return fwd_drift(x, t, p) - score(x, t) + p
+        return -fwd_drift(x, T - t, 1.) + score(x, T - t) + p
 
     key, subkey = jax.random.split(key)
 
-    def loss_fn(p):
-        return ipf_loss_cont(subkey, p, None, init_samples, ts,
-                             reverse_drift,
+    def loss_fn_bwd(p):
+        return ipf_loss_cont(subkey, p, 1., init_samples, ts,
+                             jax.vmap(reverse_drift, in_axes=[0, None, None]),
                              jax.vmap(fwd_drift, in_axes=[0, None, None]))
 
-    # The loss function should be at a stationary point when p = 0
-    print(jax.grad(loss_fn)(jnp.array(0.)))
-    npt.assert_allclose(jax.grad(loss_fn)(jnp.array(0.)), 0., atol=1e-2)
+    # The loss function should be at a stationary point when p = 0 of the backward drift
+    npt.assert_allclose(jax.grad(loss_fn_bwd)(jnp.array(0.)), 0., atol=1e-3)
+
+    # Test the loss for learning the forward
+    key, subkey = jax.random.split(key)
+    terminal_samples = mu1 + jax.random.normal(subkey, (nsamples, 2)) @ jnp.linalg.cholesky(cov1)
+
+    def loss_fn_fwd(p):
+        return ipf_loss_cont(subkey, p, 0., terminal_samples, ts,
+                             jax.vmap(fwd_drift, in_axes=[0, None, None]),
+                             jax.vmap(reverse_drift, in_axes=[0, None, None]))
+
+    print(jax.grad(loss_fn_fwd)(jnp.array(1.)))
+    npt.assert_allclose(jax.grad(loss_fn_fwd)(jnp.array(0.)), 0., atol=1e-2)

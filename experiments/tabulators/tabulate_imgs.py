@@ -53,10 +53,6 @@ for method in methods:
     path_head = path_head + '-rm' if 'supr' in task and rnd_mask else path_head
     path_head = path_head + f'-{sde}-'
 
-    if 'twisted' in method and nparticles == 100:
-        ny0s = 50
-    else:
-        ny0s = 100
     for i in range(ny0s):
         true_img = np.asarray(to_img(np.load(path_head + f'{i}-true.npz')['test_img']))
         if 'csgm' in method:

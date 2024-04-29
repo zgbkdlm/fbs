@@ -198,11 +198,11 @@ def ipf_loss_cont(key: JKey,
         x, err = carry
         t, t_next, rnd = elem
 
-        dt = t_next - t
-        x_next = x + simulator_drift(x, t, simulator_param) * dt * 0.5 + jnp.sqrt(jnp.abs(dt)) * rnd
+        dt = jnp.abs(t_next - t)
+        x_next = x + simulator_drift(x, t, simulator_param) * dt * 0.5 + jnp.sqrt(dt) * rnd
         err = err + jnp.mean(
-            (-parametric_drift(x_next, t_next, param) * dt * 0.5 - (fn(x, t, dt) - fn(x_next, t, dt))) ** 2)
-        return (x, err), None
+            (parametric_drift(x_next, t_next, param) * dt * 0.5 - (fn(x, t, dt) - fn(x_next, t, dt))) ** 2)
+        return (x_next, err), None
 
     key, subkey = jax.random.split(key)
     rnds = jax.random.normal(subkey, (nsteps, *init_samples.shape))
