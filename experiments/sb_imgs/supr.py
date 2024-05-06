@@ -141,14 +141,17 @@ def ref_sampler(key_, _, n):
     return jax.random.normal(key_, (n, *x_shape))
 
 
+@jax.jit
 def random_x0_sampler(key_, y0_, mask_):
     return jax.random.uniform(key_, x_shape, minval=0., maxval=1.)
 
 
+@jax.jit
 def blank_x0_sampler(key_, y0_, mask_):
     return jnp.zeros(x_shape)
 
 
+@jax.jit
 def interp_x0_sampler(key_, y0_, mask_):
     interpolated_img = jax.image.resize(jnp.reshape(y0_, (low_res, low_res, nchannels)),
                                         (resolution, resolution, nchannels),
