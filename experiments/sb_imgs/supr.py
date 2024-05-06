@@ -22,6 +22,7 @@ from functools import partial
 parser = argparse.ArgumentParser(description='Super-resolution.')
 parser.add_argument('--rate', type=int, default=4, help='The rate of super-resolution.')
 parser.add_argument('--sde', type=str, default='lin')
+parser.add_argument('--method', type=str, default='filter')
 parser.add_argument('--test_nsteps', type=int, default=128)
 parser.add_argument('--sb_step', type=int, default=9)
 parser.add_argument('--test_seed', type=int, default=666)
