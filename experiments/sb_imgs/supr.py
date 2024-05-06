@@ -13,7 +13,7 @@ from fbs.data import MNISTRestore
 from fbs.data.images import normalise
 from fbs.sdes import StationaryConstLinearSDE, StationaryLinLinearSDE
 from fbs.sdes.simulators import euler_maruyama
-from fbs.samplers import gibbs_init, gibbs_kernel
+from fbs.samplers import gibbs_kernel, gibbs_init as _gibbs_init
 from fbs.nn.models import make_st_nn
 from fbs.nn.unet import UNet
 from functools import partial
@@ -142,7 +142,7 @@ def ref_sampler(key_, _, n):
 
 
 def random_x0_sampler(key_, y0_, mask_):
-    return jax.random.normal(key_, x_shape)
+    return jax.random.uniform(key_, x_shape, minval=0., maxval=1.)
 
 
 def blank_x0_sampler(key_, y0_, mask_):
@@ -158,16 +158,16 @@ def interp_x0_sampler(key_, y0_, mask_):
 
 @jax.jit
 def pf(key_, x0_, y0_, mask_):
-    return gibbs_init(key_, y0_, x_shape, ts, fwd_sampler, sde, unpack,
-                      transition_sampler, transition_logpdf, likelihood_logpdf,
-                      nparticles, method='filter', marg_y=False, x0=x0_, mask_=mask_)
+    return _gibbs_init(key_, y0_, x_shape, ts, fwd_sampler, sde, unpack,
+                       transition_sampler, transition_logpdf, likelihood_logpdf,
+                       nparticles, method='filter', marg_y=False, x0=x0_, mask_=mask_)
 
 
 @jax.jit
 def gibbs_init(key_, x0_, y0_, mask_):
-    return gibbs_init(key_, y0_, x_shape, ts, fwd_sampler, sde, unpack,
-                      transition_sampler, transition_logpdf, likelihood_logpdf,
-                      nparticles, method='smoother', marg_y=False, x0=x0_, mask_=mask_)
+    return _gibbs_init(key_, y0_, x_shape, ts, fwd_sampler, sde, unpack,
+                       transition_sampler, transition_logpdf, likelihood_logpdf,
+                       nparticles, method='smoother', marg_y=False, x0=x0_, mask_=mask_)
 
 
 @jax.jit
@@ -215,7 +215,7 @@ for x0_sampler, x0_sampler_name in zip([random_x0_sampler, blank_x0_sampler, int
             key, subkey = jax.random.split(key)
             x0 = x0_sampler(subkey, test_y0, mask_=mask)
             key, subkey = jax.random.split(key)
-            x0, _ = pf(subkey, x0, test_y0, mask_=mask)
+            x0, _ = pf(subkey, x0, test_y0, mask)
             restored = dataset.concat(x0, test_y0, mask)
             restored_imgs[i] = restored
             plt.imsave(path_head_img + f'-filter-{x0_sampler_name}-{i}.png', to_imsave(restored), cmap=cmap)
@@ -225,7 +225,7 @@ for x0_sampler, x0_sampler_name in zip([random_x0_sampler, blank_x0_sampler, int
         key, subkey = jax.random.split(key)
         x0 = x0_sampler(subkey, test_y0, mask_=mask)
         key, subkey = jax.random.split(key)
-        x0, us_star = gibbs_init(subkey, x0, test_y0, mask_=mask)
+        x0, us_star = gibbs_init(subkey, x0, test_y0, mask)
         bs_star = jnp.zeros((nsteps + 1), dtype=int)
         restored = dataset.concat(x0, test_y0, mask)
         plt.imsave(path_head_img + '-gibbs-init.png', to_imsave(restored), cmap=cmap)
@@ -233,7 +233,7 @@ for x0_sampler, x0_sampler_name in zip([random_x0_sampler, blank_x0_sampler, int
 
         for i in range(nsamples):
             key, subkey = jax.random.split(key)
-            x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, test_y0, us_star, bs_star, mask_=mask)
+            x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, test_y0, us_star, bs_star, mask)
             restored = dataset.concat(us_star[-1], test_y0, mask)
             restored_imgs[i] = restored
             plt.imsave(
