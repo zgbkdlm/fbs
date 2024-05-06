@@ -22,7 +22,7 @@ from fbs.nn.unet import UNet
 parser = argparse.ArgumentParser(description='Training a Schrodinger bridge for images.')
 parser.add_argument('--dataset', type=str, default='mnist', help='Which dataset. Options are mnist, celeba-64, '
                                                                  'or celeba-128.')
-parser.add_argument('--T', type=float, default=1.)
+parser.add_argument('--T', type=float, default=0.5)
 parser.add_argument('--sde', type=str, default='lin', help='The reference SDE.')
 parser.add_argument('--vmap_loss', action='store_true', default=False)
 parser.add_argument('--upsampling', type=str, default='pixel_shuffle')
@@ -31,7 +31,7 @@ parser.add_argument('--nn_dim', type=int, default=16)
 parser.add_argument('--batch_size', type=int, default=2)
 parser.add_argument('--nsteps', type=int, default=2)
 parser.add_argument('--schedule', type=str, default='cos')
-parser.add_argument('--nepochs', type=int, default=40)
+parser.add_argument('--nepochs', type=int, default=10)
 parser.add_argument('--nsbs', type=int, default=10, help='The number of Schrodinger iterations.')
 parser.add_argument('--grad_clip', action='store_true', default=False)
 
@@ -66,7 +66,7 @@ else:
 if args.sde == 'const':
     sde = StationaryConstLinearSDE(a=-0.5, b=1.)
 elif args.sde == 'lin':
-    sde = StationaryLinLinearSDE(beta_min=0.02, beta_max=2., t0=0., T=T)
+    sde = StationaryLinLinearSDE(beta_min=0.02, beta_max=5., t0=0., T=T)
 else:
     raise NotImplementedError('...')
 
@@ -78,7 +78,7 @@ def reference_drift(x, t, _):
 # NN
 train_nsamples = args.batch_size
 train_nsteps = args.nsteps
-nn_dt = T / 200
+nn_dt = 0.5 / 200
 nepochs = args.nepochs
 data_size = dataset.n
 
