@@ -5,7 +5,6 @@ The reference terminal distribution is N(0, 1).
 
 Run the script under the folder `./experiments`.
 """
-import math
 import argparse
 import jax
 import jax.numpy as jnp
