@@ -13,7 +13,7 @@ from fbs.data import MNISTRestore
 from fbs.data.images import normalise
 from fbs.sdes import StationaryConstLinearSDE, StationaryLinLinearSDE
 from fbs.sdes.simulators import euler_maruyama
-from fbs.samplers import gibbs_kernel, gibbs_init as _gibbs_init
+from fbs.samplers import gibbs_kernel as _gibbs_kernel, gibbs_init as _gibbs_init
 from fbs.nn.models import make_st_nn
 from fbs.nn.unet import UNet
 from functools import partial
@@ -172,10 +172,10 @@ def gibbs_init(key_, x0_, y0_, mask_):
 
 @jax.jit
 def gibbs_kernel(key_, x0_, y0_, us_star_, bs_star_, mask_):
-    return gibbs_kernel(key_, x0_, y0_, us_star_, bs_star_,
-                        ts, fwd_sampler, sde, unpack, nparticles,
-                        transition_sampler, transition_logpdf, likelihood_logpdf,
-                        marg_y=False, explicit_backward=True, explicit_final=True, mask_=mask_)
+    return _gibbs_kernel(key_, x0_, y0_, us_star_, bs_star_,
+                         ts, fwd_sampler, sde, unpack, nparticles,
+                         transition_sampler, transition_logpdf, likelihood_logpdf,
+                         marg_y=False, explicit_backward=True, explicit_final=True, mask_=mask_)
 
 
 def to_imsave(img):
