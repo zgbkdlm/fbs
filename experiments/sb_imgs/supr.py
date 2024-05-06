@@ -22,8 +22,8 @@ from functools import partial
 parser = argparse.ArgumentParser(description='Super-resolution.')
 parser.add_argument('--rate', type=int, default=4, help='The rate of super-resolution.')
 parser.add_argument('--sde', type=str, default='lin')
-parser.add_argument('--test_nsteps', type=int, default=500)
-parser.add_argument('--sb_step', type=int, default=3)
+parser.add_argument('--test_nsteps', type=int, default=128)
+parser.add_argument('--sb_step', type=int, default=9)
 parser.add_argument('--test_seed', type=int, default=666)
 parser.add_argument('--y0_id', type=int, default=10)
 parser.add_argument('--nparticles', type=int, default=100)
@@ -57,13 +57,13 @@ dataset.sr_random = False
 if args.sde == 'const':
     sde = StationaryConstLinearSDE(a=-0.5, b=1.)
 elif args.sde == 'lin':
-    sde = StationaryLinLinearSDE(beta_min=0.02, beta_max=2., t0=0., T=T)
+    sde = StationaryLinLinearSDE(beta_min=0.02, beta_max=5., t0=0., T=T)
 else:
     raise NotImplementedError('...')
 
 # Load the trained model
 key, subkey = jax.random.split(key)
-my_nn = UNet(dt=T / 200, dim=32, upsampling='pixel_shuffle')
+my_nn = UNet(dt=0.5 / 200, dim=32, upsampling='pixel_shuffle')
 _, _, nn_drift = make_st_nn(subkey, nn=my_nn, dim_in=d, batch_size=2)
 
 filename = f'./checkpoints/sb_{dataset_name}_{args.sde}_{args.sb_step}.npz'
@@ -81,7 +81,7 @@ def unpack(xy, mask_):
 
 
 def reverse_drift(uv, t):
-    return -sde.drift(uv, T - t) + sde.dispersion(T - t) ** 2 * nn_drift(uv, T - t, param_bwd)
+    return nn_drift(uv, T - t, param_bwd)
 
 
 def reverse_drift_u(u, v, t, mask_):
@@ -133,20 +133,26 @@ def fwd_sampler(key_, x0_, y0_, mask_):
         return nn_drift(x, t, param_fwd)
 
     xy0 = dataset.concat(x0_, y0_, mask_)
-    return euler_maruyama(key_, xy0, ts, fwd_drift, sde.dispersion, integration_nsteps=10, return_path=True)
+    return euler_maruyama(key_, xy0, ts, fwd_drift, sde.dispersion, integration_nsteps=1, return_path=True)
 
 
 def ref_sampler(key_, _, n):
     return jax.random.normal(key_, (n, *x_shape))
 
 
-def crude_x0_sampler(key_, y0_, mask_):
+def random_x0_sampler(key_, y0_, mask_):
     return jax.random.normal(key_, x_shape)
 
 
-def approx_x0_sampler(key_, y0_, mask_):
-    return jax.image.resize(jnp.reshape(y0_, (low_res, low_res, nchannels)), (resolution, resolution, nchannels),
-                            method='linear')
+def blank_x0_sampler(key_, y0_, mask_):
+    return jnp.zeros(x_shape)
+
+
+def interp_x0_sampler(key_, y0_, mask_):
+    interpolated_img = jax.image.resize(jnp.reshape(y0_, (low_res, low_res, nchannels)),
+                                        (resolution, resolution, nchannels),
+                                        method='linear')
+    return unpack(interpolated_img, mask_)[0]
 
 
 @jax.jit
@@ -185,8 +191,8 @@ def dataset_sampler(key_):
 data_key, subkey = jax.random.split(data_key)
 
 test_img, test_y0, mask = dataset_sampler(subkey)
-path_head_img = f'./sb_imgs/{dataset_name}-{sr_rate}-{args.sde}-{nparticles}-{args.y0_id}'
-path_head_arr = f'./sb_imgs/{dataset_name}-{sr_rate}-{args.sde}-{nparticles}-{args.y0_id}'
+path_head_img = f'./sb_imgs/results/{dataset_name}-{sr_rate}-{args.sde}-{nparticles}-{args.y0_id}'
+path_head_arr = f'./sb_imgs/results/{dataset_name}-{sr_rate}-{args.sde}-{nparticles}-{args.y0_id}'
 
 plt.imsave(path_head_img + '-true.png', to_imsave(test_img), cmap=cmap)
 np.savez(path_head_arr + '-true', test_img=test_img, *mask)
@@ -200,37 +206,42 @@ plt.imsave(path_head_img + '-corrupt-lr.png',
 
 restored_imgs = np.zeros((nsamples, resolution, resolution, nchannels))
 
-# Use filter
-
-if args.method == 'filter':
-    for i in range(nsamples):
+# Do conditional sampling
+for x0_sampler, x0_sampler_name in zip([random_x0_sampler, blank_x0_sampler, interp_x0_sampler],
+                                       ['random', 'blank', 'interp']):
+    if args.method == 'filter':
+        for i in range(nsamples):
+            key, subkey = jax.random.split(key)
+            x0 = x0_sampler(subkey, test_y0, mask_=mask)
+            key, subkey = jax.random.split(key)
+            x0, _ = pf(subkey, x0, test_y0, mask_=mask)
+            restored = dataset.concat(x0, test_y0, mask)
+            restored_imgs[i] = restored
+            plt.imsave(path_head_img + f'-filter-{x0_sampler_name}-{i}.png', to_imsave(restored), cmap=cmap)
+            print(f'Supr-{sr_rate} | Filter | {x0_sampler_name} | iter: {i}')
+        np.save(path_head_arr + f'-filter-{x0_sampler_name}', restored_imgs)
+    elif 'gibbs' in args.method:
         key, subkey = jax.random.split(key)
-        x0, _ = pf(subkey, test_y0, mask_=mask)
+        x0 = x0_sampler(subkey, test_y0, mask_=mask)
+        key, subkey = jax.random.split(key)
+        x0, us_star = gibbs_init(subkey, x0, test_y0, mask_=mask)
+        bs_star = jnp.zeros((nsteps + 1), dtype=int)
         restored = dataset.concat(x0, test_y0, mask)
-        restored_imgs[i] = restored
-        plt.imsave(path_head_img + f'-filter{"-marg" if args.marg else ""}-{i}.png', to_imsave(restored), cmap=cmap)
-        print(f'Supr-{sr_rate} | filter | iter: {i}')
-    np.save(path_head_arr + f'-filter{"-marg" if args.marg else ""}', restored_imgs)
-elif 'gibbs' in args.method:
-    key, subkey = jax.random.split(key)
-    x0, us_star = gibbs_init(subkey, test_y0, mask_=mask)
-    bs_star = jnp.zeros((nsteps + 1), dtype=int)
-    restored = dataset.concat(x0, test_y0, mask)
-    plt.imsave(path_head_img + '-gibbs-init.png', to_imsave(restored), cmap=cmap)
-    np.save(path_head_arr + '-gibbs-init', restored)
+        plt.imsave(path_head_img + '-gibbs-init.png', to_imsave(restored), cmap=cmap)
+        np.save(path_head_arr + '-gibbs-init', restored)
 
-    for i in range(nsamples):
-        key, subkey = jax.random.split(key)
-        x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, test_y0, us_star, bs_star, mask_=mask)
-        restored = dataset.concat(us_star[-1], test_y0, mask)
-        restored_imgs[i] = restored
-        plt.imsave(
-            path_head_img + f'-gibbs{"-eb" if eb else ""}{"-ef" if ef else ""}{"-marg" if args.marg else ""}-{i}.png',
-            to_imsave(restored),
-            cmap=cmap)
-        print(f'Inpainting-{sr_rate} | Gibbs | iter: {i}, acc: {acc}')
-    np.save(
-        path_head_arr + f'-gibbs{"-eb" if eb else ""}{"-ef" if ef else ""}{"-marg" if args.marg else ""}',
-        restored_imgs)
-else:
-    raise ValueError(f"Unknown method {args.method}")
+        for i in range(nsamples):
+            key, subkey = jax.random.split(key)
+            x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, test_y0, us_star, bs_star, mask_=mask)
+            restored = dataset.concat(us_star[-1], test_y0, mask)
+            restored_imgs[i] = restored
+            plt.imsave(
+                path_head_img + f'-gibbs-eb-ef-{x0_sampler_name}-{i}.png',
+                to_imsave(restored),
+                cmap=cmap)
+            print(f'Inpainting-{sr_rate} | Gibbs | {x0_sampler_name} | iter: {i}, acc: {acc}')
+        np.save(
+            path_head_arr + f'-gibbs-eb-ef-{x0_sampler_name}',
+            restored_imgs)
+    else:
+        raise ValueError(f"Unknown method {args.method}")
