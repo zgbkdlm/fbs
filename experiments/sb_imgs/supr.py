@@ -28,7 +28,7 @@ parser.add_argument('--sb_step', type=int, default=9)
 parser.add_argument('--test_seed', type=int, default=666)
 parser.add_argument('--y0_id', type=int, default=10)
 parser.add_argument('--nparticles', type=int, default=100)
-parser.add_argument('--nsamples', type=int, default=10)
+parser.add_argument('--nsamples', type=int, default=100)
 parser.add_argument('--init_method', type=str, default='smoother')
 
 args = parser.parse_args()
