@@ -21,6 +21,7 @@ method_labels = ['CSGM',
 mc_id = 66
 which_marginals = jnp.array([60, 66])
 ngrids = 200
+level_lines = np.insert(np.linspace(0.15, 0.90, 6), 0, 0.05)
 
 
 @partial(jax.vmap, in_axes=[0, None, None])
@@ -79,8 +80,10 @@ for row, nparticles in enumerate([10, 100]):
         pdfs_gp = pdf_mvn(meshes, gp_mean, gp_cov)
         pdfs_approx = pdf_mvn(meshes, approx_mean, approx_cov)
 
-        con = axes[row, col].contour(*meshes_plot, pdfs_gp, levels=7, linewidths=2, cmap=plt.cm.binary)
-        axes[row, col].contour(*meshes_plot, pdfs_approx, levels=7, linewidths=2, linestyles='dashed', cmap=plt.cm.binary)
+        con = axes[row, col].contour(*meshes_plot, pdfs_gp, levels=level_lines,
+                                     linewidths=2, cmap=plt.cm.binary)
+        axes[row, col].contour(*meshes_plot, pdfs_approx, levels=level_lines,
+                               linewidths=2, linestyles='dashed', cmap=plt.cm.binary)
 
         if row == 1:
             axes[row, col].set_xlabel('$x_1$')
