@@ -14,4 +14,4 @@ source ./venv/bin/activate
 cd experiments
 
 nvidia-smi
-python -u sb_imgs/train.py --dataset=$1 --sde=$2 --vmap_loss --batch_size=128 --nsteps=16 --schedule="cos" --T=0.5 --nepochs=10 --grad_clip
+python -u sb_imgs/train.py --dataset="mnist" --sde="lin" --batch_size=64 --nsteps=32 --schedule="cos" --nepochs=5 --grad_clip --vmap_loss --nn_dim=32

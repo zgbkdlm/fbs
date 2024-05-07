@@ -193,6 +193,8 @@ def dataset_sampler(key_):
 
 # Do
 data_key, subkey = jax.random.split(data_key)
+for _ in range(args.y0_id):
+    data_key, subkey = jax.random.split(data_key)
 
 test_img, test_y0, mask = dataset_sampler(subkey)
 path_head_img = f'./sb_imgs/results/{dataset_name}-{sr_rate}-{args.sde}-{nparticles}-{args.y0_id}'
