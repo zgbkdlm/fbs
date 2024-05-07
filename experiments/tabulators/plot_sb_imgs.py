@@ -22,7 +22,7 @@ sde = 'lin'
 methods = ['filter', 'gibbs-eb-ef']
 nparticles = 100
 max_mcs = 100
-y0_id = 10
+y0_id = 2
 
 path_head_arr = f'./sb_imgs/results/{dataset}-4-{sde}-{nparticles}-{y0_id}'
 
@@ -38,31 +38,47 @@ gibbs_interp_imgs = to_img(np.load(path_head_arr + '-gibbs-eb-ef-interp.npy'))
 all_restored_imgs = [filter_random_imgs, filter_blank_imgs, filter_interp_imgs, gibbs_blank_imgs]
 
 # Plot four examples to show in the paper main body
-fig = plt.figure(figsize=(8, 9))
-axes = ImageGrid(fig, 111, nrows_ncols=(2, 2), axes_pad=0.4)
+fig = plt.figure(figsize=(21, 3))
+axes = ImageGrid(fig, 111, nrows_ncols=(1, 8), axes_pad=0.)
 
 axes[0].imshow(corrupt_img, cmap='gray')
 axes[0].set_title('Input')
 axes[0].axis('off')
 
-axes[1].imshow(filter_random_imgs[0], cmap='gray')
-axes[1].set_title('PF (random $X_0$)')
+axes[1].imshow(true_img, cmap='gray')
+axes[1].set_title('Truth')
 axes[1].axis('off')
 
-axes[2].imshow(filter_interp_imgs[1], cmap='gray')
-axes[2].set_title('PF (interpolation $X_0$)')
+axes[2].imshow(filter_random_imgs[6], cmap='gray')
+axes[2].set_title('PF (random $X_0$)')
 axes[2].axis('off')
 
-axes[3].imshow(gibbs_blank_imgs[50], cmap='gray')
-axes[3].set_title('Gibbs-CSMC')
+axes[3].imshow(filter_random_imgs[9], cmap='gray')
+axes[3].set_title('PF (random $X_0$)')
 axes[3].axis('off')
 
+axes[4].imshow(filter_interp_imgs[6], cmap='gray')
+axes[4].set_title('PF (interpolate $X_0$)')
+axes[4].axis('off')
+
+axes[5].imshow(filter_interp_imgs[9], cmap='gray')
+axes[5].set_title('PF (interpolate $X_0$)')
+axes[5].axis('off')
+
+axes[6].imshow(gibbs_blank_imgs[50], cmap='gray')
+axes[6].set_title('Gibbs-CSMC')
+axes[6].axis('off')
+
+axes[7].imshow(gibbs_blank_imgs[60], cmap='gray')
+axes[7].set_title('Gibbs-CSMC')
+axes[7].axis('off')
+
 plt.tight_layout(pad=0.1)
-plt.savefig(f'figs/sb-imgs-examples-{y0_id}.pdf', transparent=True)
+plt.savefig(f'figs/sb-imgs-examples-{y0_id}.png', transparent=True)
 plt.show()
 
 # Plot more in the appendix
-fig = plt.figure(figsize=(24, 8))
+fig = plt.figure(figsize=(23, 8))
 nexamples = 10
 per = max_mcs // nexamples
 axes = ImageGrid(fig, 111, nrows_ncols=(4, nexamples + 2), axes_pad=0.)
@@ -97,5 +113,5 @@ for row in range(len(all_restored_imgs)):
         axes[axes_idx].axis('off')
 
 plt.tight_layout(pad=0.1)
-plt.savefig(f'figs/sb-imgs-appendix-{y0_id}.pdf', transparent=True)
+plt.savefig(f'figs/sb-imgs-appendix-{y0_id}.png', transparent=True)
 plt.show()
