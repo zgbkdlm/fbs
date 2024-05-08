@@ -170,7 +170,7 @@ plt.rcParams.update({
     'font.size': 16})
 
 # Plot the coalescence of one dimension
-fig, axes = plt.subplots(ncols=2, figsize=(14, 5))
+fig, axes = plt.subplots(ncols=2, figsize=(15, 5))
 every = nsteps // 10  # Reduce image size
 
 for p in range(nparticles):
