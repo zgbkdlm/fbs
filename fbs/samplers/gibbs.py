@@ -152,7 +152,7 @@ def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JA
                                   transition_sampler, likelihood_logpdf, killing, nparticles,
                                   **kwargs)
 
-        idx = force_move(key_csmc_x0, jnp.exp(log_ws[-1]), bs_star[-1])
+        idx, _ = force_move(key_csmc_x0, jnp.exp(log_ws[-1]), bs_star[-1])
         x0 = uss[-1, idx]
         # x0 = jax.random.choice(key_csmc_x0, uss[-1], p=jnp.exp(log_ws[-1]), axis=0)
         us_star_next = unpack(fwd_sampler(key_csmc_bwd_us, x0, y0, **kwargs), **kwargs)[0][::-1]
@@ -190,8 +190,12 @@ def force_move(key, weights, k: int):
         New index of the ancestor of the reference particle.
     alpha:
         Probability of accepting new sample.
+
+    Notes
+    -----
+    Taken from https://github.com/AdrienCorenflos/particle_mala/blob/83f62f6ede504b36cc0d76932dcd670d9e16a5aa/gradient_csmc/utils/common.py#L8
+    under the Apache 2.0 License. No modifications.
     """
-    # TODO: log space?
     M = weights.shape[0]
     key_1, key_2 = jax.random.split(key, 2)
 

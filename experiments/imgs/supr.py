@@ -244,7 +244,7 @@ for k in range(args.ny0s):
         for i in range(nsamples):
             key, subkey = jax.random.split(key)
             x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, test_y0, us_star, bs_star, mask_=mask)
-            restored = dataset.concat(us_star[-1], test_y0, mask)
+            restored = dataset.concat(x0, test_y0, mask)
             restored_imgs[i] = restored
             plt.imsave(
                 path_head_img + f'-gibbs{"-eb" if eb else ""}{"-ef" if ef else ""}{"-marg" if args.marg else ""}-{i}.png',

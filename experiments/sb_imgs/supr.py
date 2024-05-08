@@ -239,7 +239,7 @@ for x0_sampler, x0_sampler_name in zip([random_x0_sampler, blank_x0_sampler, int
         for i in range(nsamples):
             key, subkey = jax.random.split(key)
             x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, test_y0, us_star, bs_star, mask)
-            restored = dataset.concat(us_star[-1], test_y0, mask)
+            restored = dataset.concat(x0, test_y0, mask)
             restored_imgs[i] = restored
             plt.imsave(
                 path_head_img + f'-gibbs-eb-ef-{x0_sampler_name}-{i}.png',

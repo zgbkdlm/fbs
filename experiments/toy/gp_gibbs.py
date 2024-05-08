@@ -4,7 +4,7 @@ Gaussian process regression using diffusion Gibbs.
 import jax
 import jax.numpy as jnp
 import math
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 import numpy as np
 import argparse
 from fbs.samplers import bootstrap_filter, stratified, gibbs_kernel
@@ -185,14 +185,14 @@ gibbs_kernel_chain_vmap = jax.jit(jax.vmap(gibbs_kernel, in_axes=[0, 0, None, 0,
 # Gibbs loop
 key, subkey = jax.random.split(key)
 key_chains = jax.random.split(subkey, num=nchains)
-x0s, us_stars, bs_stars = gibbs_init_chain_vmap(key_chains)
+x0s, _, bs_stars = gibbs_init_chain_vmap(key_chains)
 
 gibbs_samples = np.zeros((nchains, nsamples, d))
 accs = np.zeros((nsamples,), dtype=bool)
 for i in range(nsamples):
     key, subkey = jax.random.split(key)
     key_chains = jax.random.split(subkey, num=nchains)
-    x0s, us_stars, bs_stars, acc = gibbs_kernel_chain_vmap(key_chains, x0s, y0, us_stars, bs_stars)
+    x0s, _, bs_stars, acc = gibbs_kernel_chain_vmap(key_chains, x0s, y0, _, bs_stars)
     gibbs_samples[:, i, :] = x0s
     accs[i] = acc[chain_track_id, -1]
     j = max(0, i - 100)
@@ -205,7 +205,7 @@ np.savez(f'./toy/results/gibbs{"-eb" if args.explicit_backward else ""}{"-ef" if
          samples=gibbs_samples, gp_mean=gp_mean, gp_cov=gp_cov)
 
 # Plot
-# gibbs_samples = gibbs_samples[burnin:]
+# gibbs_samples = gibbs_samples[0, burnin:]
 # approx_gp_mean = jnp.mean(gibbs_samples, axis=0)
 # approx_gp_cov = jnp.cov(gibbs_samples, rowvar=False)
 #
