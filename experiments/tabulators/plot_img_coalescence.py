@@ -170,7 +170,7 @@ plt.rcParams.update({
     'font.size': 16})
 
 # Plot the coalescence of one dimension
-fig, axes = plt.subplots(ncols=2, figsize=(12, 5))
+fig, axes = plt.subplots(ncols=2, figsize=(14, 5))
 every = nsteps // 10  # Reduce image size
 
 for p in range(nparticles):
@@ -191,19 +191,19 @@ quantile = np.quantile(two_sigmas, 0.95, axis=-1)
 for d in range(x0s.shape[-1]):
     if d == 0:
         line2, = axes[1].plot(ts[::every], two_sigmas[::every, d], linewidth=1, c='black', alpha=0.1,
-                              label=r'Particle $2\,\sigma$ for each dimension')
+                              label=r'Particles $2\,\sigma$ for each dimension')
     else:
         axes[1].plot(ts[::every], two_sigmas[::every, d], linewidth=1, c='black', alpha=0.1)
 ql, = axes[1].plot(ts[::every], quantile[::every], linewidth=3, c='black', label='0.95 quantile over all dimensions')
-axes[1].annotate(f'{quantile[-1]:.2f}', xy=(ts[-1], quantile[-1]), xytext=(ts[-1] - 0.3, quantile[-1] + 0.8),
-                 arrowprops=dict(facecolor='black', width=2, shrink=0.05, alpha=0.5))
+# axes[1].annotate(f'{quantile[-1]:.2f}', xy=(ts[-1], quantile[-1]), xytext=(ts[-1] - 0.3, quantile[-1] + 0.8),
+#                  arrowprops=dict(facecolor='black', width=2, shrink=0.05, alpha=0.5))
 
 axes[1].grid(linestyle='--', alpha=0.3, which='both')
 axes[1].set_xlabel('$t$')
-axes[1].set_ylabel(r'Particle $2\,\sigma$')
+axes[1].set_ylabel(r'Particles $2\,\sigma$')
 axes[1].legend(handles=[line2, ql])
 
 plt.tight_layout(pad=0.1)
 plt.legend()
-plt.savefig(f'tmp_figs/coalescence-{args.sde}-{args.nparticles}.pdf', transparent=True)
+plt.savefig(f'./figs/coalescence-{args.sde}-{args.nparticles}.pdf', transparent=True)
 plt.show()
