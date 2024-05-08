@@ -205,6 +205,6 @@ axes[1].legend(handles=[line2, ql])
 
 plt.legend()
 plt.tight_layout(pad=0.1)
-plt.subplots_adjust(left=0.057)
+plt.subplots_adjust(left=0.057, wspace=0.10)
 plt.savefig(f'./figs/coalescence-{args.sde}-{args.nparticles}.pdf', transparent=True)
 plt.show()
