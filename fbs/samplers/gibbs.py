@@ -11,7 +11,7 @@ from fbs.samplers.smc import bootstrap_filter, bootstrap_backward_smoother
 from fbs.samplers.resampling import stratified
 from fbs.sdes.linear import StationaryLinLinearSDE
 from fbs.data.base import Dataset
-from fbs.typings import JKey, JArray
+from fbs.typings import JKey, JArray, FloatScalar, JInt, JFloat
 from typing import Callable, Tuple
 
 
@@ -131,7 +131,6 @@ def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JA
         def init_likelihood_logpdf(*_):
             return -math.log(nparticles) * jnp.ones(nparticles)
 
-
     # p(x_{[0, T]}, y_{(0, T]} \mid Y_0 = y)
     # Given X^j_0 \sim pi(x \mid y), do
     # 1. forward noise:
@@ -152,9 +151,9 @@ def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JA
                                   transition_sampler, likelihood_logpdf, killing, nparticles,
                                   **kwargs)
 
-        idx, _ = force_move(key_csmc_x0, jnp.exp(log_ws[-1]), bs_star[-1])
+        # idx, _ = force_move(key_csmc_x0, jnp.exp(log_ws[-1]), bs_star[-1])
+        idx = jax.random.choice(key_csmc_x0, jnp.arange(nparticles), p=jnp.exp(log_ws[-1]), axis=0)
         x0 = uss[-1, idx]
-        # x0 = jax.random.choice(key_csmc_x0, uss[-1], p=jnp.exp(log_ws[-1]), axis=0)
         us_star_next = unpack(fwd_sampler(key_csmc_bwd_us, x0, y0, **kwargs), **kwargs)[0][::-1]
         bs_star_next = jax.random.randint(key_csmc_bwd_bs, (us.shape[0],), minval=0, maxval=nparticles)
     else:
@@ -171,7 +170,7 @@ def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JA
     return x0_next, us_star_next, bs_star_next, bs_star_next != bs_star
 
 
-def force_move(key, weights, k: int):
+def force_move(key: JKey, weights: JArray, k: FloatScalar) -> Tuple[JInt, JFloat]:
     """
     Forced-move trajectory selection. The weights are assumed to be normalised already.
 
@@ -203,7 +202,7 @@ def force_move(key, weights, k: int):
     temp = 1 - w_k
 
     rest_weights = weights.at[k].set(0)  # w_{-k}
-    threshold = jnp.maximum(1 - jnp.exp(-M), 1 - 1e-12)
+    threshold = jnp.maximum(1 - jnp.exp(-M), 1 - 1e-12)  # This might be problematic
     rest_weights = jax.lax.cond(w_k < threshold, lambda: rest_weights / temp,
                                 lambda: jnp.full((M,), 1 / M))  # w_{-k} / (1 - w_k)
 
@@ -215,4 +214,3 @@ def force_move(key, weights, k: int):
     i = jax.lax.select(accept, i, k)
 
     return i, jnp.clip(alpha, 0, 1.)
-
