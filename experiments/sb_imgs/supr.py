@@ -64,7 +64,7 @@ else:
 
 # Load the trained model
 key, subkey = jax.random.split(key)
-my_nn = UNet(dt=0.5 / 200, dim=32, upsampling='pixel_shuffle')
+my_nn = UNet(dt=0.5 / 200, dim=64, upsampling='pixel_shuffle')
 _, _, nn_drift = make_st_nn(subkey, nn=my_nn, dim_in=d, batch_size=2)
 
 filename = f'./checkpoints/sb_{dataset_name}_{args.sde}_{args.sb_step}.npz'
