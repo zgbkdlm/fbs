@@ -151,8 +151,8 @@ def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JA
                                   transition_sampler, likelihood_logpdf, killing, nparticles,
                                   **kwargs)
 
-        # idx, _ = force_move(key_csmc_x0, jnp.exp(log_ws[-1]), bs_star[-1])
-        idx = jax.random.choice(key_csmc_x0, jnp.arange(nparticles), p=jnp.exp(log_ws[-1]), axis=0)
+        idx, _ = force_move(key_csmc_x0, jnp.exp(log_ws[-1]), bs_star[-1])
+        # idx = jax.random.choice(key_csmc_x0, jnp.arange(nparticles), p=jnp.exp(log_ws[-1]), axis=0)
         x0 = uss[-1, idx]
         us_star_next = unpack(fwd_sampler(key_csmc_bwd_us, x0, y0, **kwargs), **kwargs)[0][::-1]
         bs_star_next = jax.random.randint(key_csmc_bwd_bs, (us.shape[0],), minval=0, maxval=nparticles)
