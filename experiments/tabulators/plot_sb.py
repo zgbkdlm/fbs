@@ -15,7 +15,7 @@ else:
 methods = ['filter-proper',
            'filter-heuristic',
            'gibbs-eb']
-nparticles_used = [4, 8, 16, 32, 64]
+nparticles_used = [2, 4, 8, 16, 32, 64]
 max_mcs = 100
 q = 0.95
 
@@ -70,7 +70,7 @@ ax.fill_between(nparticles_used,
                 alpha=0.2, color='black', edgecolor='none')
 
 ax.plot(nparticles_used, np.mean(errs_filter_gibbs, axis=0),
-        c='black', linewidth=2, marker='*', markerfacecolor='none', markersize=10,
+        c='black', linewidth=2, marker='*', markerfacecolor='none', markersize=12,
         alpha=0.5, label='Gibbs-CSMC')
 ax.fill_between(nparticles_used,
                 np.quantile(errs_filter_gibbs, q=0.05, axis=0),
