@@ -22,7 +22,7 @@ sde = 'lin'
 methods = ['filter', 'gibbs-eb-ef']
 nparticles = 100
 max_mcs = 100
-y0_id = 2
+y0_id = 7
 
 path_head_arr = f'./sb_imgs/results/{dataset}-4-{sde}-{nparticles}-{y0_id}'
 

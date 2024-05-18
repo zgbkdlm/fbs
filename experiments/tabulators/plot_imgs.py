@@ -26,12 +26,12 @@ def to_img(img):
     return img[..., 0] if dataset == 'mnist' else img
 
 
-dataset = 'celeba-64'
-task = 'supr-2'
+dataset = 'mnist'
+task = 'supr-4'
 rnd_mask = False
 sde = 'lin'
-nparticles = 10
-y0_id = 19
+nparticles = 100
+y0_id = 94
 nsamples = 100
 methods = ['filter', 'gibbs-eb-ef', 'pmcmc-0.005', 'twisted', 'csgm']
 nexamples = 3
@@ -76,5 +76,5 @@ for row in range(len(methods)):
         grid[axes_idx].axis('off')
 
 plt.tight_layout(pad=0.1)
-plt.savefig(f'./tmp_figs/imgs-{dataset}-{task}-{nparticles}-{y0_id}.png', transparent=True)
+plt.savefig(f'./figs/imgs-{dataset}-{task}-{nparticles}-{y0_id}.png', transparent=True)
 plt.show()

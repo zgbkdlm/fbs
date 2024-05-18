@@ -64,7 +64,7 @@ for method, label, marker, style, alpha in zip(methods, method_labels, method_ma
 ax.grid(linestyle='--', alpha=0.3, which='both')
 ax.set_xlabel('Lag')
 # ax.set_yscale('log')
-ax.set_ylabel('Autocorrelation')
+ax.set_ylabel('Autocorrelation (worst variable)')
 plt.tight_layout(pad=0.1)
 plt.legend()
 plt.savefig('figs/autocorrs.pdf', transparent=True)

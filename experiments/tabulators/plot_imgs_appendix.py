@@ -77,5 +77,5 @@ for y0_id in range(100):
             grid[axes_idx].axis('off')
 
     plt.tight_layout(pad=0.1)
-    plt.savefig(f'./tmp_figs/appendix-imgs-{dataset}-{task}-{nparticles}-{y0_id}.png', transparent=True)
+    plt.savefig(f'./figs/appendix-imgs-{dataset}-{task}-{nparticles}-{y0_id}.png', transparent=True)
     plt.show()

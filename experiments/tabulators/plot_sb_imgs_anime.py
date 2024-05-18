@@ -34,8 +34,8 @@ x_shape = dataset.unobs_shape
 
 sde = 'lin'
 nparticles = 100
-max_nsamples = 20
-y0_id = 2
+max_nsamples = 30
+y0_id = 9
 
 path_head_arr = f'./sb_imgs/results/{dataset_name}-4-{sde}-{nparticles}-{y0_id}'
 
