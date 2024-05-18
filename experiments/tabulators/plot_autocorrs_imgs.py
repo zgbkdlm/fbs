@@ -13,7 +13,9 @@ sde = 'lin'
 
 
 def ac_fn(samples_):
-    return npr.diagnostics.autocorrelation(samples_, axis=0)[:max_lags]
+    acs_ = npr.diagnostics.autocorrelation(samples_, axis=0)[:max_lags]
+    acs_[acs_ < 0] = 0.
+    return acs_
 
 
 plt.rcParams.update({
@@ -37,8 +39,8 @@ for col, dataset, task, title in [(0, 'mnist', 'inpainting-15', 'MNIST inpaintin
                      f'Gibbs-CSMC-{10 if "mnist" in dataset else 2}',
                      f'PMCMC-0.005-{100 if "mnist" in dataset else 10}',
                      f'PMCMC-0.005-{10 if "mnist" in dataset else 2}']
-    method_markers = ['*', '*', 'o', 'o']  # distinguish methods
-    method_line_styles = ['-', '--', '-', '--']  # distinguish nparticles
+    method_markers = ['*', 'o', '*', 'o']  # distinguish nparticles
+    method_line_styles = ['-', '-', '--', '--']  # distinguish method
 
     autocorrs = np.zeros((max_mcs, max_lags))
 
@@ -53,7 +55,7 @@ for col, dataset, task, title in [(0, 'mnist', 'inpainting-15', 'MNIST inpaintin
 
             filename = path_head + f'-{"-".join(method.split("-")[:-1])}.npy'
             samples = np.load(filename).reshape(nsamples, -1)
-            acs = np.nanmin(np.abs(ac_fn(samples)), axis=-1)
+            acs = np.nanmin(ac_fn(samples), axis=-1)
             autocorrs[mc_id] = acs
 
         axes[col].plot(np.arange(max_lags), np.mean(autocorrs, axis=0), c='black', linewidth=2,
@@ -63,7 +65,7 @@ for col, dataset, task, title in [(0, 'mnist', 'inpainting-15', 'MNIST inpaintin
     axes[col].grid(linestyle='--', alpha=0.3, which='both')
     axes[col].set_xlabel('Lag')
     axes[col].set_title(title)
-    axes[col].set_yscale('log')
+    # axes[col].set_yscale('log')
 
     if col == 0:
         axes[col].set_ylabel('Autocorrelation (best variable)')
