@@ -115,7 +115,7 @@ def test_gibbs_kernel():
     for i in range(nsamples):
         key, subkey = jax.random.split(key)
         x0, us_star, bs_stars, acc = gibbs_kernel(subkey, x0, y0, us_star, bs_stars)
-        x0s[i] = x0
+        x0s[i] = jnp.squeeze(x0)
 
     x0s = x0s[burnin:]
 
