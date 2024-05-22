@@ -1,5 +1,5 @@
 """
-Plot the trace of the PMCMC chain.
+Plot the trace of the PMCMC chain. This generates Figure 6.
 """
 import jax
 import numpy as np

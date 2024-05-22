@@ -1,5 +1,6 @@
 """
-Gaussian process regression using filter. Ablation study of the effect of the correlation in the diffusion.
+Gaussian process regression using paricle filter.
+Ablation study of the effect of the non-separability in the diffusion.
 """
 import jax
 import jax.numpy as jnp

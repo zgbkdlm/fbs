@@ -1,7 +1,6 @@
-"""Tabulate errors of image restoration.
+"""Tabulate errors of image restoration. This generates Tables 2 and 3.
 
-FID is not computed, as it is not compatible for the MCMC method for image restoration. See, e.g.,
-https://arxiv.org/pdf/2403.11407.pdf, pp. 8.
+cf. https://arxiv.org/pdf/2403.11407.
 """
 import jax
 import lpips

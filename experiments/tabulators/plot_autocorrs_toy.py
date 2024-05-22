@@ -1,3 +1,6 @@
+"""
+This generates Figure 1.
+"""
 import jax
 import numpy as np
 import numpyro as npr

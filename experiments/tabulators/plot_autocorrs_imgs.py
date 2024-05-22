@@ -1,5 +1,6 @@
 """
 Plot the autocorrelation of MNIST images.
+This generates Figure 8.
 """
 import numpy as np
 import numpyro as npr

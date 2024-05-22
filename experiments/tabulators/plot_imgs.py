@@ -1,5 +1,5 @@
 """
-Plot the MNIST and Celeba images in the paper main body.
+Plot the MNIST and Celeba images in the paper main body. This generates Figure 4.
 
 Layout being like:
             ===============(inpainting)========================= | ======(super-resolution)================

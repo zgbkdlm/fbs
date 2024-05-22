@@ -1,5 +1,5 @@
 """
-Plot some contours of the Gaussian marginals.
+Plot some contours of the Gaussian marginals. This generates Figure 5.
 """
 import jax
 import jax.numpy as jnp

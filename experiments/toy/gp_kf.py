@@ -8,7 +8,6 @@ import math
 import matplotlib.pyplot as plt
 import argparse
 from fbs.sdes import make_linear_sde, StationaryConstLinearSDE, StationaryLinLinearSDE
-from functools import partial
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--d', type=int, default=10, help='The problem dimension.')
@@ -48,15 +47,6 @@ joint_mean = jnp.zeros((2 * d,))
 joint_cov = jnp.concatenate([jnp.concatenate([cov_mat, cov_mat], axis=1),
                              jnp.concatenate([cov_mat, cov_mat + obs_var * jnp.eye(d)], axis=1)],
                             axis=0)
-
-plt.plot(zs, fs)
-plt.scatter(zs, y0, s=1)
-plt.plot(zs, gp_mean)
-plt.fill_between(zs,
-                 gp_mean - 1.96 * jnp.sqrt(jnp.diag(gp_cov)),
-                 gp_mean + 1.96 * jnp.sqrt(jnp.diag(gp_cov)),
-                 alpha=0.3, color='black', edgecolor='none')
-plt.show()
 
 # SDE noising process
 T = 1.
@@ -172,10 +162,6 @@ for i in range(nsamples):
     approx_cond_sample = conditional_sampler(subkey)
     approx_cond_samples[i] = approx_cond_sample
     print(f'ID: {args.id} | Sample {i}')
-
-# Save results
-# np.savez(f'./toy/results/filter-{args.sde}-{args.nparticles}-{args.id}',
-#          samples=approx_cond_samples, gp_mean=gp_mean, gp_cov=gp_cov)
 
 # Plot
 approx_gp_mean = jnp.mean(approx_cond_samples, axis=0)

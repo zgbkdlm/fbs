@@ -1,5 +1,5 @@
 """
-Plot the MNIST and Celeba images in the appendix.
+Plot the MNIST and Celeba images in the appendix. This generates Figures 9 - 12.
 
 Layout being like:
             ===============(task)=========================

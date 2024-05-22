@@ -1,3 +1,6 @@
+"""
+This generates Figure 2.
+"""
 import numpy as np
 import jax
 import matplotlib.pyplot as plt

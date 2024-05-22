@@ -1,5 +1,5 @@
 r"""
-Plot the super-resolution images under a Schrodinger bridge model.
+MNIST super-resolution under a Schrodinger bridge model.
 
 The aim is to show the effect of x0.
 """

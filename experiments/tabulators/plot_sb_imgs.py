@@ -1,3 +1,6 @@
+"""
+This generates Figures 3 and 7.
+"""
 import numpy as np
 import matplotlib.pyplot as plt
 from fbs.data.images import normalise

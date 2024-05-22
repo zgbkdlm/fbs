@@ -1,5 +1,5 @@
 """
-Print the error statistics of the toy experiment.
+Print the error statistics of the toy experiment. This generates Table 1.
 
 Run this script under the folder `./experiments`
 """

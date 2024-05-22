@@ -4,7 +4,6 @@ Gaussian process regression using diffusion Gibbs.
 import jax
 import jax.numpy as jnp
 import math
-import matplotlib.pyplot as plt
 import numpy as np
 import argparse
 from fbs.samplers import bootstrap_filter, stratified, gibbs_kernel
@@ -57,15 +56,6 @@ joint_mean = jnp.zeros((2 * d,))
 joint_cov = jnp.concatenate([jnp.concatenate([cov_mat, cov_mat], axis=1),
                              jnp.concatenate([cov_mat, cov_mat + obs_var * jnp.eye(d)], axis=1)],
                             axis=0)
-
-# plt.plot(zs, fs)
-# plt.scatter(zs, y0, s=1)
-# plt.plot(zs, gp_mean)
-# plt.fill_between(zs,
-#                  gp_mean - 1.96 * jnp.sqrt(jnp.diag(gp_cov)),
-#                  gp_mean + 1.96 * jnp.sqrt(jnp.diag(gp_cov)),
-#                  alpha=0.3, color='black', edgecolor='none')
-# plt.show()
 
 # SDE noising process
 T = 1.
@@ -203,24 +193,3 @@ for i in range(nsamples):
 np.savez(f'./toy/results/gibbs{"-eb" if args.explicit_backward else ""}{"-ef" if args.explicit_final else ""}'
          f'{"-marg" if args.marg else ""}-{args.sde}-{args.nparticles}-{args.id}',
          samples=gibbs_samples, gp_mean=gp_mean, gp_cov=gp_cov)
-
-# Plot
-# gibbs_samples = gibbs_samples[0, burnin:]
-# approx_gp_mean = jnp.mean(gibbs_samples, axis=0)
-# approx_gp_cov = jnp.cov(gibbs_samples, rowvar=False)
-#
-# plt.plot(zs, gp_mean)
-# plt.fill_between(zs,
-#                  gp_mean - 1.96 * jnp.sqrt(jnp.diag(gp_cov)),
-#                  gp_mean + 1.96 * jnp.sqrt(jnp.diag(gp_cov)),
-#                  alpha=0.3, color='black', edgecolor='none')
-# plt.plot(zs, approx_gp_mean)
-# plt.fill_between(zs,
-#                  approx_gp_mean - 1.96 * jnp.sqrt(jnp.diag(approx_gp_cov)),
-#                  approx_gp_mean + 1.96 * jnp.sqrt(jnp.diag(approx_gp_cov)),
-#                  alpha=0.3, color='tab:red', edgecolor='none')
-# plt.show()
-#
-# autocorrs = npr.diagnostics.autocorrelation(gibbs_samples, axis=0)[:100]
-# plt.plot(np.percentile(autocorrs, 95, axis=1))
-# plt.show()
