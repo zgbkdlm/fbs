@@ -9,13 +9,14 @@ from fbs.samplers.csmc.csmc import forward_pass as csmc_fwd
 from fbs.samplers.csmc.resamplings import killing
 from fbs.samplers.smc import bootstrap_filter, bootstrap_backward_smoother
 from fbs.samplers.resampling import stratified
-from fbs.sdes.linear import StationaryLinLinearSDE
-from fbs.data.base import Dataset
+from fbs.sdes.linear import LinearSDE
 from fbs.typings import JKey, JArray, FloatScalar, JInt, JFloat
-from typing import Callable, Tuple
+from typing import Callable, Tuple, Optional
 
 
 def bridge_sampler(key, y0, yT, ts, sde):
+    """Sampling Doob's h-transform.
+    """
     return doob_bridge_simulator(key, sde, y0, yT, ts, integration_nsteps=100, replace=True)
 
 
@@ -26,7 +27,7 @@ def gibbs_init(key, y0, x0_shape, ts,
                marg_y: bool = True,
                x0=None,
                **kwargs):
-    """Initialise the Gibbs sampler with a draw from a bootstrap filter.
+    """Initialise the Gibbs sampler with a draw from a bootstrap filter/smoother.
 
     Notes
     -----
@@ -65,46 +66,57 @@ def gibbs_init(key, y0, x0_shape, ts,
 
 
 def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JArray,
-                 ts: JArray, fwd_sampler: Callable, sde: StationaryLinLinearSDE, unpack: Callable,
+                 ts: JArray,
+                 fwd_sampler: Callable[[JKey, JArray, JArray, Optional], JArray],
+                 sde: LinearSDE,
+                 unpack: Callable,
                  nparticles: int,
-                 transition_sampler: Callable, transition_logpdf: Callable, likelihood_logpdf: Callable,
+                 transition_sampler: Callable,
+                 transition_logpdf: Callable,
+                 likelihood_logpdf: Callable,
                  marg_y: bool = False,
                  explicit_backward: bool = True,
                  explicit_final: bool = False,
                  **kwargs) -> Tuple[JArray, JArray, JArray, JArray]:
     """Gibbs kernel for our forward-backward conditional sampler.
-    The carry variables are `x0`, `us_star`, and `bs_star`.
 
     Parameters
     ----------
-    key: JKey
-        The random key.
-    x0: JArray (...)
-        The initial state.
-    y0: JArray (...)
-        The observation to be conditioned on.
-    us_star: JArray (nsteps + 1, ...)
-        The backward filtering trajectory.
-    bs_star: JArray (nsteps + 1, ...)
+    key : JKey
+        A JAX random key.
+    x0 : JArray (...)
+        The initial state (any shape).
+    y0 : JArray (...)
+        The observation (any shape) to be conditioned on.
+    us_star : JArray (nsteps + 1, ...)
+        The backward filtering trajectory. Legacy parameter, not used.
+    bs_star : JArray (nsteps + 1, ...)
         The backward filtering indices.
-    ts: JArray (nsteps + 1, )
-        The times.
-    fwd_sampler: Callable
-        The forward noising sampler.
-    sde: StationaryLinLinearSDE
+    ts : JArray (nsteps + 1, )
+        The times `t_0, t_1, ... t_{nsteps}`.
+    fwd_sampler : Callable (JKey, ..., ..., **kwargs)
+        The forward noising sampler, which takes three arguments: random key, x0, and y0. The output is a trajectory of
+        x and y.
+    sde : StationaryLinLinearSDE
         A linear SDE instance.
-    unpack
-    dataset_param: Any
-    nparticles: int
+    unpack : Callable
+        A function that splits (X, Y). In the simplest case, where the joint is a concatenation of X and Y,
+        then `unpack` is just `jnp.concatenate`. However, for image super-resolution or inpainting, this can be more
+        complicated. See `fbs.data.images` for how we implemented `unpack` for the image tasks.
+    nparticles : int
         The number of particles.
-    transition_sampler
-    transition_logpdf
-    likelihood_logpdf
-    marg_y: bool, default=True
-        Whether to use the Doob's diffusion bridge to marginalise out the path of `y`.
-    explicit_backward
-    explicit_final
-        Whether to use the explicit reference distribution to initialise the backward filter.
+    transition_sampler : Callable (n, du), (dv, ), (), JKey -> (n, du)
+        The transition sampler of `p(u_{k} | u_{k-1}, v_{k-1}, t_{k-1})` of the discretised backward SDE.
+    transition_logpdf : Callable (du, ), (n, du), (dv, ), () -> (n, du)
+        The logpdf of the transition distribution.
+    likelihood_logpdf : Callable (dv, ), (n, du), () -> (n, )
+        The logpdf of the likelihood model `p(v_{k} | u_{k-1}, v_{k-1}, t_{k-1})`.
+    marg_y : bool, default=False
+        Whether to use the Doob's diffusion bridge to marginalise out the path of `y`. Not used in our paper.
+    explicit_backward : bool, default=True
+        Whether do the backward sampling in CSMC explicitly.
+    explicit_final : bool, default=False
+        Whether to use the explicit reference distribution to initialise the backward CSMC.
 
     Returns
     -------
@@ -130,20 +142,6 @@ def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JA
 
         def init_likelihood_logpdf(*_):
             return -math.log(nparticles) * jnp.ones(nparticles)
-
-    # p(x_{[0, T]}, y_{(0, T]} \mid Y_0 = y)
-    # Given X^j_0 \sim pi(x \mid y), do
-    # 1. forward noise:
-    #       X_{(0, T]}^{j}, Y_{(0, T]}^j ~ F( \cdot \mid X_0^j, Y_0=y)
-    #       Clearly, then X_{[0, T]}^{j}, Y_{(0, T]}^j are distributed according to p(x_{[0, T]}, y_{(0, T]} \mid Y_0 = y)
-    # 2. preliminary:
-    #   We have a kernel z_{[0, T]} ~ K( cdot \mid x_{[0, T]}, Y_{(0, T]}^j) such that, if x_{[0, T]} ~ p(x_{[0, T]} \mid y_{[0, T]}), then z_{[0, T]} ~ p(x_{[0, T]} \mid y_{[0, T]})
-    #   sample:
-    #       We sample X^{j+1}_{[0, T]} ~ K( cdot \mid X^j_{[0, T]}, Y_{(0, T]}^j)
-    #       Clearly X^{j+1}_{[0, T]}, Y_{(0, T]}^j is then distributed according to p(x_{[0, T]}, y_{[0, T]})
-    # 3. discard:
-    #       Keep only X^{j+1}_{0}
-    # GOTO 1.
 
     if explicit_backward:
         key_csmc_fwd, key_csmc_x0, key_csmc_bwd_us, key_csmc_bwd_bs = jax.random.split(key_csmc, num=4)

@@ -8,9 +8,13 @@ from fbs.data import Crescent, ImageRestore
 from fbs.sdes import euler_maruyama
 
 
+class DummyClass(Dataset):
+    pass
+
+
 class TestDatasetClass:
     def test_enumeration(self):
-        dummyclass = Dataset()
+        dummyclass = DummyClass()
 
         data_size = 100
         dummyclass.n = data_size
@@ -23,15 +27,12 @@ class TestDatasetClass:
         npt.assert_array_equal(jnp.sort(jnp.concatenate(dummyclass.perm_inds)), jnp.arange(data_size))
 
         xss = []
-        yss = []
         for i in range(int(data_size / batch_size)):
-            xs, ys = dummyclass.enumerate_subset(i)
+            xs = dummyclass.enumerate_subset(i)
             xss.append(xs)
-            yss.append(ys)
 
         # Generated data should be a random permutation of the original
         npt.assert_array_equal(jnp.sort(jnp.concatenate(xss).ravel()), jnp.sort(dummyclass.xs.ravel()))
-        npt.assert_array_equal(jnp.sort(jnp.concatenate(yss).ravel()), jnp.sort(dummyclass.ys.ravel()))
 
 
 class TestCrescent:

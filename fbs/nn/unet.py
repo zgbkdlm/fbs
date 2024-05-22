@@ -11,9 +11,8 @@ under the Apache-2.0 license.
     - Removed assert statements.
     - Removed "name".
     - Used in-house sinusoidal_embedding.
-    - Some variable names refactorisation. In particular, changing from USA English to British English.
+    - Some variable names refactorisation.
 """
-import math
 import jax
 import jax.numpy as jnp
 import flax.linen as nn

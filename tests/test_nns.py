@@ -1,5 +1,4 @@
 import numpy.testing as npt
-import jax
 import jax.numpy as jnp
 import torch
 from fbs.nn.utils import PixelShuffle

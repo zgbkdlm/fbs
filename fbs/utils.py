@@ -5,8 +5,9 @@ from typing import Tuple
 
 
 def discretise_lti_sde(A: JArray, gamma: JArray, dt: FloatScalar) -> Tuple[JArray, JArray]:
-    """dX(t) = A X(t) dt + B dW(t),
-    where gamma = B @ B.T
+    """Discretise linear time-invariant SDE
+    dX(t) = A X(t) dt + B dW(t), where gamma = B @ B.T,
+    to X_{k+1} = F X_k + w_k,
     """
     d = A.shape[0]
 
@@ -18,6 +19,8 @@ def discretise_lti_sde(A: JArray, gamma: JArray, dt: FloatScalar) -> Tuple[JArra
 
 
 def sqrtm(mat: JArray, method: str = 'eigh') -> JArray:
+    """Matrix (Hermite) square root.
+    """
     if method == 'eigh':
         eigenvals, eigenvecs = jnp.linalg.eigh(mat)
         return eigenvecs @ jnp.diag(jnp.sqrt(eigenvals)) @ eigenvecs.T
@@ -38,6 +41,8 @@ def _log_det(chol):
 
 
 def kl(m0, cov0, m1, cov1):
+    """KL divergence.
+    """
     d = m0.shape[-1]
     chol0 = jax.scipy.linalg.cho_factor(cov0)
     chol1 = jax.scipy.linalg.cho_factor(cov1)

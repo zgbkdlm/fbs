@@ -210,7 +210,7 @@ class CelebAHQ(Image):
 
 
 class InpaintingMask(NamedTuple):
-    """The mask that selects the hollow part.
+    """The mask that splits the observed and unobserved parts.
     """
     width: int
     height: int
@@ -256,6 +256,12 @@ class ImageRestore(Dataset):
         return self.xs[inds]
 
     def _gen_supr_mask(self, key: JKey, rate: int, random: bool = True) -> SRMask:
+        """Generate a mask for super-resolution.
+        Basically, at every block of pixels of size x by x, we take one pixel as the observed, and others as unobserved,
+        where x is the suer-resolution rate.
+        The `random` arguments specifies if the location of the observed pixel is random in each block, otherwise it is
+        in the middle.
+        """
         img_w, img_h = self.image_shape[:2]
         nblocks = int(img_w * img_h / rate ** 2)
         if random:

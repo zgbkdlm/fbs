@@ -3,9 +3,8 @@ import jax.numpy as jnp
 import flax.linen as nn
 from fbs.nn import sinusoidal_embedding, make_st_nn
 from fbs.nn.utils import PixelShuffle
-from typing import Sequence, Tuple
+from typing import Sequence
 
-nn_param_dtype = jnp.float64
 nn_param_init = nn.initializers.xavier_normal()
 
 
@@ -22,6 +21,8 @@ class _CrescentTimeBlock(nn.Module):
 
 
 class CrescentMLP(nn.Module):
+    """Used in preliminary experiments only.
+    """
     dt: float
     dim: int = 3
     hiddens = [256, 256, 128, 64, 32, 16]
@@ -38,7 +39,7 @@ class CrescentMLP(nn.Module):
             x = (x * _CrescentTimeBlock(dt=self.dt, nfeatures=h)(time_emb) +
                  _CrescentTimeBlock(dt=self.dt, nfeatures=h)(time_emb))
             x = nn.gelu(x)
-        x = nn.Dense(features=self.dim, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
+        x = nn.Dense(features=self.dim, kernel_init=nn_param_init)(x)
         return jnp.squeeze(x)
 
 
@@ -60,7 +61,8 @@ class _GMSBMLPResBlock(nn.Module):
 
 
 class GMSBMLP(nn.Module):
-    """Ad-hoc nn for the Schrodinger bridge."""
+    """Used in preliminary experiments only.
+    """
     dim: int
     dt: float = 1.
 
@@ -113,6 +115,8 @@ class GMSBMLP(nn.Module):
 
 
 class MNISTAutoEncoder(nn.Module):
+    """Used in preliminary experiments only.
+    """
     # This does not really work.
     nn_param_dtype = jnp.float64
     nn_param_init = nn.initializers.xavier_normal()
@@ -138,6 +142,8 @@ class MNISTAutoEncoder(nn.Module):
 
 
 class MNISTResConv(nn.Module):
+    """Used in preliminary experiments only.
+    """
     nn_param_dtype = jnp.float64
     nn_param_init = nn.initializers.xavier_normal()
     dt: float
@@ -251,5 +257,3 @@ def make_simple_st_nn(key,
     dict_param = nn_model.init(key, jnp.ones((batch_size, *dim_in)), jnp.array(1.))
     array_param, array_to_dict, forward_pass = make_st_nn(key, nn_model, dim_in, batch_size)
     return nn_model, dict_param, array_param, array_to_dict, forward_pass
-
-# TODO: MLP-mixer https://github.com/google-research/big_vision/blob/main/big_vision/models/mlp_mixer.py

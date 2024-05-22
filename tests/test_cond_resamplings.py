@@ -5,12 +5,12 @@ import numpy as np
 import numpy.testing as npt
 import pytest
 
-from fbs.samplers.csmc.resamplings import multinomial, systematic, killing
+from fbs.samplers.csmc.resamplings import multinomial, killing
 
-RESAMPLINGS = {"multinomial": multinomial, "systematic": systematic, "killing": killing}
+RESAMPLINGS = {"multinomial": multinomial, "killing": killing}
 
 
-@pytest.mark.parametrize("resampling", ["multinomial", "systematic", "killing"])
+@pytest.mark.parametrize("resampling", ["multinomial", "killing"])
 @pytest.mark.parametrize("seed", [42, 666, 1234])
 def test_unconditional(resampling, seed):
     JAX_KEY = jax.random.PRNGKey(seed)
@@ -27,7 +27,7 @@ def test_unconditional(resampling, seed):
     npt.assert_allclose(bincount / np.sum(bincount), weights, atol=1e-3, rtol=1e-3)
 
 
-@pytest.mark.parametrize("resampling", ["multinomial", "systematic", "killing"])
+@pytest.mark.parametrize("resampling", ["multinomial", "killing"])
 @pytest.mark.parametrize("seed", [42, 666])
 @pytest.mark.parametrize("j", [0, 5, 50])
 def test_conditional_bayes(resampling, seed, j):
