@@ -21,7 +21,7 @@ inherent statistical biases (plural!).
 1. `git clone git@github.com:zgbkdlm/fbs.git`
 2. `cd fbs`
 3. `python venv ./venv && source venv/bin/activate`
-4. Install JAX in either GPU/CPU environment according to this official guidance https://placeholder.
+4. Install JAX in either GPU/CPU environment according to this official guidance https://github.com/google/jax?tab=readme-ov-file#installation.
 5. `pip install -r requirements.txt`
 6. `pip install -e .`
 
