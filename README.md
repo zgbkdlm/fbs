@@ -1,4 +1,5 @@
 # Conditioning diffusions via explicit forward-backward bridging
+[![UnitTest](https://github.com/zgbkdlm/fbs/actions/workflows/unittest.yml/badge.svg)](https://github.com/zgbkdlm/fbs/actions/workflows/unittest.yml)
 
 This repository is concerned with Markov chain Monte Carlo (MCMC) method for conditional sampling with generative diffusions, 
 see, https://arxiv.org/placeholder.
@@ -20,7 +21,7 @@ inherent statistical biases (plural!).
 # Install
 1. `git clone git@github.com:zgbkdlm/fbs.git`
 2. `cd fbs`
-3. `python venv ./venv && source venv/bin/activate`
+3. `python venv ./venv && source venv/bin/activate` Please not use your base environment, as it may corrupt your package versions.
 4. Install JAX in either GPU/CPU environment according to this official guidance https://github.com/google/jax?tab=readme-ov-file#installation.
 5. `pip install -r requirements.txt`
 6. `pip install -e .`
@@ -41,11 +42,24 @@ The scripts in `./experiments` are explained as follows.
 You can download the CelebA-HQ dataset as per the instruction in https://github.com/Algolzw/daclip-uir, and the scripts 
 in `./experiments/datasets`.
 
+The trained models are available at https://huggingface.co/zgbkdlm/fbs. 
+Download them and copy to the folder `./experiments/checkpoints`. 
+If you cannot download them, run the training scripts in `./experiments`, and you should get the exact models as we have. 
+
 After you have run all the experiments, results will be saved in their corresponding directories. 
 Then, simply run any file in `./experiments/tabulators` to produce the tables and figures in our paper.
 
 # Citation
-(will update)
+Please cite our paper as follows. 
+
+```bibtex
+@article{corenflos2024FBS,
+    title={Conditioning diffusion models by explicit forward-backward bridging},
+    author={Corenflos, Adrien and Zhao, Zheng and S\"{a}rkk\"{a}, Simo and Sj\"{o}lund, Jens and Sch\"{o}n, Thomas B.},
+    journal={arXiv preprint xxx},
+    year={2024}
+}
+```
 
 # License
 The Apache License 2.0.
