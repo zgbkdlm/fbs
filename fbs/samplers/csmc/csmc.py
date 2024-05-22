@@ -1,7 +1,7 @@
 """
 Implements the random walk cSMC kernel from Finke and Thiery (2023).
 
-Due to Adrien Corenflos.
+Some codes are copied from Adrien Corenflos; I don't recall which they are.
 """
 import math
 import jax
@@ -15,7 +15,7 @@ def csmc_kernel(key: JKey,
                 us_star: JArray, bs_star: JArray,
                 vs: JArray, ts: JArray,
                 init_sampler: Callable[[JKey, int], JArray],
-                init_likelihood_logpdf: Callable[[JArray, JArray], JArray],
+                init_likelihood_logpdf: Callable[[JArray, JArray, JArray], JArray],
                 transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
                 transition_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
                 measurement_cond_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
@@ -23,7 +23,7 @@ def csmc_kernel(key: JKey,
                 nsamples: int,
                 backward: bool = False,
                 **kwargs) -> Tuple[JArray, JArray]:
-    """
+    r"""
     Generic cSMC kernel.
 
     Parameters
@@ -39,7 +39,7 @@ def csmc_kernel(key: JKey,
     ts : JArray (K + 1, )
         The times :math:`t_0, t_1, \ldots, t_K`.
     init_sampler : JKey, int -> (n, du)
-    init_likelihood_logpdf : (dv, ), (n, du) -> (n, )
+    init_likelihood_logpdf : (dv, ), (n, du), (dv, ) -> (n, )
     transition_sampler : (n, du), (dv, ), float, key -> (n, du)
         Draw n new samples conditioned on the previous samples and :math:`v_{k-1}`.
         That is, :math:`p(u_k | u_{k-1}, v_{k-1})`.
@@ -71,8 +71,7 @@ def csmc_kernel(key: JKey,
                                    transition_sampler, measurement_cond_logpdf, cond_resampling, nsamples,
                                    **kwargs)
     if backward:
-        xs_star, bs_star = backward_sampling_pass(key_bwd, transition_logpdf, vs, ts, xss, log_ws,
-                                                  *args, **kwargs)
+        xs_star, bs_star = backward_sampling_pass(key_bwd, transition_logpdf, vs, ts, xss, log_ws, **kwargs)
     else:
         xs_star, bs_star = backward_scanning_pass(key_bwd, As, xss, log_ws[-1])
     return xs_star, bs_star
@@ -89,7 +88,7 @@ def forward_pass(key: JKey,
                  nsamples: int,
                  **kwargs) -> Tuple[JArray, JArray, JArray]:
     r"""
-    Forward pass of the cSMC kernel.
+    Forward pass of the cSMC kernel. Corresponding to Algorithm 1 in the paper.
 
     u0, u1, ..., uK,
     v0, v1, ..., vK,
@@ -215,7 +214,6 @@ def backward_sampling_pass(key, transition_logpdf, vs, ts, uss, log_ws, *args, *
     # Reverse arrays, ideally, should use jax.lax.scan(reverse=True) but it is simpler this way due to insertions.
     # xs[-2::-1] is the reversed list of xs[:-1], I know, not readable... Same for log_ws.
     # vs[-1:0:-1] means the reverse of vs[1:]
-    # inps = keys[:-1], uss[-2::-1], log_ws[-2::-1], vs[-1:0:-1], ts[-1:0:-1]
     inps = keys[:-1], uss[-2::-1], log_ws[-2::-1], vs[-2::-1], ts[-2::-1]
 
     # Run backward pass

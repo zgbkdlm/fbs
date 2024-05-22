@@ -1,8 +1,9 @@
 import jax
 import jax.numpy as jnp
+from fbs.utils import sqrtm
 from fbs.typings import JArray, JKey, FloatScalar
+from typing import Callable, Tuple
 from functools import partial
-from typing import NamedTuple, Tuple
 
 
 class LinearSDE:
@@ -10,8 +11,7 @@ class LinearSDE:
 
 
 class StationaryConstLinearSDE(LinearSDE):
-    """dX(t) = a X(t) dt + b dW(t), where
-        - `b^2 / a = 2 sigma^2`
+    """dX(t) = a X(t) dt + b dW(t), where `b^2 / a = 2 sigma^2`.
     """
     a: FloatScalar
     b: FloatScalar
@@ -29,9 +29,14 @@ class StationaryConstLinearSDE(LinearSDE):
         return m0 * jnp.exp(self.a * (t - s))
 
     def variance(self, t, s):
+        """Marginal variance.
+        """
         return self.b ** 2 / (2 * self.a) * (jnp.exp(2 * self.a * (t - s)) - 1)
 
     def bridge_drift(self, x, t, target, T):
+        """The corresponding Doobs transform SDE drift.
+        """
+
         def log_h(a, b): return jnp.sum(jax.scipy.stats.norm.logpdf(a,
                                                                     self.mean(T, t, b),
                                                                     jnp.sqrt(self.variance(T, t))))
@@ -42,7 +47,7 @@ class StationaryConstLinearSDE(LinearSDE):
 
 class StationaryLinLinearSDE(LinearSDE):
     r"""dX(t) = -0.5 \beta(t) X(t) dt + \sqrt{\beta(t)} dW(t), where
-        - `\beta(t) = (beta_max - beta_min) / (T - t0) t + (beta_min T - beta_max t0) / (T - t0)`
+    `\beta(t) = (beta_max - beta_min) / (T - t0) t + (beta_min T - beta_max t0) / (T - t0)`
     """
     beta_min: FloatScalar
     beta_max: FloatScalar
@@ -71,9 +76,14 @@ class StationaryLinLinearSDE(LinearSDE):
         return m0 * jnp.exp(-0.5 * self.beta_integral(t, s))
 
     def variance(self, t, s):
+        """Marginal variance.
+        """
         return 1 - jnp.exp(-self.beta_integral(t, s))
 
     def bridge_drift(self, x, t, target, T):
+        """The corresponding Doobs transform SDE drift.
+        """
+
         def log_h(a, b): return jnp.sum(jax.scipy.stats.norm.logpdf(a,
                                                                     self.mean(T, t, b),
                                                                     jnp.sqrt(self.variance(T, t))))
@@ -153,10 +163,12 @@ def make_ou_sde(a, b):
 
 
 def make_linear_sde(sde: LinearSDE):
-    """Discretisation of linear SDEs of the form dX(t) = a(t) X(t) dt + b(t) dW(t).
+    """Generate functions (e.g., discretisation and simulator) of linear SDEs that we use for experiments.
     """
 
     def discretise_linear_sde(t, s):
+        """Discretisation of linear SDEs of the form dX(t) = a(t) X(t) dt + b(t) dW(t).
+        """
         if isinstance(sde, StationaryLinLinearSDE):
             r = sde.beta_integral(t, s)
             return jnp.exp(-0.5 * r), 1 - jnp.exp(-r)
@@ -184,11 +196,11 @@ def make_linear_sde(sde: LinearSDE):
         x0 : JArray (..., )
         ts : JArray (nsteps + 1, )
             t_0, t_1, ..., t_nsteps.
-        keep_path : bool, default=True
-            Let it be true will make the returned sample a valid sample path from the SDE. Othwerwise, the return are
-            independent samples at each time point marginally.
         t0: float, default=None
             The initial time. If None, the initial time is given by ts[0].
+        keep_path : bool, default=True
+            Let it be true will make the returned sample a valid sample path from the SDE. Otherwise, the return is
+            independent samples at each time point marginally.
 
         Returns
         -------
@@ -215,13 +227,41 @@ def make_linear_sde(sde: LinearSDE):
     return discretise_linear_sde, cond_score_t_0, simulate_cond_forward
 
 
-def make_linear_sde_law_loss(sde: LinearSDE, nn_fn,
-                             t0=0., T=2., nsteps: int = 100,
+def make_linear_sde_law_loss(sde: LinearSDE,
+                             nn_fn,
+                             t0=0., T=2.,
+                             nsteps: int = 100,
                              random_times: bool = True,
                              loss_type: str = 'score',
-                             save_mem: bool = False):
+                             save_mem: bool = False) -> Callable:
+    """Generate the loss function to learn the backward-time SDE.
+
+    Parameters
+    ----------
+    sde : LinearSDE
+        A LinearSDE instance.
+    nn_fn : Callable (..., d), (), (p, ) -> (..., )
+        A neural network function that takes, x, t, and parameter as input, and outputs the approximate score.
+    t0 : float
+        The initial time.
+    T : float
+        The terminal time.
+    nsteps : int
+        The number of time steps (at the training time).
+    random_times : bool, default=True
+        Whether randomise the times for training.
+    loss_type : str, default='score'
+        What type of loss function to use. Default is the classical denoising score matching loss.
+    save_mem : bool, default=False
+        Enabling this option will restrict the number of time steps and batch size to be the same, to save memory cost.
+
+    Returns
+    -------
+    Callable
+        The loss function.
+    """
     discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(sde)
-    eps = 1e-5
+    eps = 1e-5  # the minimum I can get for numerical stability when using float32
 
     def score_scale(t, s):
         return discretise_linear_sde(t, s)[1]
@@ -352,3 +392,66 @@ def make_ou_score_matching_loss(a, b, nn_score, t0=0., T=2., nsteps: int = 100, 
         return jnp.mean(jnp.mean((nn_evals - cond_score_evals) ** 2, axis=-1) * scales[None, :])
 
     return loss_fn
+
+
+def make_gaussian_bw_sb(mean0, cov0, mean1, cov1, sig: float = 1.) -> Tuple[Callable, Callable, Callable]:
+    """Generate a Gaussian Schrodinger bridge with a Brownian motion reference at time interval [0, 1].
+
+    Parameters
+    ----------
+    mean0 : JArray (d, )
+        The mean of the initial Gaussian distribution.
+    cov0 : JArray (d, d)
+        The covariance of the initial Gaussian distribution.
+    mean1 : JArray (d, )
+        The mean of the terminal Gaussian distribution.
+    cov1 : JArray (d, d)
+        The covariance of the terminal Gaussian distribution.
+    sig : float, default=1.
+        The Brownian motion's diffusion coefficient.
+
+    Returns
+    -------
+    Tuple[Callable, Callable, Callable]
+        The marginal mean, marginal covariance, and drift functions.
+
+    Notes
+    -----
+    Table 1, The Schrödinger Bridge between Gaussian Measures has a Closed Form, 2023.
+    """
+    d = mean0.shape[0]
+    sqrt0 = sqrtm(cov0)
+
+    D_sig = sqrtm(4 * sqrt0 @ cov1 @ sqrt0 + sig ** 4 * jnp.eye(d))
+    C_sig = 0.5 * (sqrt0 @ jnp.linalg.solve(sqrt0.T, D_sig.T).T - sig ** 2 * jnp.eye(d))
+
+    def kappa(t, _):
+        return t * sig ** 2
+
+    def r(t):
+        return t
+
+    def r_bar(t):
+        return 1 - t
+
+    def rho(t):
+        return t
+
+    def marginal_mean(t):
+        return r_bar(t) * mean0 + r(t) * mean1
+
+    def marginal_cov(t):
+        return r_bar(t) ** 2 * cov0 + r(t) ** 2 * cov1 + r(t) * r_bar(t) * (C_sig + C_sig.T) + kappa(t, t) * (
+                1 - rho(t)) * jnp.eye(d)
+
+    def s(t):
+        pt = r(t) * cov1 + r_bar(t) * C_sig
+        qt = r_bar(t) * cov0 + r(t) * C_sig
+        return pt - qt.T - sig ** 2 * rho(t) * jnp.eye(d)
+
+    def drift(x, t):
+        mt = marginal_mean(t)
+        chol_t = jax.scipy.linalg.cho_factor(marginal_cov(t))
+        return s(t).T @ jax.scipy.linalg.cho_solve(chol_t, x - mt) - mean0 + mean1
+
+    return marginal_mean, marginal_cov, drift

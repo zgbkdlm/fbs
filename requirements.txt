@@ -1,11 +1,12 @@
 numpy
 scipy
 matplotlib
-tme
-flax
+jax>=0.4.26
+flax==0.8.2
 optax
 jaxopt
 pytest
 einops
 numpyro
 scikit-image
+lpips==0.1.4

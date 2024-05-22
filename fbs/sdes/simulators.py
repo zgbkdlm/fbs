@@ -1,7 +1,5 @@
 import jax
 import jax.numpy as jnp
-import numpy as np
-
 from fbs.sdes.linear import StationaryLinLinearSDE
 from fbs.typings import JKey, JArray
 from typing import Callable
@@ -89,7 +87,7 @@ def euler_maruyama(key: JKey, x0: JArray, ts: JArray,
             x = x + drift(x, t_) * ddt + dispersion(t_) * jnp.sqrt(ddt) * rnd
             return x, None
 
-        ddt = (t_next - t) / integration_nsteps
+        ddt = jnp.abs(t_next - t) / integration_nsteps
         rnds = jax.random.normal(key_, (integration_nsteps, *x0.shape))
         return jax.lax.scan(scan_body_, xt, (rnds, jnp.linspace(t, t_next - ddt, integration_nsteps)))[0]
 
@@ -106,16 +104,6 @@ def euler_maruyama(key: JKey, x0: JArray, ts: JArray,
         return jnp.concatenate([x0[jnp.newaxis], path], axis=0)
     else:
         return terminal_val
-
-
-def runge_kutta(key: JKey, x0: JArray, ts: JArray,
-                drift: Callable, dispersion: Callable):
-    pass
-
-
-def multilevel_euler_maruyama(key: JArray, x0: JArray, t0: float, T: float, max_level: int,
-                              drift: Callable, dispersion: Callable) -> JArray:
-    pass
 
 
 def discrete_time_simulator(key: JKey, x0: JArray, ts: JArray,

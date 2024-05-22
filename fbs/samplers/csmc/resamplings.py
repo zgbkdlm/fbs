@@ -1,14 +1,14 @@
-from typing import Optional
-
+"""
+Due to Adrien Corenflos.
+"""
 import jax
 import jax.numpy as jnp
+from fbs.typings import JArray, JKey
+from typing import Optional
 
-Array = jax.typing.ArrayLike
-PRNGKey = jax.typing.ArrayLike
 
-
-def multinomial(key: PRNGKey, weights: Array, i: Optional[int] = 0, j: Optional[int] = 0,
-                conditional: bool = True) -> Array:
+def multinomial(key: JKey, weights: JArray, i: Optional[int] = 0, j: Optional[int] = 0,
+                conditional: bool = True) -> JArray:
     """
     Multinomial resampling. The weights are assumed to be normalised already.
 
@@ -24,6 +24,7 @@ def multinomial(key: PRNGKey, weights: Array, i: Optional[int] = 0, j: Optional[
     conditional:
         If True, the resampling is conditional on the fact that the ancestor at index j is equal to i.
         Otherwise, it's the standard resampling
+        
     Returns
     -------
     indices:
@@ -36,8 +37,8 @@ def multinomial(key: PRNGKey, weights: Array, i: Optional[int] = 0, j: Optional[
     return indices
 
 
-def killing(key: PRNGKey, weights: Array, i: Optional[int] = 0, j: Optional[int] = 0,
-            conditional: bool = True) -> Array:
+def killing(key: JKey, weights: JArray, i: Optional[int] = 0, j: Optional[int] = 0,
+            conditional: bool = True) -> JArray:
     """
     Killing resampling. The weights are assumed to be normalised already.
     Compared to the multinomial resampling, this algorithm does not move the indices when the weights are uniform.
@@ -87,8 +88,8 @@ def killing(key: PRNGKey, weights: Array, i: Optional[int] = 0, j: Optional[int]
     return idx
 
 
-def systematic(key: PRNGKey, weights: Array, i: Optional[int] = 0, j: Optional[int] = 0,
-               conditional: bool = True) -> Array:
+def systematic(key: JKey, weights: JArray, i: Optional[int] = 0, j: Optional[int] = 0,
+               conditional: bool = True) -> JArray:
     """
     Systematic resampling. The weights are assumed to be normalised already.
 
@@ -116,7 +117,7 @@ def systematic(key: PRNGKey, weights: Array, i: Optional[int] = 0, j: Optional[i
         return _standard_systematic(key, weights)
 
 
-def _standard_systematic(key: PRNGKey, weights: Array) -> Array:
+def _standard_systematic(key: JKey, weights: JArray) -> JArray:
     N = weights.shape[0]
     u = (jnp.arange(N) + jax.random.uniform(key)) / N
     cum_weights = jnp.cumsum(weights)
@@ -124,8 +125,8 @@ def _standard_systematic(key: PRNGKey, weights: Array) -> Array:
     return indices
 
 
-def _conditional_systematic(key: PRNGKey, weights: Array, i, j) -> Array:
-    raise NotImplementedError
+def _conditional_systematic(key: JKey, weights: JArray, i, j) -> JArray:
+    raise NotImplementedError('Not implemented, not used.')
     N = weights.shape[0]
 
     tmp = N * weights[i]

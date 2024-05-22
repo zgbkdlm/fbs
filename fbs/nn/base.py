@@ -60,7 +60,7 @@ def sinusoidal_embedding(t: Union[JArray, FloatScalar], out_dim: int = 64, max_p
 
     Notes
     -----
-    I have no idea what a sinusoidal positional embedding is. Perhaps, it means to find a function that maps a time
+    I have no idea what a sinusoidal positional embedding does. Perhaps, it means to find a function that maps a time
     scalar to a sequence. The implementation is based on
         - https://github.com/JTT94/diffusion_schrodinger_bridge/blob/1c82eba0a16aea3333ac738dde376b12a3f97f21/
         bridge/models/basic/time_embedding.py#L6

@@ -17,7 +17,7 @@ def bootstrap_filter(transition_sampler: Callable[[JArray, JArray, FloatScalar, 
                      log: bool = True,
                      return_last: bool = True,
                      **kwargs) -> Tuple[JArray, JFloat]:
-    r"""Bootstrap particle filter, using the notations in the paper.
+    r"""Bootstrap particle filter.
 
     Parameters
     ----------
@@ -58,22 +58,18 @@ def bootstrap_filter(transition_sampler: Callable[[JArray, JArray, FloatScalar, 
     def scan_body(carry, elem):
         us_prev, log_nell = carry
         v, v_prev, t_prev, key_ = elem
+        key_proposal, key_resampling = jax.random.split(key_)
 
-        us = transition_sampler(us_prev, v_prev, t_prev, key_, **kwargs)
+        us = transition_sampler(us_prev, v_prev, t_prev, key_proposal, **kwargs)
 
-        if log:
-            log_weights = measurement_cond_pdf(v, us_prev, v_prev, t_prev, **kwargs)
-            _c = jax.scipy.special.logsumexp(log_weights)
-            log_nell -= _c - math.log(nparticles)
-            log_weights = log_weights - _c
-            weights = jnp.exp(log_weights)
-        else:
-            weights = measurement_cond_pdf(v, us_prev, v_prev, t_prev, **kwargs)
-            log_nell -= jnp.log(jnp.mean(weights))
-            weights = weights / jnp.sum(weights)
+        log_weights = measurement_cond_pdf(v, us_prev, v_prev, t_prev, **kwargs)
+        _c = jax.scipy.special.logsumexp(log_weights)
+        log_nell -= _c - math.log(nparticles)
+        log_weights = log_weights - _c
+        inds = resampling(jnp.exp(log_weights), key_resampling)
 
         _, subkey_ = jax.random.split(key_)
-        us = us[resampling(weights, subkey_), ...]
+        us = us[inds, ...]
 
         return (us, log_nell), None if return_last else us
 
@@ -105,7 +101,6 @@ def bootstrap_backward_smoother(key: JKey,
 
         log_ws = transition_logpdf(u_kp1, uf_k, v_k, t_k, *args, **kwargs)
         log_ws = log_ws - jax.scipy.special.logsumexp(log_ws)
-        # jax.debug.print('{}', jnp.exp(log_ws))
         u_k = jax.random.choice(key_, uf_k, axis=0, p=jnp.exp(log_ws))
         return u_k, u_k
 
@@ -164,6 +159,8 @@ def pmcmc_filter_step(key: JKey, vs_bridge: JArray, u0s: JArray, ts: JArray,
 
 
 def pcn_proposal(key, delta: float, x: JArray, mean: JArray, sampler):
+    """The PCN proposal.
+    """
     beta = 2 / (2 + delta)
     key_rnds = jax.random.split(key, num=2)
     rnds = jax.vmap(sampler)(key_rnds)
@@ -175,7 +172,7 @@ def pmcmc_kernel(key: JKey,
                  uT, log_ell, ys,
                  y0: JArray,
                  ts: JArray,
-                 fwd_ys_sampler,
+                 fwd_ys_sampler: Callable,
                  sde,
                  ref_sampler: Callable,
                  transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
@@ -195,19 +192,18 @@ def pmcmc_kernel(key: JKey,
         MCMC sample for uT.
     log_ell : JFloat
         MCMC sample for log_ell.
-    yT : JArray (dv, )
-        MCMC sample for yT.
-    xT : JArray (du, )
-        MCMC sample for xT.
+    ys : JArray (K + 1, dy)
+        A trajectory of Y.
+    y0 : JArray (dy, )
+        The conditioning variable.
     ts : JArray (K + 1, )
         Time steps :math`t_0, t_1, \ldots, t_K`.
-    y0 : JArray (dv, )
-    fwd_ys_sampler : JKey, (dv, ), (K + 1, ) -> (K + 1, dv)
-        A sampler for the forward process :math:`y_0, y_1, \ldots, y_K`.
+    fwd_ys_sampler : JKey, (dv, ) -> (K + 1, dv)
+        A sampler for the trajectory :math:`y_0, y_1, \ldots, y_K`.
+    sde : LinearSDE
+        An LinearSDE instance.
     ref_sampler : JKey, int -> (n, du)
-        Sampling the reference distribution for xT (or u0). This should return a Dirac.
-    ref_logpdf : JArray (du, ) -> JFloat
-        The log PDF of the reference measure.
+        Sampling the reference distribution for xT (or u0).
     transition_sampler : (n, du), (dv, ), float, key -> (n, du)
         Draw n new samples conditioned on the previous samples and :math:`v_{k-1}`.
     likelihood_logpdf : (dv, ), (n, du), (dv, ), float -> (n, )
@@ -218,22 +214,21 @@ def pmcmc_kernel(key: JKey,
         Resample method.
     nparticles : int
         The number of particles.
+    delta : float, default=None
+        The PCN parameter.
     which_u : int, default=0
         Which particle to choose.
 
     Returns
     -------
-    JArray (du, ), JFloat, JArray (dv, ), JArray (du, )
-        An MCMC sample tuple for uT, log_ell, yT, and xT.
+    JArray (du, ), JFloat, JArray (dv, ), JArray (du, ), MCMCState
+        uT, log_ell, ys, and MCMC state.
 
     Notes
     -----
-    For the time being, let's assume that we can store the trajectory of Y. Implementing its online backward bridge is
-    annoying.
+    It is possible to not store the whole trajectory Y by means of Doob's transform.
     """
     key_prop, key_u0, key_filter, key_mh = jax.random.split(key, num=4)
-
-    # TODO: PCN for yT only, generate bridge between y0 and yT
 
     if delta is None:
         prop_ys = fwd_ys_sampler(key_prop, y0)

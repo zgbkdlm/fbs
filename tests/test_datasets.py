@@ -2,14 +2,19 @@ import jax.numpy as jnp
 import jax.random
 import numpy.testing as npt
 import scipy
+import pytest
 from fbs.data.base import Dataset
-from fbs.data import Crescent, CelebAHQRestore
+from fbs.data import Crescent, ImageRestore
 from fbs.sdes import euler_maruyama
+
+
+class DummyClass(Dataset):
+    pass
 
 
 class TestDatasetClass:
     def test_enumeration(self):
-        dummyclass = Dataset()
+        dummyclass = DummyClass()
 
         data_size = 100
         dummyclass.n = data_size
@@ -22,15 +27,12 @@ class TestDatasetClass:
         npt.assert_array_equal(jnp.sort(jnp.concatenate(dummyclass.perm_inds)), jnp.arange(data_size))
 
         xss = []
-        yss = []
         for i in range(int(data_size / batch_size)):
-            xs, ys = dummyclass.enumerate_subset(i)
+            xs = dummyclass.enumerate_subset(i)
             xss.append(xs)
-            yss.append(ys)
 
         # Generated data should be a random permutation of the original
         npt.assert_array_equal(jnp.sort(jnp.concatenate(xss).ravel()), jnp.sort(dummyclass.xs.ravel()))
-        npt.assert_array_equal(jnp.sort(jnp.concatenate(yss).ravel()), jnp.sort(dummyclass.ys.ravel()))
 
 
 class TestCrescent:
@@ -67,3 +69,23 @@ class TestCrescent:
             for dim in range(3):
                 npt.assert_allclose(scipy.stats.wasserstein_distance(true_samples[:, dim], langevin_samples[:, dim]),
                                     0., atol=2e-1)
+
+
+class TestImgs:
+
+    @pytest.mark.parametrize('task', ['inpainting-8', 'supr-4'])
+    def test_concat_unpack(self, task):
+        img_shape = (32, 32, 3)
+        key = jax.random.PRNGKey(666)
+
+        dataset = ImageRestore(task=task, image_shape=img_shape, sr_random=True)
+
+        key, subkey = jax.random.split(key)
+        true_img = jax.random.uniform(subkey, (4, *img_shape))
+
+        key, subkey = jax.random.split(key)
+        mask = dataset.gen_mask(subkey)
+        x, y = dataset.unpack(true_img, mask)
+        xy = dataset.concat(x, y, mask)
+
+        npt.assert_array_equal(true_img, xy)

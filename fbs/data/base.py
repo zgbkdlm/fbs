@@ -51,6 +51,10 @@ class Dataset(Protocol):
     def enumerate_subset(self, i: int, perm_inds=None, key=None):
         """Enumerate all the randomly split chunks of data for i = 0, 1, ...
         """
+        if perm_inds is None:
+            perm_inds = self.perm_inds
+        inds = perm_inds[i]
+        return self.xs[inds]
 
     def sampler(self, key: JKey):
         """Sampler

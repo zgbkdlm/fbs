@@ -80,4 +80,4 @@ def make_optax_kernel(optimiser, loss_fn: Callable, jit: bool = True) -> Tuple[C
                 ema_param = ema_param
         return ema_param
 
-    return jax.jit(optax_kernel) if jit else optax_kernel, ema_kernel
+    return jax.jit(optax_kernel, ) if jit else optax_kernel, ema_kernel

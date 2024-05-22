@@ -5,21 +5,20 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import math
-import matplotlib.pyplot as plt
 import argparse
 from fbs.samplers import bootstrap_filter, stratified
-from fbs.sdes import make_linear_sde, StationaryConstLinearSDE, reverse_simulator
-from fbs.utils import bures_dist
+from fbs.sdes import make_linear_sde, StationaryConstLinearSDE, StationaryLinLinearSDE
 from functools import partial
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--d', type=int, default=10, help='The problem dimension.')
 parser.add_argument('--nparticles', type=int, default=10, help='The number of particles.')
 parser.add_argument('--nsamples', type=int, default=1000, help='The number of samples to draw.')
+parser.add_argument('--sde', type=str, default='const', help='The type of forward SDE.')
 parser.add_argument('--id', type=int, default=666, help='The id of independent MC experiment.')
 args = parser.parse_args()
 
-jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_enable_x64", False)
 
 key = jax.random.PRNGKey(args.id)
 
@@ -51,22 +50,16 @@ joint_cov = jnp.concatenate([jnp.concatenate([cov_mat, cov_mat], axis=1),
                              jnp.concatenate([cov_mat, cov_mat + obs_var * jnp.eye(d)], axis=1)],
                             axis=0)
 
-plt.plot(zs, fs)
-plt.scatter(zs, y0, s=1)
-plt.plot(zs, gp_mean)
-plt.fill_between(zs,
-                 gp_mean - 1.96 * jnp.sqrt(jnp.diag(gp_cov)),
-                 gp_mean + 1.96 * jnp.sqrt(jnp.diag(gp_cov)),
-                 alpha=0.3, color='black', edgecolor='none')
-plt.show()
-
 # SDE noising process
 T = 1.
 nsteps = 200
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
 
-sde = StationaryConstLinearSDE(a=-0.5, b=1.)
+if args.sde == 'lin':
+    sde = StationaryLinLinearSDE(beta_min=0.02, beta_max=4., t0=0., T=T)
+else:
+    sde = StationaryConstLinearSDE(a=-0.5, b=1.)
 discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(sde)
 
 
@@ -103,11 +96,6 @@ def reverse_drift_v(v, u, t):
 
 def reverse_dispersion(t):
     return sde.dispersion(T - t)
-
-
-def rev_sim(key_, uv0):
-    return reverse_simulator(key_, uv0, ts, score, sde.drift, sde.dispersion,
-                             integrator='euler-maruyama', integration_nsteps=10)
 
 
 # Conditional sampling
@@ -162,22 +150,5 @@ for i in range(nsamples):
     print(f'ID: {args.id} | Sample {i}')
 
 # Save results
-np.savez(f'./toy/results/filter-{args.id}', samples=approx_cond_samples, gp_mean=gp_mean, gp_cov=gp_cov)
-
-# Plot
-approx_gp_mean = jnp.mean(approx_cond_samples, axis=0)
-approx_gp_cov = jnp.cov(approx_cond_samples, rowvar=False)
-distance = bures_dist(gp_mean, gp_cov, approx_gp_mean, approx_gp_cov)
-print(f'Bures distance {distance}')
-
-plt.plot(zs, gp_mean)
-plt.fill_between(zs,
-                 gp_mean - 1.96 * jnp.sqrt(jnp.diag(gp_cov)),
-                 gp_mean + 1.96 * jnp.sqrt(jnp.diag(gp_cov)),
-                 alpha=0.3, color='black', edgecolor='none')
-plt.plot(zs, approx_gp_mean)
-plt.fill_between(zs,
-                 approx_gp_mean - 1.96 * jnp.sqrt(jnp.diag(approx_gp_cov)),
-                 approx_gp_mean + 1.96 * jnp.sqrt(jnp.diag(approx_gp_cov)),
-                 alpha=0.3, color='tab:red', edgecolor='none')
-plt.show()
+np.savez(f'./toy/results/filter-{args.sde}-{args.nparticles}-{args.id}',
+         samples=approx_cond_samples, gp_mean=gp_mean, gp_cov=gp_cov)

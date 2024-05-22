@@ -5,7 +5,6 @@ from fbs.nn import sinusoidal_embedding, make_st_nn
 from fbs.nn.utils import PixelShuffle
 from typing import Sequence
 
-nn_param_dtype = jnp.float64
 nn_param_init = nn.initializers.xavier_normal()
 
 
@@ -15,14 +14,18 @@ class _CrescentTimeBlock(nn.Module):
 
     @nn.compact
     def __call__(self, time_emb):
-        time_emb = nn.Dense(features=self.nfeatures, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(time_emb)
+        time_emb = nn.Dense(features=self.nfeatures, kernel_init=nn_param_init)(time_emb)
         time_emb = nn.gelu(time_emb)
-        time_emb = nn.Dense(features=self.nfeatures, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(time_emb)
+        time_emb = nn.Dense(features=self.nfeatures, kernel_init=nn_param_init)(time_emb)
         return time_emb
 
 
 class CrescentMLP(nn.Module):
+    """Used in preliminary experiments only.
+    """
     dt: float
+    dim: int = 3
+    hiddens = [256, 256, 128, 64, 32, 16]
 
     @nn.compact
     def __call__(self, x, t):
@@ -31,22 +34,89 @@ class CrescentMLP(nn.Module):
         else:
             time_emb = jax.vmap(lambda z: sinusoidal_embedding(z, out_dim=32))(t / self.dt)
 
-        x = nn.Dense(features=64, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
-        x = (x * _CrescentTimeBlock(dt=self.dt, nfeatures=64)(time_emb) +
-             _CrescentTimeBlock(dt=self.dt, nfeatures=64)(time_emb))
-        x = nn.gelu(x)
-        x = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
-        x = (x * _CrescentTimeBlock(dt=self.dt, nfeatures=32)(time_emb) +
-             _CrescentTimeBlock(dt=self.dt, nfeatures=32)(time_emb))
-        x = nn.gelu(x)
-        x = nn.Dense(features=32, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
-        x = nn.gelu(x)
-        x = nn.Dense(features=3, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x)
-
+        for h in self.hiddens:
+            x = nn.Dense(features=h, kernel_init=nn_param_init)(x)
+            x = (x * _CrescentTimeBlock(dt=self.dt, nfeatures=h)(time_emb) +
+                 _CrescentTimeBlock(dt=self.dt, nfeatures=h)(time_emb))
+            x = nn.gelu(x)
+        x = nn.Dense(features=self.dim, kernel_init=nn_param_init)(x)
         return jnp.squeeze(x)
 
 
+class _GMSBMLPResBlock(nn.Module):
+    dim: int
+
+    @nn.compact
+    def __call__(self, x, time_emb):
+        time_emb = nn.Dense(features=2 * self.dim, kernel_init=nn_param_init)(time_emb)
+        time_emb = nn.gelu(time_emb)
+        scale, shift = jnp.split(time_emb, 2, axis=-1)
+
+        x = nn.Dense(features=self.dim, kernel_init=nn_param_init)(x)
+        x = nn.gelu(x)
+        x = x * scale + shift
+        x = nn.Dense(features=self.dim, kernel_init=nn_param_init)(x)
+        x = nn.gelu(x)
+        return x
+
+
+class GMSBMLP(nn.Module):
+    """Used in preliminary experiments only.
+    """
+    dim: int
+    dt: float = 1.
+
+    @nn.compact
+    def __call__(self, x, k):
+        if k.ndim < 1:
+            time_emb = jnp.expand_dims(sinusoidal_embedding(k / self.dt, out_dim=32), 0)
+        else:
+            time_emb = jax.vmap(lambda z: sinusoidal_embedding(z, out_dim=32))(k / self.dt)
+
+        # x0 = x
+        #
+        # x1 = _GMSBMLPResBlock(dim=16)(x, time_emb)
+        # x2 = _GMSBMLPResBlock(dim=32)(x1, time_emb)
+        # x3 = _GMSBMLPResBlock(dim=64)(x2, time_emb)
+        #
+        # x3_ = x3 + _GMSBMLPResBlock(dim=64)(x3, time_emb)
+        # x2_ = x2 + _GMSBMLPResBlock(dim=32)(x3_, time_emb)
+        # x1_ = x1 + _GMSBMLPResBlock(dim=16)(x2_, time_emb)
+        #
+        # # x1 = _GMSBMLPResBlock(dim=16)(x, time_emb)
+        # # x2 = _GMSBMLPResBlock(dim=64)(x1, time_emb)
+        # #
+        # # x2_ = x2 + _GMSBMLPResBlock(dim=64)(x2, time_emb)
+        # # x1_ = x1 + _GMSBMLPResBlock(dim=16)(x2_, time_emb)
+        #
+        # x = x0 + nn.Dense(features=self.dim, param_dtype=nn_param_dtype, kernel_init=nn_param_init)(x1_)
+
+        # x = _GMSBMLPResBlock(dim=16)(x, time_emb)
+        # x = _GMSBMLPResBlock(dim=64)(x, time_emb)
+        # x = nn.Dense(features=32, kernel_init=nn_param_init)(x)
+        # x = nn.leaky_relu(x)
+        # x = nn.Dense(features=16, kernel_init=nn_param_init)(x)
+        # x = nn.leaky_relu(x)
+        # x = nn.Dense(features=self.dim, kernel_init=nn_param_init)(x)
+
+        time_emb = nn.Dense(features=32, kernel_init=nn_param_init)(time_emb)
+        time_emb = nn.gelu(time_emb)
+        x = nn.Dense(features=16, kernel_init=nn_param_init)(x)
+        x = nn.gelu(x)
+        x = nn.Dense(features=32, kernel_init=nn_param_init)(x)
+        x = nn.gelu(x)
+        h = jnp.concatenate([x, jnp.broadcast_to(time_emb, (x.shape[0], 32))], axis=-1)
+        h = nn.Dense(features=64, kernel_init=nn_param_init)(h)
+        h = nn.gelu(h)
+        h = nn.Dense(features=16, kernel_init=nn_param_init)(h)
+        h = nn.gelu(h)
+        h = nn.Dense(features=self.dim, kernel_init=nn_param_init)(h)
+        return h
+
+
 class MNISTAutoEncoder(nn.Module):
+    """Used in preliminary experiments only.
+    """
     # This does not really work.
     nn_param_dtype = jnp.float64
     nn_param_init = nn.initializers.xavier_normal()
@@ -72,6 +142,8 @@ class MNISTAutoEncoder(nn.Module):
 
 
 class MNISTResConv(nn.Module):
+    """Used in preliminary experiments only.
+    """
     nn_param_dtype = jnp.float64
     nn_param_init = nn.initializers.xavier_normal()
     dt: float
@@ -185,5 +257,3 @@ def make_simple_st_nn(key,
     dict_param = nn_model.init(key, jnp.ones((batch_size, *dim_in)), jnp.array(1.))
     array_param, array_to_dict, forward_pass = make_st_nn(key, nn_model, dim_in, batch_size)
     return nn_model, dict_param, array_param, array_to_dict, forward_pass
-
-# TODO: MLP-mixer https://github.com/google-research/big_vision/blob/main/big_vision/models/mlp_mixer.py

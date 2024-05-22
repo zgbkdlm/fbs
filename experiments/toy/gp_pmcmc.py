@@ -4,25 +4,24 @@ Gaussian process regression using Gibbs CSMC.
 import jax
 import jax.numpy as jnp
 import math
-import matplotlib.pyplot as plt
 import numpy as np
-import numpyro as npr
 import argparse
 from fbs.samplers import bootstrap_filter, stratified
 from fbs.samplers.smc import pmcmc_kernel
-from fbs.sdes import make_linear_sde, StationaryConstLinearSDE, reverse_simulator
-from fbs.utils import bures_dist
+from fbs.sdes import make_linear_sde, StationaryConstLinearSDE, StationaryLinLinearSDE
 from functools import partial
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--d', type=int, default=10, help='The problem dimension.')
 parser.add_argument('--nparticles', type=int, default=10, help='The number of particles.')
 parser.add_argument('--nsamples', type=int, default=1000, help='The number of samples to draw.')
+parser.add_argument('--sde', type=str, default='const', help='The type of forward SDE.')
 parser.add_argument('--delta', type=float, default=0.01, help='The delta value of pMCMC')
 parser.add_argument('--id', type=int, default=666, help='The id of independent MC experiment.')
+parser.add_argument('--nchains', type=int, default=4, help='The number of MCMC chains.')
 args = parser.parse_args()
 
-jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_enable_x64", False)
 
 key = jax.random.PRNGKey(args.id)
 
@@ -54,22 +53,16 @@ joint_cov = jnp.concatenate([jnp.concatenate([cov_mat, cov_mat], axis=1),
                              jnp.concatenate([cov_mat, cov_mat + obs_var * jnp.eye(d)], axis=1)],
                             axis=0)
 
-plt.plot(zs, fs)
-plt.scatter(zs, y0, s=1)
-plt.plot(zs, gp_mean)
-plt.fill_between(zs,
-                 gp_mean - 1.96 * jnp.sqrt(jnp.diag(gp_cov)),
-                 gp_mean + 1.96 * jnp.sqrt(jnp.diag(gp_cov)),
-                 alpha=0.3, color='black', edgecolor='none')
-plt.show()
-
 # SDE noising process
 T = 1.
 nsteps = 200
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
 
-sde = StationaryConstLinearSDE(a=-0.5, b=1.)
+if args.sde == 'lin':
+    sde = StationaryLinLinearSDE(beta_min=0.02, beta_max=4., t0=0., T=T)
+else:
+    sde = StationaryConstLinearSDE(a=-0.5, b=1.)
 discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(sde)
 
 
@@ -87,10 +80,6 @@ def score(z, t):
 # Terminal reference distribution
 m_ref, cov_ref = forward_m_cov(T)
 chol_ref = jax.scipy.linalg.cho_factor(cov_ref[d:, d:])
-
-
-def unpack(xy):
-    return xy[..., :d], xy[..., d:]
 
 
 # The reverse process
@@ -112,14 +101,11 @@ def reverse_dispersion(t):
     return sde.dispersion(T - t)
 
 
-def rev_sim(key_, uv0):
-    return reverse_simulator(key_, uv0, ts, score, sde.drift, sde.dispersion,
-                             integrator='euler-maruyama', integration_nsteps=10)
-
-
 # Conditional sampling
 nparticles = args.nparticles
 nsamples = args.nsamples
+nchains = args.nchains
+chain_track_id = 0
 burnin = 100
 
 
@@ -156,55 +142,42 @@ def fwd_ys_sampler(key_, y0_):
 
 
 # pMCMC initial
-key, subkey = jax.random.split(key)
-key_fwd, key_bwd, key_bf = jax.random.split(subkey, num=3)
-path_y = fwd_ys_sampler(key_fwd, y0)
-vs = path_y[::-1]
-x0s, log_ell = bootstrap_filter(transition_sampler, likelihood_logpdf, vs, ts, ref_sampler, key_bf, nparticles,
-                                stratified, log=True, return_last=True)
-x0 = x0s[0]
-key, subkey = jax.random.split(key)
-ys = fwd_ys_sampler(subkey, y0)
+def pmcmc_init(key_):
+    key_fwd, key_bwd, key_bf, key_ys = jax.random.split(key_, num=4)
+    path_y = fwd_ys_sampler(key_fwd, y0)
+    vs = path_y[::-1]
+    x0s, log_ell = bootstrap_filter(transition_sampler, likelihood_logpdf, vs, ts, ref_sampler, key_bf, nparticles,
+                                    stratified, log=True, return_last=True)
+    return x0s[0], log_ell, fwd_ys_sampler(key_ys, y0)
+
+
+# pMCMC kernel
+pmcmc_kernel = partial(pmcmc_kernel, ts=ts, fwd_ys_sampler=fwd_ys_sampler, sde=sde,
+                       ref_sampler=ref_sampler, transition_sampler=transition_sampler,
+                       likelihood_logpdf=likelihood_logpdf, resampling=stratified,
+                       nparticles=nparticles, delta=args.delta)
+
+pmcmc_init_chain_vmap = jax.vmap(pmcmc_init, in_axes=[0])
+pmcmc_kernel_chain_vmap = jax.jit(jax.vmap(pmcmc_kernel, in_axes=[0, 0, 0, 0, None]))
 
 # pMCMC loop
-pmcmc_kernel = jax.jit(partial(pmcmc_kernel, ts=ts, fwd_ys_sampler=fwd_ys_sampler, sde=sde,
-                               ref_sampler=ref_sampler, transition_sampler=transition_sampler,
-                               likelihood_logpdf=likelihood_logpdf, resampling=stratified,
-                               nparticles=nparticles, delta=args.delta))
+key, subkey = jax.random.split(key)
+key_chains = jax.random.split(subkey, num=nchains)
+x0s, log_ells, yss = pmcmc_init_chain_vmap(key_chains)
 
-pmcmc_samples = np.zeros((nsamples, d))
+pmcmc_samples = np.zeros((nchains, nsamples, d))
 accs = np.zeros((nsamples,))
 for i in range(nsamples):
-    key, subkey = jax.random.split(subkey)
-    x0, log_ell, ys, mcmc_state = pmcmc_kernel(subkey, x0, log_ell, ys, y0)
-    pmcmc_samples[i] = x0
-    accs[i] = mcmc_state.acceptance_prob
+    key, subkey = jax.random.split(key)
+    key_chains = jax.random.split(subkey, num=nchains)
+    x0s, log_ells, yss, mcmc_states = pmcmc_kernel_chain_vmap(key_chains, x0s, log_ells, yss, y0)
+    pmcmc_samples[:, i, :] = x0s
+    accs[i] = mcmc_states.acceptance_prob[chain_track_id]
     j = max(0, i - 100)
     print(f'ID: {args.id} | pMCMC | iter: {i} | '
-          f'acc_prob: {mcmc_state.acceptance_prob:.3f} | {np.mean(accs[:i]):.3f} | {np.mean(accs[j:i]):.3f}')
+          f'acc_prob: {mcmc_states.acceptance_prob[chain_track_id]:.3f} '
+          f'| {np.mean(accs[:i]):.3f} | {np.mean(accs[j:i]):.3f}')
 
 # Save results
-np.savez(f'./toy/results/pmcmc-{args.delta}-{args.id}', samples=pmcmc_samples, gp_mean=gp_mean, gp_cov=gp_cov)
-
-# Plot
-pmcmc_samples = pmcmc_samples[burnin:]
-approx_gp_mean = jnp.mean(pmcmc_samples, axis=0)
-approx_gp_cov = jnp.cov(pmcmc_samples, rowvar=False)
-distance = bures_dist(gp_mean, gp_cov, approx_gp_mean, approx_gp_cov)
-print(f'Bures distance {distance}')
-
-plt.plot(zs, gp_mean)
-plt.fill_between(zs,
-                 gp_mean - 1.96 * jnp.sqrt(jnp.diag(gp_cov)),
-                 gp_mean + 1.96 * jnp.sqrt(jnp.diag(gp_cov)),
-                 alpha=0.3, color='black', edgecolor='none')
-plt.plot(zs, approx_gp_mean)
-plt.fill_between(zs,
-                 approx_gp_mean - 1.96 * jnp.sqrt(jnp.diag(approx_gp_cov)),
-                 approx_gp_mean + 1.96 * jnp.sqrt(jnp.diag(approx_gp_cov)),
-                 alpha=0.3, color='tab:red', edgecolor='none')
-plt.show()
-
-autocorrs = npr.diagnostics.autocorrelation(pmcmc_samples, axis=0)[:100]
-plt.plot(np.percentile(autocorrs, 95, axis=1))
-plt.show()
+np.savez(f'./toy/results/pmcmc-{args.delta}-{args.sde}-{args.nparticles}-{args.id}',
+         samples=pmcmc_samples, gp_mean=gp_mean, gp_cov=gp_cov)

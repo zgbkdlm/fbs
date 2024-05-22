@@ -1,1 +1,1 @@
-from .base import ipf_loss, simulate_discrete_time
+from .base import ipf_loss_disc, ipf_loss_cont, ipf_loss_cont_v

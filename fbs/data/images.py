@@ -210,7 +210,7 @@ class CelebAHQ(Image):
 
 
 class InpaintingMask(NamedTuple):
-    """The mask that selects the hollow part.
+    """The mask that splits the observed and unobserved parts.
     """
     width: int
     height: int
@@ -231,9 +231,12 @@ class ImageRestore(Dataset):
     unobs_shape: Tuple[int, int]
     sr_random: bool = True
 
-    def __init__(self, task: str, sr_random: bool = True):
-        w, h, c = self.image_shape
-        s = int(self.task.split('-')[-1])
+    def __init__(self, task: str, image_shape: Tuple[int, int, int], sr_random: bool = True):
+        self.image_shape = image_shape
+        self.task = task
+
+        w, h, c = image_shape
+        s = int(task.split('-')[-1])
         if 'inpaint' in task:
             self.unobs_shape = (s ** 2, c)
         elif 'supr' in task:
@@ -253,6 +256,12 @@ class ImageRestore(Dataset):
         return self.xs[inds]
 
     def _gen_supr_mask(self, key: JKey, rate: int, random: bool = True) -> SRMask:
+        """Generate a mask for super-resolution.
+        Basically, at every block of pixels of size x by x, we take one pixel as the observed, and others as unobserved,
+        where x is the suer-resolution rate.
+        The `random` arguments specifies if the location of the observed pixel is random in each block, otherwise it is
+        in the middle.
+        """
         img_w, img_h = self.image_shape[:2]
         nblocks = int(img_w * img_h / rate ** 2)
         if random:
@@ -344,14 +353,14 @@ class ImageRestore(Dataset):
         return x, y
 
     def concat(self, x: JArray, y: JArray, mask: InpaintingMask) -> JArray:
-        """The reverse operation of `unpack2`."""
+        """The reverse operation of `unpack`."""
         img_w, img_h, img_c = self.image_shape
         unobs_inds_ravelled, obs_inds_ravelled = mask.unobs_inds_ravelled, mask.obs_inds_ravelled
 
-        img = jnp.zeros((*x.shape[:-3], img_w * img_h, img_c))
+        img = jnp.zeros((*x.shape[:-2], img_w * img_h, img_c))
         img = img.at[..., unobs_inds_ravelled, :].set(x)
         img = img.at[..., obs_inds_ravelled, :].set(y)
-        return img.reshape(*img.shape[:-3], img_w, img_h, img_c)
+        return img.reshape(*img.shape[:-2], img_w, img_h, img_c)
 
 
 class MNISTRestore(ImageRestore):
@@ -375,8 +384,7 @@ class MNISTRestore(ImageRestore):
             xs = jnp.reshape(xs, (60000, 28, 28, 1))
 
         self.xs = self.standardise(xs).astype('float32')
-        self.image_shape = (28, 28, 1)
-        super().__init__(task)
+        super().__init__(task, (28, 28, 1))
 
 
 class CelebAHQRestore(ImageRestore):
@@ -390,7 +398,7 @@ class CelebAHQRestore(ImageRestore):
         self.task = task
         data = jnp.load(data_path)
         data = jax.random.permutation(key, data, axis=0)
-        data = self.standardise(data)
+        data = self.standardise(data).astype('float32')
 
         if test:
             self.n = 1000
@@ -399,8 +407,7 @@ class CelebAHQRestore(ImageRestore):
             self.n = 29000
             self.xs = data[1000:]
 
-        self.image_shape = (resolution, resolution, 3)
-        super().__init__(task)
+        super().__init__(task, (resolution, resolution, 3))
 
 
 def normalise(img: JArray, method: str = 'clip') -> JArray:
