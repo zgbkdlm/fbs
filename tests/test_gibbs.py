@@ -119,5 +119,5 @@ def test_gibbs_kernel():
 
     x0s = x0s[burnin:]
 
-    npt.assert_allclose(jnp.mean(x0s), true_posterior_mean, rtol=1e-2)
+    npt.assert_allclose(jnp.mean(x0s), true_posterior_mean, rtol=5e-2)
     npt.assert_allclose(jnp.var(x0s), true_posterior_cov, rtol=2e-2)

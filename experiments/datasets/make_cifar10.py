@@ -23,4 +23,4 @@ test_data[:] = load_batch(f'./cifar-10-batches-py/test_batch')
 train_data = train_data.astype('float32') / 255.
 test_data = test_data.astype('float32') / 255.
 
-np.savez('./cifar10.npz', train_data=train_data, test_data=test_data)
+np.savez('cifar10.npz', train_data=train_data, test_data=test_data)

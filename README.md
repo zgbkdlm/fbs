@@ -4,10 +4,11 @@ This repository is concerned with Markov chain Monte Carlo (MCMC) method for con
 see, https://arxiv.org/placeholder.
 More specifically, our core contributions are as follows. 
 
-1. We develop a new and efficient particle Gibbs sampler for conditioning diffusion models. 
+1. We develop a new and efficient particle Gibbs sampler, and a pseudo-marginal sampler for conditioning diffusion models. 
 2. The proposed method is not only consistent but is also asymptotically exact, even when 1) using a finite number of particles, and 2) no access to the reference distribution.
 
-To quickly see what our method can do while others cannot, please check the two animations below. 
+To quickly see what our method can do while others cannot, please check the two animations below 
+(you may wait for seconds for the animations to start). 
 
 <img src="./docs/sb-imgs-anime-2.gif" style="width: 80%; height: auto; display: block; margin-left: auto; margin-right: auto">
 <img src="./docs/sb-imgs-anime-9.gif" style="width: 80%; height: auto; display: block; margin-left: auto; margin-right: auto">
@@ -37,7 +38,8 @@ The scripts in `./experiments` are explained as follows.
 4. `./experiments/sb_imgs`. This folder is concerned with the Schrödinger bridge experiments on MNIST super-resolution.
 5. `./experiments/toy`. This folder is concerned with the Gaussian synthetic experiments.
 
-You can download the CelebA-HQ dataset as per the instruction in https://github.com/Algolzw/daclip-uir.
+You can download the CelebA-HQ dataset as per the instruction in https://github.com/Algolzw/daclip-uir, and the scripts 
+in `./experiments/datasets`.
 
 After you have run all the experiments, results will be saved in their corresponding directories. 
 Then, simply run any file in `./experiments/tabulators` to produce the tables and figures in our paper.
