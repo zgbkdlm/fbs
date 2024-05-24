@@ -2,7 +2,7 @@
 [![UnitTest](https://github.com/zgbkdlm/fbs/actions/workflows/unittest.yml/badge.svg)](https://github.com/zgbkdlm/fbs/actions/workflows/unittest.yml)
 
 This repository is concerned with Markov chain Monte Carlo (MCMC) method for conditional sampling with generative diffusions, 
-see, https://arxiv.org/placeholder.
+see, https://arxiv.org/abs/2405.13794.
 More specifically, our core contributions are as follows. 
 
 1. We develop new and efficient (particle Gibbs and particle pseudo-marginal) MCMC samplers for conditional sampling in diffusion models. 
@@ -57,7 +57,7 @@ Please cite our paper as follows.
 @article{corenflos2024FBS,
     title={Conditioning diffusion models by explicit forward-backward bridging},
     author={Corenflos, Adrien and Zhao, Zheng and S\"{a}rkk\"{a}, Simo and Sj\"{o}lund, Jens and Sch\"{o}n, Thomas B.},
-    journal={arXiv preprint xxx},
+    journal={arXiv preprint arXiv:2405.13794},
     year={2024}
 }
 ```
