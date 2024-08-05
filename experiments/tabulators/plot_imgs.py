@@ -26,21 +26,22 @@ def to_img(img):
     return img[..., 0] if dataset == 'mnist' else img
 
 
-dataset = 'mnist'
-task = 'supr-4'
+dataset = 'celeba-64'
+task = 'supr-2'
 rnd_mask = False
 sde = 'lin'
-nparticles = 100
-y0_id = 94
+nparticles = 10
+y0_id = 7
 nsamples = 100
 methods = ['filter', 'gibbs-eb-ef', 'pmcmc-0.005', 'twisted', 'csgm']
+methods_lables = ['PF', 'Gibbs', 'PMCMC', 'TPF', 'CSGM']
 nexamples = 3
 
 sample_inds = np.random.choice(np.arange(nsamples), nexamples, replace=False)
 
 img_hw = (28, 28) if dataset == 'mnist' else (64, 64)
-fig = plt.figure(figsize=(5, 5.5))
-grid = ImageGrid(fig, 111, nrows_ncols=(len(methods), nexamples + 2), axes_pad=0.)
+fig = plt.figure(figsize=(5.5, 5.5))
+grid = ImageGrid(fig, 111, nrows_ncols=(len(methods), nexamples + 2), axes_pad=0., share_all=True)
 
 path_head = f'./imgs/results_{task.split("-")[0]}/imgs/{dataset}-{task.split("-")[1]}'
 path_head = path_head + '-rm' if 'supr' in task and rnd_mask else path_head
@@ -50,11 +51,12 @@ img_corrupt = np.asarray(Image.open(filename).resize(img_hw, resample=Image.Resa
 filename = path_head + f'{y0_id}-true.png'
 img_true = np.asarray(Image.open(filename))
 
-for row in range(len(methods)):
+for row, ylabel in enumerate(methods_lables):
     for col in range(nexamples + 2):
         axes_idx = row * (nexamples + 2) + col
         if col == 0:
             grid[axes_idx].imshow(img_corrupt)
+            grid[axes_idx].set_ylabel(ylabel)
         elif col == 1:
             grid[axes_idx].imshow(img_true)
         else:
@@ -73,7 +75,8 @@ for row in range(len(methods)):
         elif row == 0 and col > 1:
             grid[axes_idx].set_title(f'sample {col - 2}')
 
-        grid[axes_idx].axis('off')
+        grid[axes_idx].set_xticks([])
+        grid[axes_idx].set_yticks([])
 
 plt.tight_layout(pad=0.1)
 plt.savefig(f'./figs/imgs-{dataset}-{task}-{nparticles}-{y0_id}.png', transparent=True)

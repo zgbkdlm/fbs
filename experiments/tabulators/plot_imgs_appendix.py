@@ -31,6 +31,7 @@ task = 'supr-2'
 rnd_mask = False
 sde = 'lin'
 methods = ['filter', 'gibbs-eb-ef', 'pmcmc-0.005', 'twisted', 'csgm']
+methods_lables = ['PF', 'Gibbs', 'PMCMC', 'TPF', 'CSGM']
 nparticles = 10
 nsamples = 100
 nexamples = 12
@@ -40,7 +41,7 @@ img_hw = (28, 28) if dataset == 'mnist' else (64, 64)
 
 for y0_id in range(100):
 
-    fig = plt.figure(figsize=(16, 6))
+    fig = plt.figure(figsize=(16.2, 6))
     grid = ImageGrid(fig, 111, nrows_ncols=(len(methods), nexamples + 2), axes_pad=0.)
 
     path_head = f'./imgs/results_{task.split("-")[0]}/imgs/{dataset}-{task.split("-")[1]}'
@@ -51,11 +52,12 @@ for y0_id in range(100):
     filename = path_head + f'{y0_id}-true.png'
     img_true = np.asarray(Image.open(filename))
 
-    for row in range(len(methods)):
+    for row, ylabel in enumerate(methods_lables):
         for col in range(nexamples + 2):
             axes_idx = row * (nexamples + 2) + col
             if col == 0:
                 grid[axes_idx].imshow(img_corrupt)
+                grid[axes_idx].set_ylabel(ylabel)
             elif col == 1:
                 grid[axes_idx].imshow(img_true)
             else:
@@ -74,7 +76,8 @@ for y0_id in range(100):
             elif row == 0 and col > 1:
                 grid[axes_idx].set_title(f'sample {col - 2}')
 
-            grid[axes_idx].axis('off')
+            grid[axes_idx].set_xticks([])
+            grid[axes_idx].set_yticks([])
 
     plt.tight_layout(pad=0.1)
     plt.savefig(f'./figs/appendix-imgs-{dataset}-{task}-{nparticles}-{y0_id}.png', transparent=True)

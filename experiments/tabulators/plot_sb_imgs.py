@@ -81,7 +81,7 @@ plt.savefig(f'figs/sb-imgs-examples-{y0_id}.png', transparent=True)
 plt.show()
 
 # Plot more in the appendix
-fig = plt.figure(figsize=(23, 8))
+fig = plt.figure(figsize=(17.3, 6))
 nexamples = 10
 per = max_mcs // nexamples
 axes = ImageGrid(fig, 111, nrows_ncols=(4, nexamples + 2), axes_pad=0.)
@@ -91,6 +91,7 @@ for row in range(len(all_restored_imgs)):
         axes_idx = row * (nexamples + 2) + col
         if col == 0:
             axes[axes_idx].imshow(corrupt_img, cmap='gray')
+            axes[axes_idx].set_ylabel('PF' if row < 3 else 'Gibbs')
         elif col == 1:
             axes[axes_idx].imshow(true_img, cmap='gray')
         else:
@@ -113,7 +114,8 @@ for row in range(len(all_restored_imgs)):
         # elif col == 3 and row == 0:
         #     axes[axes_idx].set_ylabel('Gibbs-CSMC')
 
-        axes[axes_idx].axis('off')
+        axes[axes_idx].set_xticks([])
+        axes[axes_idx].set_yticks([])
 
 plt.tight_layout(pad=0.1)
 plt.savefig(f'figs/sb-imgs-appendix-{y0_id}.png', transparent=True)
