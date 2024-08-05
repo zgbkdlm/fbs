@@ -108,6 +108,7 @@ def likelihood_logpdf(v, u_prev, v_prev, t_prev):
 
 
 def ref_sampler(key_, yT, nsamples_):
+    # TODO
     return m_ref + jax.random.normal(key_, (nsamples_, d)) @ jnp.linalg.cholesky(cov_ref)
 
 
@@ -116,8 +117,8 @@ def fwd_ys_sampler(key_, y0_):
         y = carry
         t, t_prev, rnd = elem
 
-        cov_diag_ = (1 - jnp.exp(-(t - t_prev))) * H @ H.T
-        y = jnp.exp(-0.5 * (t - t_prev)) * y + jnp.sqrt(cov_diag_) @ rnd
+        cov_diag_ = (1 - jnp.exp(-(t - t_prev)))
+        y = jnp.exp(-0.5 * (t - t_prev)) * y + jnp.sqrt(cov_diag_) * H @ rnd
         return y, y
 
     rnds_ = jax.random.normal(key_, shape=(nsteps, d))
