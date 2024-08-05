@@ -108,13 +108,20 @@ def likelihood_logpdf(v, u_prev, v_prev, t_prev):
 
 
 def ref_sampler(key_, yT, nsamples_):
-    m_ = m_ref + cov_ref @ jax.scipy.linalg.cho_solve(chol_ref, yT - m_ref)
-    cov_ = cov_ref - cov_ref @ jax.scipy.linalg.cho_solve(chol_ref, cov_ref)
-    return m_ + jax.random.normal(key_, (nsamples_, d)) @ jnp.linalg.cholesky(cov_)
+    return m_ref + jax.random.normal(key_, (nsamples_, d)) @ jnp.linalg.cholesky(cov_ref)
 
 
 def fwd_ys_sampler(key_, y0_):
-    return simulate_cond_forward(key_, y0_, ts)
+    def scan_body(carry, elem):
+        y = carry
+        t, t_prev, rnd = elem
+
+        cov_diag_ = (1 - jnp.exp(-(t - t_prev))) * H @ H.T
+        y = jnp.exp(-0.5 * (t - t_prev)) * y + jnp.sqrt(cov_diag_) @ rnd
+        return y, y
+
+    rnds_ = jax.random.normal(key_, shape=(nsteps, d))
+    return jnp.concatenate([y0_[None, :], jax.lax.scan(scan_body, y0_, (ts[1:], ts[:-1], rnds_))[1]])
 
 
 # Filter
