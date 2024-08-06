@@ -6,7 +6,7 @@ import jax.numpy as jnp
 import math
 import numpy as np
 import argparse
-from fbs.samplers import bootstrap_filter_aug, stratified, gibbs_kernel_aug
+from fbs.samplers import bootstrap_filter_aug as bootstrap_filter, stratified, gibbs_kernel_aug as gibbs_kernel_
 from fbs.sdes import make_linear_sde, StationaryConstLinearSDE
 from functools import partial
 
@@ -60,7 +60,7 @@ H_ = jnp.concatenate([jnp.eye(d), H], axis=0)
 
 # SDE noising process
 T = 1.
-nsteps = 200
+nsteps = 100
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
 
@@ -178,15 +178,15 @@ def gibbs_init(key_):
     key_fwd, key_bwd, key_bf = jax.random.split(key_, num=3)
     path_y = fwd_ys_sampler(key_fwd, y0)
     vs = path_y[::-1]
-    uss = bootstrap_filter_aug(transition_sampler, likelihood_logpdf, vs, ts, ref_sampler, key_bf, nparticles,
-                               stratified, log=True, return_last=False)[0]
+    uss = bootstrap_filter(transition_sampler, likelihood_logpdf, vs, ts, ref_sampler, key_bf, nparticles,
+                           stratified, log=True, return_last=False)[0]
     x0 = uss[-1, 0]
     bs_star = jnp.zeros((nsteps + 1), dtype=int)
     return x0, bs_star
 
 
 # Gibbs kernel
-gibbs_kernel = partial(gibbs_kernel_aug, ts=ts, fwd_sampler=fwd_sampler, sde=sde, unpack=unpack,
+gibbs_kernel = partial(gibbs_kernel_, ts=ts, fwd_sampler=fwd_sampler, sde=sde, unpack=unpack,
                        nparticles=nparticles, transition_sampler=transition_sampler,
                        transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf,
                        marg_y=args.marg,
