@@ -88,6 +88,50 @@ def bootstrap_filter(transition_sampler: Callable[[JArray, JArray, FloatScalar, 
         return filtering_samples, nell_ys
 
 
+def bootstrap_filter_aug(transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
+                         measurement_cond_pdf: Callable[[JArray, JArray, FloatScalar], JArray],
+                         vs: JArray,
+                         ts: JArray,
+                         init_sampler: Callable[[JArray, JArray, int], JArray],
+                         key: JKey,
+                         nparticles: int,
+                         resampling: Callable[[JArray, JArray], JArray],
+                         log: bool = True,
+                         return_last: bool = True,
+                         **kwargs) -> Tuple[JArray, JFloat]:
+    def scan_body(carry, elem):
+        us_prev, log_nell = carry
+        v, v_prev, t_prev, t, key_ = elem
+        key_proposal, key_resampling = jax.random.split(key_)
+
+        us = transition_sampler(us_prev, v_prev, t_prev, key_proposal, **kwargs)
+
+        log_weights = measurement_cond_pdf(v, us, t, **kwargs)
+        _c = jax.scipy.special.logsumexp(log_weights)
+        log_nell -= _c - math.log(nparticles)
+        log_weights = log_weights - _c
+        inds = resampling(jnp.exp(log_weights), key_resampling)
+
+        _, subkey_ = jax.random.split(key_)
+        us = us[inds, ...]
+
+        return (us, log_nell), None if return_last else us
+
+    nsteps = vs.shape[0] - 1
+    key_init, key_steps = jax.random.split(key)
+    init_samples = init_sampler(key_init, vs[0], nparticles)
+    keys = jax.random.split(key_steps, num=nsteps)
+
+    (last_samples, nell_ys), filtering_samples = jax.lax.scan(scan_body,
+                                                              (init_samples, 0.),
+                                                              (vs[1:], vs[:-1], ts[:-1], ts[1:], keys))
+    if return_last:
+        return last_samples, nell_ys
+    else:
+        filtering_samples = jnp.concatenate([jnp.expand_dims(init_samples, axis=0), filtering_samples], axis=0)
+        return filtering_samples, nell_ys
+
+
 def bootstrap_backward_smoother(key: JKey,
                                 filter_us: JArray, vs: JArray, ts: JArray,
                                 transition_logpdf: Callable,

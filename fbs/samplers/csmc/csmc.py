@@ -77,6 +77,33 @@ def csmc_kernel(key: JKey,
     return xs_star, bs_star
 
 
+def csmc_kernel_aug(key: JKey,
+                    us_star: JArray, bs_star: JArray,
+                    vs: JArray, ts: JArray,
+                    init_sampler: Callable[[JKey, int], JArray],
+                    init_likelihood_logpdf: Callable[[JArray, JArray, JArray], JArray],
+                    transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
+                    transition_logpdf: Callable[[JArray, JArray, JArray, FloatScalar], JArray],
+                    measurement_cond_logpdf: Callable[[JArray, JArray, FloatScalar], JArray],
+                    cond_resampling: Callable,
+                    nsamples: int,
+                    backward: bool = False,
+                    **kwargs) -> Tuple[JArray, JArray]:
+    key_fwd, key_bwd = jax.random.split(key, 2)
+
+    As, log_ws, xss = forward_pass_aug(key_fwd,
+                                       us_star, bs_star,
+                                       vs, ts,
+                                       init_sampler, init_likelihood_logpdf,
+                                       transition_sampler, measurement_cond_logpdf, cond_resampling, nsamples,
+                                       **kwargs)
+    if backward:
+        xs_star, bs_star = backward_sampling_pass(key_bwd, transition_logpdf, vs, ts, xss, log_ws, **kwargs)
+    else:
+        xs_star, bs_star = backward_scanning_pass(key_bwd, As, xss, log_ws[-1])
+    return xs_star, bs_star
+
+
 def forward_pass(key: JKey,
                  us_star: JArray, bs_star: JArray,
                  vs: JArray, ts: JArray,
@@ -156,6 +183,54 @@ def forward_pass(key: JKey,
 
     keys = jax.random.split(key_scan, nsteps)
     inputs = (vs[1:], vs[:-1], ts[:-1], bs_star[:-1], bs_star[1:], keys, us_star[1:])
+    _, (log_wss, As, uss) = jax.lax.scan(scan_body, (log_ws0, us0), inputs)
+
+    log_wss = jnp.insert(log_wss, 0, log_ws0, axis=0)
+    uss = jnp.insert(uss, 0, us0, axis=0)
+
+    return As, log_wss, uss
+
+
+def forward_pass_aug(key: JKey,
+                     us_star: JArray, bs_star: JArray,
+                     vs: JArray, ts: JArray,
+                     init_sampler: Callable[[JKey, int], JArray],
+                     init_likelihood_logpdf: Callable[[JArray, JArray, JArray], JArray],
+                     transition_sampler: Callable[[JArray, JArray, FloatScalar, JKey], JArray],
+                     likelihood_logpdf: Callable[[JArray, JArray, FloatScalar], JArray],
+                     cond_resampling: Callable,
+                     nsamples: int,
+                     **kwargs) -> Tuple[JArray, JArray, JArray]:
+    K_plus_one = us_star.shape[0]
+    nsteps = K_plus_one - 1
+
+    def scan_body(carry, inp):
+        # t, t_prev mean t_k and t_{k-1}, resp.
+        log_ws, us_prev = carry
+        v, v_prev, t_prev, t, b_star_prev, b_star, key_, u_star = inp
+        key_resampling, key_transition = jax.random.split(key_, num=2)
+
+        # Conditional resampling
+        A = cond_resampling(key_resampling, jnp.exp(log_ws), b_star_prev, b_star, True)
+        us_prev = jnp.take(us_prev, A, axis=0)
+
+        us = transition_sampler(us_prev, v_prev, t_prev, key_transition, **kwargs)
+        us = us.at[b_star].set(u_star)
+
+        log_ws = likelihood_logpdf(v, us, t, **kwargs)
+        log_ws = normalise(log_ws, log_space=True)
+
+        return (log_ws, us), (log_ws, A, us)
+
+    key_init, key_scan = jax.random.split(key, num=2)
+    us0 = init_sampler(key_init, nsamples + 1)
+    us0 = us0.at[bs_star[0]].set(us_star[0])
+
+    log_ws0 = init_likelihood_logpdf(vs[0], us0, vs[1], **kwargs)
+    log_ws0 = normalise(log_ws0, log_space=True)
+
+    keys = jax.random.split(key_scan, nsteps)
+    inputs = (vs[1:], vs[:-1], ts[:-1], ts[1:], bs_star[:-1], bs_star[1:], keys, us_star[1:])
     _, (log_wss, As, uss) = jax.lax.scan(scan_body, (log_ws0, us0), inputs)
 
     log_wss = jnp.insert(log_wss, 0, log_ws0, axis=0)

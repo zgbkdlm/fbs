@@ -7,7 +7,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from functools import partial
-from fbs.samplers import bootstrap_filter, stratified
+from fbs.samplers.smc import bootstrap_filter_aug as bootstrap_filter
+from fbs.samplers import stratified
 from fbs.sdes import make_linear_sde, StationaryConstLinearSDE
 
 parser = argparse.ArgumentParser()
@@ -53,7 +54,7 @@ joint_cov = jnp.concatenate([jnp.concatenate([cov_mat, cov_mat @ H.T], axis=1),
 H_ = jnp.concatenate([jnp.eye(d), H], axis=0)
 
 # SDE noising process
-T = 1.
+T = 1
 nsteps = 200
 dt = T / nsteps
 ts = jnp.linspace(0, T, nsteps + 1)
@@ -64,11 +65,11 @@ discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(s
 USE_SVD = True
 U, D, V = jnp.linalg.svd(cov_mat)
 
-
 joint_mT, joint_vT = jnp.exp(-0.5 * T) * joint_mean, jnp.exp(-T) * joint_cov + (1 - jnp.exp(-T)) * H_ @ H_.T
 chol_ref = jax.scipy.linalg.cho_factor(joint_vT[d:, d:])
 cond_cov_ref = joint_vT[:d, :d] - joint_vT[:d, d:] @ jax.scipy.linalg.cho_solve(chol_ref, joint_vT[d:, :d])
 cond_chol_ref = jnp.linalg.cholesky(cond_cov_ref)
+
 
 def forward_m_cov(t):
     F_, Q_ = discretise_linear_sde(t, ts[0])
@@ -120,12 +121,10 @@ def transition_logpdf(u, u_prev, v_prev, t_prev):
                                                math.sqrt(dt) * reverse_dispersion(t_prev)))
 
 
-@partial(jax.vmap, in_axes=[None, 0, None, None])
-def likelihood_logpdf(v, u_prev, v_prev, t_prev):
-    scale = obs_var ** 0.5 * jnp.exp(-0.5 * (T - t_prev))
-    return jnp.sum(jax.scipy.stats.norm.logpdf(v_prev,
-                                               H @ u_prev,
-                                               scale))
+@partial(jax.vmap, in_axes=[None, 0, None])
+def likelihood_logpdf(v, u, t):
+    scale = obs_var ** 0.5 * jnp.exp(-0.5 * (T - t))
+    return jnp.sum(jax.scipy.stats.norm.logpdf(v, H @ u, scale))
 
 
 def ref_sampler(key_, yT, nsamples_):

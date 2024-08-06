@@ -6,8 +6,7 @@ import jax.numpy as jnp
 import math
 import numpy as np
 import argparse
-from fbs.samplers import bootstrap_filter, stratified, gibbs_kernel
-from fbs.samplers.smc import bootstrap_backward_smoother
+from fbs.samplers import bootstrap_filter_aug, stratified, gibbs_kernel_aug
 from fbs.sdes import make_linear_sde, StationaryConstLinearSDE
 from functools import partial
 
@@ -134,12 +133,10 @@ def transition_logpdf(u, u_prev, v_prev, t_prev):
                                                math.sqrt(dt) * reverse_dispersion(t_prev)))
 
 
-@partial(jax.vmap, in_axes=[None, 0, None, None])
-def likelihood_logpdf(v, u_prev, v_prev, t_prev):
-    scale = obs_var ** 0.5 * jnp.exp(-0.5 * (T - t_prev))
-    return jnp.sum(jax.scipy.stats.norm.logpdf(v_prev,
-                                               H @ u_prev,
-                                               scale))
+@partial(jax.vmap, in_axes=[None, 0, None])
+def likelihood_logpdf(v, u, t):
+    scale = obs_var ** 0.5 * jnp.exp(-0.5 * (T - t))
+    return jnp.sum(jax.scipy.stats.norm.logpdf(v, H @ u, scale))
 
 
 def ref_sampler(key_, yT, nsamples_):
@@ -181,16 +178,15 @@ def gibbs_init(key_):
     key_fwd, key_bwd, key_bf = jax.random.split(key_, num=3)
     path_y = fwd_ys_sampler(key_fwd, y0)
     vs = path_y[::-1]
-    uss = bootstrap_filter(transition_sampler, likelihood_logpdf, vs, ts, ref_sampler, key_bf, nparticles,
-                           stratified, log=True, return_last=False)[0]
+    uss = bootstrap_filter_aug(transition_sampler, likelihood_logpdf, vs, ts, ref_sampler, key_bf, nparticles,
+                               stratified, log=True, return_last=False)[0]
     x0 = uss[-1, 0]
-    us_star = bootstrap_backward_smoother(key_bwd, uss, vs, ts, transition_logpdf)
     bs_star = jnp.zeros((nsteps + 1), dtype=int)
-    return x0, us_star, bs_star
+    return x0, bs_star
 
 
 # Gibbs kernel
-gibbs_kernel = partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, unpack=unpack,
+gibbs_kernel = partial(gibbs_kernel_aug, ts=ts, fwd_sampler=fwd_sampler, sde=sde, unpack=unpack,
                        nparticles=nparticles, transition_sampler=transition_sampler,
                        transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf,
                        marg_y=args.marg,
@@ -202,14 +198,14 @@ gibbs_kernel_chain_vmap = jax.jit(jax.vmap(gibbs_kernel, in_axes=[0, 0, None, 0,
 # Gibbs loop
 key, subkey = jax.random.split(key)
 key_chains = jax.random.split(subkey, num=nchains)
-x0s, _, bs_stars = gibbs_init_chain_vmap(key_chains)
+x0s, bs_stars = gibbs_init_chain_vmap(key_chains)
 
 gibbs_samples = np.zeros((nchains, nsamples, d))
 accs = np.zeros((nsamples,), dtype=bool)
 for i in range(nsamples):
     key, subkey = jax.random.split(key)
     key_chains = jax.random.split(subkey, num=nchains)
-    x0s, _, bs_stars, acc = gibbs_kernel_chain_vmap(key_chains, x0s, y0, _, bs_stars)
+    x0s, _, bs_stars, acc = gibbs_kernel_chain_vmap(key_chains, x0s, y0, None, bs_stars)
     gibbs_samples[:, i, :] = x0s
     accs[i] = acc[chain_track_id, -1]
     j = max(0, i - 100)
