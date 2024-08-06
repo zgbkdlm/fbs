@@ -10,6 +10,7 @@ NRUNS=10
 for (( i=0;i<NRUNS;i++ ))
 do
     for obs_var in 0.01 0.1 1 10; do
-        python toy/gp_linear_gibbs.py --id=$i --d=100 --obs_var=$obs_var --nsamples=10000 --nparticles=$nparticles --explicit_backward
+        python toy/gp_linear_gibbs.py --id=$i --d=100 --obs_var=$obs_var --nsamples=10000 --nparticles=$nparticles --explicit_backward &
     done
+    wait
 done

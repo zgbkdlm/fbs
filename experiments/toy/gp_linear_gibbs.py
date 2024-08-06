@@ -21,7 +21,7 @@ parser.add_argument('--explicit_final', action='store_true', default=False,
                     help='Whether to ue ref in CSMC.')
 parser.add_argument('--marg', action='store_true', default=False, help='Whether marginalise out the Y path.')
 parser.add_argument('--id', type=int, default=666, help='The id of independent MC experiment.')
-parser.add_argument('--obs_var', type=float, default=0, help='The observation noise variance.')
+parser.add_argument('--obs_var', type=float, default=1, help='The observation noise variance.')
 parser.add_argument('--nchains', type=int, default=1, help='The number of MCMC chains.')
 args = parser.parse_args()
 

@@ -15,7 +15,7 @@ parser.add_argument('--d', type=int, default=100, help='The problem dimension.')
 parser.add_argument('--nparticles', type=int, default=10, help='The number of particles.')
 parser.add_argument('--nsamples', type=int, default=1000, help='The number of samples to draw.')
 parser.add_argument('--id', type=int, default=666, help='The id of independent MC experiment.')
-parser.add_argument('--obs_var', type=float, default=0, help='The observation noise variance.')
+parser.add_argument('--obs_var', type=float, default=1, help='The observation noise variance.')
 args = parser.parse_args()
 
 jax.config.update("jax_enable_x64", False)
