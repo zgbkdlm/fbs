@@ -12,7 +12,7 @@ from fbs.sdes import make_linear_sde, StationaryConstLinearSDE, StationaryLinLin
 from functools import partial
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--d', type=int, default=100, help='The problem dimension.')
+parser.add_argument('--d', type=int, default=10, help='The problem dimension.')
 parser.add_argument('--nparticles', type=int, default=10, help='The number of particles.')
 parser.add_argument('--nsamples', type=int, default=1000, help='The number of samples to draw.')
 parser.add_argument('--explicit_backward', action='store_true', default=False,
@@ -44,7 +44,7 @@ def cov_fn(z1, z2):
 key, subkey = jax.random.split(key)
 fs = jnp.linalg.cholesky(cov_fn(zs, zs)) @ jax.random.normal(subkey, (d,))
 key, subkey = jax.random.split(key)
-y0 = fs + jnp.sqrt(obs_var) * jax.random.normal(subkey, (d,))
+y0 = H @ fs + jnp.sqrt(obs_var) * jax.random.normal(subkey, (d,))
 
 # GP regression
 cov_mat = cov_fn(zs, zs)
@@ -200,3 +200,25 @@ for i in range(nsamples):
 np.savez(f'./toy/results/linear-gibbs{"-eb" if args.explicit_backward else ""}{"-ef" if args.explicit_final else ""}'
          f'{"-marg" if args.marg else ""}-{args.sde}-{args.nparticles}-{args.id}',
          samples=gibbs_samples, gp_mean=gp_mean, gp_cov=gp_cov)
+
+# # Plot
+# import matplotlib.pyplot as plt
+#
+# plt.rcParams.update({
+#     'text.usetex': True,
+#     'font.family': "serif",
+#     'text.latex.preamble': r'\usepackage{amsmath,amsfonts}',
+#     'font.size': 16})
+#
+# fig, axes = plt.subplots(ncols=2, figsize=(12, 5))
+# axes[0].plot(zs, gp_mean, linewidth=2, linestyle='--', c='black', label='GP mean')
+# axes[0].plot(zs, np.mean(gibbs_samples[0], axis=0), linewidth=2, linestyle='-', c='black', label='PF approx. mean')
+# axes[0].grid(linestyle='--', alpha=0.3, which='both')
+# axes[0].legend()
+# mesh_ = np.meshgrid(zs, zs)
+# residual = np.abs(np.cov(gibbs_samples[0], rowvar=False) - gp_cov)
+# print(np.max(residual))
+# axes[1].pcolormesh(*mesh_, residual, cmap=plt.cm.binary, vmin=0, vmax=0.5)
+# axes[1].set_title('Absolute difference between the approx. and true GP covariances')
+# plt.tight_layout(pad=0.1)
+# plt.show()
