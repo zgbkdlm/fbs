@@ -1,12 +1,13 @@
 """
-Gaussian process regression with linear operator using filter.
+Gaussian process regression with linear operator using diffusion Gibbs.
 """
 import jax
 import jax.numpy as jnp
-import numpy as np
 import math
+import numpy as np
 import argparse
-from fbs.samplers import bootstrap_filter, stratified
+from fbs.samplers import bootstrap_filter, stratified, gibbs_kernel
+from fbs.samplers.smc import bootstrap_backward_smoother
 from fbs.sdes import make_linear_sde, StationaryConstLinearSDE, StationaryLinLinearSDE
 from functools import partial
 
@@ -14,11 +15,16 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--d', type=int, default=100, help='The problem dimension.')
 parser.add_argument('--nparticles', type=int, default=10, help='The number of particles.')
 parser.add_argument('--nsamples', type=int, default=1000, help='The number of samples to draw.')
+parser.add_argument('--explicit_backward', action='store_true', default=False,
+                    help='Whether to explicitly sample the CSMC backward')
+parser.add_argument('--explicit_final', action='store_true', default=False,
+                    help='Whether to ue ref in CSMC.')
+parser.add_argument('--marg', action='store_true', default=False, help='Whether marginalise out the Y path.')
 parser.add_argument('--id', type=int, default=666, help='The id of independent MC experiment.')
+parser.add_argument('--nchains', type=int, default=4, help='The number of MCMC chains.')
 args = parser.parse_args()
 
 jax.config.update("jax_enable_x64", False)
-# jax.config.update('jax_disable_jit', True)
 
 key = jax.random.PRNGKey(args.id)
 
@@ -38,7 +44,7 @@ def cov_fn(z1, z2):
 key, subkey = jax.random.split(key)
 fs = jnp.linalg.cholesky(cov_fn(zs, zs)) @ jax.random.normal(subkey, (d,))
 key, subkey = jax.random.split(key)
-y0 = H @ fs + jnp.sqrt(obs_var) * jax.random.normal(subkey, (d,))
+y0 = fs + jnp.sqrt(obs_var) * jax.random.normal(subkey, (d,))
 
 # GP regression
 cov_mat = cov_fn(zs, zs)
@@ -73,6 +79,10 @@ def score(z, t):
     return -jax.scipy.linalg.cho_solve(chol, z - mt)
 
 
+def unpack(xy):
+    return xy[..., :d], xy[..., d:]
+
+
 # The reverse process
 def reverse_drift(u, t):
     return -sde.drift(u, T - t) + sde.dispersion(T - t) ** 2 * score(u, T - t)
@@ -85,9 +95,12 @@ def reverse_dispersion(t):
 # Conditional sampling
 nparticles = args.nparticles
 nsamples = args.nsamples
+nchains = args.nchains
+chain_track_id = 0
+burnin = 100
 
 
-def transition_sampler(us_prev, _, t_prev, key_):
+def transition_sampler(us_prev, v_prev, t_prev, key_):
     return (us_prev + jax.vmap(reverse_drift, in_axes=[0, None])(us_prev, t_prev) * dt
             + math.sqrt(dt) * reverse_dispersion(t_prev) * jax.random.normal(key_, us_prev.shape))
 
@@ -114,6 +127,22 @@ def ref_sampler(key_, yT, nsamples_):
     return cond_m_ + jax.random.normal(key_, (nsamples_, d)) @ jnp.linalg.cholesky(cond_cov_)
 
 
+def fwd_sampler(key_, x0_, y0_):
+    def scan_body(carry, elem):
+        x, y = carry
+        t, t_prev, rnd = elem
+
+        cov_diag_ = (1 - jnp.exp(-(t - t_prev)))
+        x = jnp.exp(-0.5 * (t - t_prev)) * x + jnp.sqrt(cov_diag_) * rnd
+        y = jnp.exp(-0.5 * (t - t_prev)) * y + jnp.sqrt(cov_diag_) * H @ rnd
+        return (x, y), (x, y)
+
+    rnds_ = jax.random.normal(key_, shape=(nsteps, d))
+    xs_, ys_ = jax.lax.scan(scan_body, (x0_, y0_), (ts[1:], ts[:-1], rnds_))[1]
+    return jnp.concatenate([jnp.concatenate([x0_[None, :], xs_], axis=0),
+                            jnp.concatenate([y0_[None, :], ys_], axis=0)], axis=1)
+
+
 def fwd_ys_sampler(key_, y0_):
     def scan_body(carry, elem):
         y = carry
@@ -127,24 +156,47 @@ def fwd_ys_sampler(key_, y0_):
     return jnp.concatenate([y0_[None, :], jax.lax.scan(scan_body, y0_, (ts[1:], ts[:-1], rnds_))[1]])
 
 
-# Filter
-@jax.jit
-def conditional_sampler(key_):
+# Gibbs initial
+def gibbs_init(key_):
     key_fwd, key_bwd, key_bf = jax.random.split(key_, num=3)
     path_y = fwd_ys_sampler(key_fwd, y0)
     vs = path_y[::-1]
-    approx_x0 = bootstrap_filter(transition_sampler, likelihood_logpdf, vs, ts, ref_sampler, key_bf, nparticles,
-                                 stratified, log=True, return_last=True)[0][0]
-    return approx_x0
+    uss = bootstrap_filter(transition_sampler, likelihood_logpdf, vs, ts, ref_sampler, key_bf, nparticles,
+                           stratified, log=True, return_last=False)[0]
+    x0 = uss[-1, 0]
+    us_star = bootstrap_backward_smoother(key_bwd, uss, vs, ts, transition_logpdf)
+    bs_star = jnp.zeros((nsteps + 1), dtype=int)
+    return x0, us_star, bs_star
 
 
-approx_cond_samples = np.zeros((nsamples, d))
+# Gibbs kernel
+gibbs_kernel = partial(gibbs_kernel, ts=ts, fwd_sampler=fwd_sampler, sde=sde, unpack=unpack,
+                       nparticles=nparticles, transition_sampler=transition_sampler,
+                       transition_logpdf=transition_logpdf, likelihood_logpdf=likelihood_logpdf,
+                       marg_y=args.marg,
+                       explicit_backward=args.explicit_backward, explicit_final=args.explicit_final)
+
+gibbs_init_chain_vmap = jax.vmap(gibbs_init, in_axes=[0])
+gibbs_kernel_chain_vmap = jax.jit(jax.vmap(gibbs_kernel, in_axes=[0, 0, None, 0, 0]))
+
+# Gibbs loop
+key, subkey = jax.random.split(key)
+key_chains = jax.random.split(subkey, num=nchains)
+x0s, _, bs_stars = gibbs_init_chain_vmap(key_chains)
+
+gibbs_samples = np.zeros((nchains, nsamples, d))
+accs = np.zeros((nsamples,), dtype=bool)
 for i in range(nsamples):
     key, subkey = jax.random.split(key)
-    approx_cond_sample = conditional_sampler(subkey)
-    approx_cond_samples[i] = approx_cond_sample
-    print(f'ID: {args.id} | Sample {i}')
+    key_chains = jax.random.split(subkey, num=nchains)
+    x0s, _, bs_stars, acc = gibbs_kernel_chain_vmap(key_chains, x0s, y0, _, bs_stars)
+    gibbs_samples[:, i, :] = x0s
+    accs[i] = acc[chain_track_id, -1]
+    j = max(0, i - 100)
+    print(f'ID: {args.id} | Gibbs | iter: {i} | acc : {acc[chain_track_id, -1]} | '
+          f'acc rate: {np.mean(accs[:i]):.3f} | acc rate last 100: {np.mean(accs[j:i]):.3f}')
 
 # Save results
-np.savez(f'./toy/results/linear-filter-{args.sde}-{args.nparticles}-{args.id}',
-         samples=approx_cond_samples, gp_mean=gp_mean, gp_cov=gp_cov)
+np.savez(f'./toy/results/linear-gibbs{"-eb" if args.explicit_backward else ""}{"-ef" if args.explicit_final else ""}'
+         f'{"-marg" if args.marg else ""}-{args.sde}-{args.nparticles}-{args.id}',
+         samples=gibbs_samples, gp_mean=gp_mean, gp_cov=gp_cov)
