@@ -212,29 +212,29 @@ for i in range(nsamples):
     print(f'ID: {args.id} | obs_var: {obs_var} | Gibbs | iter: {i} | acc : {acc[chain_track_id, -1]} | '
           f'acc rate: {np.mean(accs[:i]):.3f} | acc rate last 100: {np.mean(accs[j:i]):.3f}')
 
-# Save results
-np.savez(f'./toy/results/linear-gibbs{"-eb" if args.explicit_backward else ""}{"-ef" if args.explicit_final else ""}'
-         f'{"-marg" if args.marg else ""}-{args.nparticles}-{args.id}-{args.obs_var}',
-         samples=gibbs_samples, gp_mean=gp_mean, gp_cov=gp_cov)
+# # Save results
+# np.savez(f'./toy/results/linear-gibbs{"-eb" if args.explicit_backward else ""}{"-ef" if args.explicit_final else ""}'
+#          f'{"-marg" if args.marg else ""}-{args.nparticles}-{args.id}-{args.obs_var}',
+#          samples=gibbs_samples, gp_mean=gp_mean, gp_cov=gp_cov)
 
-# # Plot
-# import matplotlib.pyplot as plt
-#
-# plt.rcParams.update({
-#     'text.usetex': True,
-#     'font.family': "serif",
-#     'text.latex.preamble': r'\usepackage{amsmath,amsfonts}',
-#     'font.size': 16})
-#
-# fig, axes = plt.subplots(ncols=2, figsize=(12, 5))
-# axes[0].plot(zs, gp_mean, linewidth=2, linestyle='--', c='black', label='GP mean')
-# axes[0].plot(zs, np.mean(gibbs_samples[0], axis=0), linewidth=2, linestyle='-', c='black', label='PF approx. mean')
-# axes[0].grid(linestyle='--', alpha=0.3, which='both')
-# axes[0].legend()
-# mesh_ = np.meshgrid(zs, zs)
-# residual = np.abs(np.cov(gibbs_samples[0], rowvar=False) - gp_cov)
-# print(np.max(residual))
-# axes[1].pcolormesh(*mesh_, residual, cmap=plt.cm.binary, vmin=0, vmax=0.5)
-# axes[1].set_title('Absolute difference between the approx. and true GP covariances')
-# plt.tight_layout(pad=0.1)
-# plt.show()
+# Plot
+import matplotlib.pyplot as plt
+
+plt.rcParams.update({
+    'text.usetex': True,
+    'font.family': "serif",
+    'text.latex.preamble': r'\usepackage{amsmath,amsfonts}',
+    'font.size': 16})
+
+fig, axes = plt.subplots(ncols=2, figsize=(12, 5))
+axes[0].plot(zs, gp_mean, linewidth=2, linestyle='--', c='black', label='GP mean')
+axes[0].plot(zs, np.mean(gibbs_samples[0], axis=0), linewidth=2, linestyle='-', c='black', label='PF approx. mean')
+axes[0].grid(linestyle='--', alpha=0.3, which='both')
+axes[0].legend()
+mesh_ = np.meshgrid(zs, zs)
+residual = np.abs(np.cov(gibbs_samples[0], rowvar=False) - gp_cov)
+print(np.max(residual))
+axes[1].pcolormesh(*mesh_, residual, cmap=plt.cm.binary, vmin=0, vmax=0.5)
+axes[1].set_title('Absolute difference between the approx. and true GP covariances')
+plt.tight_layout(pad=0.1)
+plt.show()

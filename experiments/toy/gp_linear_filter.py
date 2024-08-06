@@ -163,28 +163,28 @@ for i in range(nsamples):
     approx_cond_samples[i] = approx_cond_sample
     print(f'ID: {args.id} | obs_var: {obs_var} | Sample {i}')
 
-# # Save results
-# np.savez(f'./toy/results/linear-filter-{args.nparticles}-{args.id}-{args.obs_var}',
-#          samples=approx_cond_samples, gp_mean=gp_mean, gp_cov=gp_cov)
+# Save results
+np.savez(f'./toy/results/linear-filter-{args.nparticles}-{args.id}-{args.obs_var}',
+         samples=approx_cond_samples, gp_mean=gp_mean, gp_cov=gp_cov)
 
-# Plot
-import matplotlib.pyplot as plt
-
-plt.rcParams.update({
-    'text.usetex': True,
-    'font.family': "serif",
-    'text.latex.preamble': r'\usepackage{amsmath,amsfonts}',
-    'font.size': 16})
-
-fig, axes = plt.subplots(ncols=2, figsize=(12, 5))
-axes[0].plot(zs, gp_mean, linewidth=2, linestyle='--', c='black', label='GP mean')
-axes[0].plot(zs, np.mean(approx_cond_samples, axis=0), linewidth=2, linestyle='-', c='black', label='PF approx. mean')
-axes[0].grid(linestyle='--', alpha=0.3, which='both')
-axes[0].legend()
-mesh_ = np.meshgrid(zs, zs)
-residual = np.abs(np.cov(approx_cond_samples, rowvar=False) - gp_cov)
-print(np.max(residual))
-axes[1].pcolormesh(*mesh_, residual, cmap=plt.cm.binary, vmin=0, vmax=0.5)
-axes[1].set_title('Absolute difference between the approx. and true GP covariances')
-plt.tight_layout(pad=0.1)
-plt.show()
+# # Plot
+# import matplotlib.pyplot as plt
+#
+# plt.rcParams.update({
+#     'text.usetex': True,
+#     'font.family': "serif",
+#     'text.latex.preamble': r'\usepackage{amsmath,amsfonts}',
+#     'font.size': 16})
+#
+# fig, axes = plt.subplots(ncols=2, figsize=(12, 5))
+# axes[0].plot(zs, gp_mean, linewidth=2, linestyle='--', c='black', label='GP mean')
+# axes[0].plot(zs, np.mean(approx_cond_samples, axis=0), linewidth=2, linestyle='-', c='black', label='PF approx. mean')
+# axes[0].grid(linestyle='--', alpha=0.3, which='both')
+# axes[0].legend()
+# mesh_ = np.meshgrid(zs, zs)
+# residual = np.abs(np.cov(approx_cond_samples, rowvar=False) - gp_cov)
+# print(np.max(residual))
+# axes[1].pcolormesh(*mesh_, residual, cmap=plt.cm.binary, vmin=0, vmax=0.5)
+# axes[1].set_title('Absolute difference between the approx. and true GP covariances')
+# plt.tight_layout(pad=0.1)
+# plt.show()
