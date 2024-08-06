@@ -5,15 +5,11 @@ export XLA_PYTHON_CLIENT_MEM_FRACTION=.01
 
 nparticles=$1
 
-PARALLEL_MAX=20
-SEQUENTIAL_MAX=5
+SEQUENTIAL_MAX=10
 
 for (( i=0;i<SEQUENTIAL_MAX;i++ ))
 do
-    for (( j=0;j<PARALLEL_MAX;j++ ))
-    do
-        k=$(( i*PARALLEL_MAX+j ))
-        python toy/gp_filter.py --id=$k --d=100 --nsamples=10000 --nparticles=$nparticles &
+    for obs_var in 0.01 0.1 1 10; do
+        python toy/gp_linear_filter.py --id=$i --d=100 --obs_var=$obs_var --nsamples=10000 --nparticles=$nparticles
     done
-    wait
 done

@@ -5,15 +5,11 @@ export XLA_PYTHON_CLIENT_MEM_FRACTION=.02
 
 nparticles=$1
 
-PARALLEL_MAX=10
 SEQUENTIAL_MAX=10
 
 for (( i=0;i<SEQUENTIAL_MAX;i++ ))
 do
-    for (( j=0;j<PARALLEL_MAX;j++ ))
-    do
-        k=$(( i*PARALLEL_MAX+j ))
-        python toy/gp_gibbs.py --id=$k --d=100 --nsamples=10000 --nparticles=$nparticles --explicit_backward &
+    for obs_var in 0.01 0.1 1 10; do
+        python toy/gp_linear_gibbs.py --id=$i --d=100 --obs_var=$obs_var --nsamples=10000 --nparticles=$nparticles --explicit_backward
     done
-    wait
 done

@@ -146,7 +146,7 @@ for i in range(nsamples):
     print(f'ID: {args.id} | Sample {i}')
 
 # Save results
-np.savez(f'./toy/results/linear-filter-{args.sde}-{args.nparticles}-{args.id}',
+np.savez(f'./toy/results/linear-filter-{args.nparticles}-{args.id}',
          samples=approx_cond_samples, gp_mean=gp_mean, gp_cov=gp_cov)
 
 # # Plot

@@ -198,7 +198,7 @@ for i in range(nsamples):
 
 # Save results
 np.savez(f'./toy/results/linear-gibbs{"-eb" if args.explicit_backward else ""}{"-ef" if args.explicit_final else ""}'
-         f'{"-marg" if args.marg else ""}-{args.sde}-{args.nparticles}-{args.id}',
+         f'{"-marg" if args.marg else ""}-{args.nparticles}-{args.id}',
          samples=gibbs_samples, gp_mean=gp_mean, gp_cov=gp_cov)
 
 # # Plot
