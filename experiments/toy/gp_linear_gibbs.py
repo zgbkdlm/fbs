@@ -213,7 +213,7 @@ for i in range(nsamples):
     gibbs_samples[:, i, :] = x0s
     accs[i] = acc[chain_track_id, -1]
     j = max(0, i - 100)
-    print(f'ID: {args.id} | Gibbs | iter: {i} | acc : {acc[chain_track_id, -1]} | '
+    print(f'ID: {args.id} | obs_var: {obs_var} | Gibbs | iter: {i} | acc : {acc[chain_track_id, -1]} | '
           f'acc rate: {np.mean(accs[:i]):.3f} | acc rate last 100: {np.mean(accs[j:i]):.3f}')
 
 # Save results

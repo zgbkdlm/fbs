@@ -162,7 +162,7 @@ for i in range(nsamples):
     key, subkey = jax.random.split(key)
     approx_cond_sample = conditional_sampler(subkey)
     approx_cond_samples[i] = approx_cond_sample
-    print(f'ID: {args.id} | Sample {i}')
+    print(f'ID: {args.id} | obs_var: {obs_var} | Sample {i}')
 
 # Save results
 np.savez(f'./toy/results/linear-filter-{args.nparticles}-{args.id}-{args.obs_var}',
