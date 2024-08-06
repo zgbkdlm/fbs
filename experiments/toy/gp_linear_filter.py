@@ -11,13 +11,14 @@ from fbs.sdes import make_linear_sde, StationaryConstLinearSDE, StationaryLinLin
 from functools import partial
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--d', type=int, default=10, help='The problem dimension.')
+parser.add_argument('--d', type=int, default=100, help='The problem dimension.')
 parser.add_argument('--nparticles', type=int, default=10, help='The number of particles.')
 parser.add_argument('--nsamples', type=int, default=1000, help='The number of samples to draw.')
 parser.add_argument('--id', type=int, default=666, help='The id of independent MC experiment.')
 args = parser.parse_args()
 
 jax.config.update("jax_enable_x64", False)
+# jax.config.update('jax_disable_jit', True)
 
 key = jax.random.PRNGKey(args.id)
 
@@ -26,7 +27,7 @@ ell, sigma = 1., 1.
 d = args.d
 zs = jnp.linspace(0., 5., d)
 obs_var = 1.
-H = jnp.diag(jnp.sin(jnp.linspace(0., 2. * jnp.pi, d)))
+H = jnp.diag(jnp.linspace(-2, 2, d))
 
 
 def cov_fn(z1, z2):
@@ -42,13 +43,14 @@ y0 = H @ fs + jnp.sqrt(obs_var) * jax.random.normal(subkey, (d,))
 # GP regression
 cov_mat = cov_fn(zs, zs)
 chol = jax.scipy.linalg.cho_factor(H @ cov_mat @ H.T + obs_var * jnp.eye(d))
-gp_mean = cov_mat @ jax.scipy.linalg.cho_solve(chol, y0)
+gp_mean = cov_mat @ H.T @ jax.scipy.linalg.cho_solve(chol, y0)
 gp_cov = cov_mat - cov_mat @ H.T @ jax.scipy.linalg.cho_solve(chol, H @ cov_mat)
 
 joint_mean = jnp.zeros((2 * d,))
 joint_cov = jnp.concatenate([jnp.concatenate([cov_mat, cov_mat @ H.T], axis=1),
                              jnp.concatenate([H @ cov_mat, H @ cov_mat @ H.T + obs_var * jnp.eye(d)], axis=1)],
                             axis=0)
+H_ = jnp.concatenate([jnp.eye(d), H], axis=0)
 
 # SDE noising process
 T = 1.
@@ -104,12 +106,17 @@ def transition_logpdf(u, u_prev, v_prev, t_prev):
 
 @partial(jax.vmap, in_axes=[None, 0, None, None])
 def likelihood_logpdf(v, u_prev, v_prev, t_prev):
-    return jnp.sum(jax.scipy.stats.norm.logpdf(v, H @ u_prev, math.sqrt(dt) * reverse_dispersion(t_prev)))
+    return jnp.sum(jax.scipy.stats.norm.logpdf(v,
+                                               H @ u_prev,
+                                               obs_var * jnp.exp(-(T - t_prev))))
 
 
 def ref_sampler(key_, yT, nsamples_):
-    # TODO
-    return m_ref + jax.random.normal(key_, (nsamples_, d)) @ jnp.linalg.cholesky(cov_ref)
+    joint_mT, joint_vT = jnp.exp(-0.5 * T) * joint_mean, jnp.exp(-T) * joint_cov + (1 - jnp.exp(-T)) * H_ @ H_.T
+    chol_ = jax.scipy.linalg.cho_factor(joint_vT[d:, d:])
+    cond_m_ = joint_mT[:d] + joint_vT[:d, d:] @ jax.scipy.linalg.cho_solve(chol_, yT - joint_mT[d:])
+    cond_cov_ = joint_vT[:d, :d] - joint_vT[:d, d:] @ jax.scipy.linalg.cho_solve(chol_, joint_vT[d:, :d])
+    return cond_m_ + jax.random.normal(key_, (nsamples_, d)) @ jnp.linalg.cholesky(cond_cov_)
 
 
 def fwd_ys_sampler(key_, y0_):
