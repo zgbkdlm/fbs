@@ -3,13 +3,10 @@ Gaussian process regression with linear operator using filter.
 """
 import argparse
 import math
-from functools import partial
-
 import jax
 import jax.numpy as jnp
 import numpy as np
-import tqdm.auto as tqdm
-
+from functools import partial
 from fbs.samplers import bootstrap_filter, stratified
 from fbs.sdes import make_linear_sde, StationaryConstLinearSDE
 
@@ -18,11 +15,10 @@ parser.add_argument('--d', type=int, default=100, help='The problem dimension.')
 parser.add_argument('--nparticles', type=int, default=10, help='The number of particles.')
 parser.add_argument('--nsamples', type=int, default=1000, help='The number of samples to draw.')
 parser.add_argument('--id', type=int, default=666, help='The id of independent MC experiment.')
-parser.add_argument('--log10obsvar', type=int, default=0, help='The observation noise variance.')
+parser.add_argument('--obs_var', type=float, default=0, help='The observation noise variance.')
 args = parser.parse_args()
 
 jax.config.update("jax_enable_x64", False)
-# jax.config.update('jax_disable_jit', True)
 
 key = jax.random.PRNGKey(args.id)
 
@@ -30,7 +26,7 @@ key = jax.random.PRNGKey(args.id)
 ell, sigma = 1., 1.
 d = args.d
 zs = jnp.linspace(0., 5., d)
-obs_var = 10. ** args.log10obsvar
+obs_var = args.obs_var
 H = jnp.diag(jnp.linspace(-2, 2, d))
 
 
@@ -162,34 +158,34 @@ def conditional_sampler(key_):
 
 
 approx_cond_samples = np.zeros((nsamples, d))
-for i in tqdm.trange(nsamples):
+for i in range(nsamples):
     key, subkey = jax.random.split(key)
-    with jax.disable_jit(False):
-        approx_cond_sample = conditional_sampler(subkey)
+    approx_cond_sample = conditional_sampler(subkey)
     approx_cond_samples[i] = approx_cond_sample
+    print(f'ID: {args.id} | Sample {i}')
 
 # Save results
-# np.savez(f'./toy/results/linear-filter-{args.sde}-{args.nparticles}-{args.id}',
-#          samples=approx_cond_samples, gp_mean=gp_mean, gp_cov=gp_cov)
+np.savez(f'./toy/results/linear-filter-{args.nparticles}-{args.id}-{args.obs_var}',
+         samples=approx_cond_samples, gp_mean=gp_mean, gp_cov=gp_cov)
 
 # # Plot
-import matplotlib.pyplot as plt
-
-plt.rcParams.update({
-    'text.usetex': True,
-    'font.family': "serif",
-    'text.latex.preamble': r'\usepackage{amsmath,amsfonts}',
-    'font.size': 16})
-
-fig, axes = plt.subplots(ncols=2, figsize=(12, 5))
-axes[0].plot(zs, gp_mean, linewidth=2, linestyle='--', c='black', label='GP mean')
-axes[0].plot(zs, np.mean(approx_cond_samples, axis=0), linewidth=2, linestyle='-', c='black', label='PF approx. mean')
-axes[0].grid(linestyle='--', alpha=0.3, which='both')
-axes[0].legend()
-mesh_ = np.meshgrid(zs, zs)
-residual = np.abs(np.cov(approx_cond_samples, rowvar=False) - gp_cov)
-print(np.max(residual))
-axes[1].pcolormesh(*mesh_, residual, cmap=plt.cm.binary, vmin=0, vmax=0.5)
-axes[1].set_title('Absolute difference between the approx. and true GP covariances')
-plt.tight_layout(pad=0.1)
-plt.show()
+# import matplotlib.pyplot as plt
+#
+# plt.rcParams.update({
+#     'text.usetex': True,
+#     'font.family': "serif",
+#     'text.latex.preamble': r'\usepackage{amsmath,amsfonts}',
+#     'font.size': 16})
+#
+# fig, axes = plt.subplots(ncols=2, figsize=(12, 5))
+# axes[0].plot(zs, gp_mean, linewidth=2, linestyle='--', c='black', label='GP mean')
+# axes[0].plot(zs, np.mean(approx_cond_samples, axis=0), linewidth=2, linestyle='-', c='black', label='PF approx. mean')
+# axes[0].grid(linestyle='--', alpha=0.3, which='both')
+# axes[0].legend()
+# mesh_ = np.meshgrid(zs, zs)
+# residual = np.abs(np.cov(approx_cond_samples, rowvar=False) - gp_cov)
+# print(np.max(residual))
+# axes[1].pcolormesh(*mesh_, residual, cmap=plt.cm.binary, vmin=0, vmax=0.5)
+# axes[1].set_title('Absolute difference between the approx. and true GP covariances')
+# plt.tight_layout(pad=0.1)
+# plt.show()
