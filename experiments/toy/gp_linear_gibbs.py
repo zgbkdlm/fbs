@@ -137,7 +137,7 @@ def transition_logpdf(u, u_prev, v_prev, t_prev):
 @partial(jax.vmap, in_axes=[None, 0, None, None])
 def likelihood_logpdf(v, u_prev, v_prev, t_prev):
     scale = obs_var ** 0.5 * jnp.exp(-0.5 * (T - t_prev))
-    return jnp.sum(jax.scipy.stats.norm.logpdf(v,
+    return jnp.sum(jax.scipy.stats.norm.logpdf(v_prev,
                                                H @ u_prev,
                                                scale))
 
