@@ -1,20 +1,24 @@
 """
 Gaussian process regression with linear operator using filter.
 """
+import argparse
+import math
+from functools import partial
+
 import jax
 import jax.numpy as jnp
 import numpy as np
-import math
-import argparse
+import tqdm.auto as tqdm
+
 from fbs.samplers import bootstrap_filter, stratified
-from fbs.sdes import make_linear_sde, StationaryConstLinearSDE, StationaryLinLinearSDE
-from functools import partial
+from fbs.sdes import make_linear_sde, StationaryConstLinearSDE
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--d', type=int, default=10, help='The problem dimension.')
+parser.add_argument('--d', type=int, default=100, help='The problem dimension.')
 parser.add_argument('--nparticles', type=int, default=10, help='The number of particles.')
 parser.add_argument('--nsamples', type=int, default=1000, help='The number of samples to draw.')
 parser.add_argument('--id', type=int, default=666, help='The id of independent MC experiment.')
+parser.add_argument('--log10obsvar', type=int, default=0, help='The observation noise variance.')
 args = parser.parse_args()
 
 jax.config.update("jax_enable_x64", False)
@@ -26,7 +30,7 @@ key = jax.random.PRNGKey(args.id)
 ell, sigma = 1., 1.
 d = args.d
 zs = jnp.linspace(0., 5., d)
-obs_var = 1.
+obs_var = 10. ** args.log10obsvar
 H = jnp.diag(jnp.linspace(-2, 2, d))
 
 
@@ -61,16 +65,37 @@ ts = jnp.linspace(0, T, nsteps + 1)
 sde = StationaryConstLinearSDE(a=-0.5, b=1.)
 discretise_linear_sde, cond_score_t_0, simulate_cond_forward = make_linear_sde(sde)
 
+USE_SVD = True
+U, D, V = jnp.linalg.svd(cov_mat)
+
+
+joint_mT, joint_vT = jnp.exp(-0.5 * T) * joint_mean, jnp.exp(-T) * joint_cov + (1 - jnp.exp(-T)) * H_ @ H_.T
+chol_ref = jax.scipy.linalg.cho_factor(joint_vT[d:, d:])
+cond_cov_ref = joint_vT[:d, :d] - joint_vT[:d, d:] @ jax.scipy.linalg.cho_solve(chol_ref, joint_vT[d:, :d])
+cond_chol_ref = jnp.linalg.cholesky(cond_cov_ref)
 
 def forward_m_cov(t):
     F_, Q_ = discretise_linear_sde(t, ts[0])
     return F_ * joint_mean[:d], F_ ** 2 * cov_mat + Q_ * jnp.eye(d)
 
 
+def forward_m_svd(t):
+    F_, Q_ = discretise_linear_sde(t, ts[0])
+    cov_t_D = F_ ** 2 * D + Q_ * jnp.ones((d,))
+    return F_ * joint_mean[:d], cov_t_D
+
+
 def score(z, t):
-    mt, covt = forward_m_cov(t)
-    chol = jax.scipy.linalg.cho_factor(covt)
-    return -jax.scipy.linalg.cho_solve(chol, z - mt)
+    if USE_SVD:
+        mt, cov_t_D = forward_m_svd(t)
+        cov_t_D_inv = 1. / cov_t_D  # shape (d,)
+        tmp = V @ (z - mt)
+        out = -U @ (tmp * cov_t_D_inv)
+    else:
+        mt, covt = forward_m_cov(t)
+        cholt = jax.scipy.linalg.cho_factor(covt)
+        out = -jax.scipy.linalg.cho_solve(cholt, z - mt)
+    return out
 
 
 # The reverse process
@@ -101,17 +126,15 @@ def transition_logpdf(u, u_prev, v_prev, t_prev):
 
 @partial(jax.vmap, in_axes=[None, 0, None, None])
 def likelihood_logpdf(v, u_prev, v_prev, t_prev):
+    scale = obs_var ** 0.5 * jnp.exp(-0.5 * (T - t_prev))
     return jnp.sum(jax.scipy.stats.norm.logpdf(v,
                                                H @ u_prev,
-                                               obs_var * jnp.exp(-(T - t_prev))))
+                                               scale))
 
 
 def ref_sampler(key_, yT, nsamples_):
-    joint_mT, joint_vT = jnp.exp(-0.5 * T) * joint_mean, jnp.exp(-T) * joint_cov + (1 - jnp.exp(-T)) * H_ @ H_.T
-    chol_ = jax.scipy.linalg.cho_factor(joint_vT[d:, d:])
-    cond_m_ = joint_mT[:d] + joint_vT[:d, d:] @ jax.scipy.linalg.cho_solve(chol_, yT - joint_mT[d:])
-    cond_cov_ = joint_vT[:d, :d] - joint_vT[:d, d:] @ jax.scipy.linalg.cho_solve(chol_, joint_vT[d:, :d])
-    return cond_m_ + jax.random.normal(key_, (nsamples_, d)) @ jnp.linalg.cholesky(cond_cov_)
+    cond_m_ = joint_mT[:d] + joint_vT[:d, d:] @ jax.scipy.linalg.cho_solve(chol_ref, yT - joint_mT[d:])
+    return cond_m_ + jax.random.normal(key_, (nsamples_, d)) @ cond_chol_ref
 
 
 def fwd_ys_sampler(key_, y0_):
@@ -139,34 +162,34 @@ def conditional_sampler(key_):
 
 
 approx_cond_samples = np.zeros((nsamples, d))
-for i in range(nsamples):
+for i in tqdm.trange(nsamples):
     key, subkey = jax.random.split(key)
-    approx_cond_sample = conditional_sampler(subkey)
+    with jax.disable_jit(False):
+        approx_cond_sample = conditional_sampler(subkey)
     approx_cond_samples[i] = approx_cond_sample
-    print(f'ID: {args.id} | Sample {i}')
 
 # Save results
-np.savez(f'./toy/results/linear-filter-{args.sde}-{args.nparticles}-{args.id}',
-         samples=approx_cond_samples, gp_mean=gp_mean, gp_cov=gp_cov)
+# np.savez(f'./toy/results/linear-filter-{args.sde}-{args.nparticles}-{args.id}',
+#          samples=approx_cond_samples, gp_mean=gp_mean, gp_cov=gp_cov)
 
 # # Plot
-# import matplotlib.pyplot as plt
-#
-# plt.rcParams.update({
-#     'text.usetex': True,
-#     'font.family': "serif",
-#     'text.latex.preamble': r'\usepackage{amsmath,amsfonts}',
-#     'font.size': 16})
-#
-# fig, axes = plt.subplots(ncols=2, figsize=(12, 5))
-# axes[0].plot(zs, gp_mean, linewidth=2, linestyle='--', c='black', label='GP mean')
-# axes[0].plot(zs, np.mean(approx_cond_samples, axis=0), linewidth=2, linestyle='-', c='black', label='PF approx. mean')
-# axes[0].grid(linestyle='--', alpha=0.3, which='both')
-# axes[0].legend()
-# mesh_ = np.meshgrid(zs, zs)
-# residual = np.abs(np.cov(approx_cond_samples, rowvar=False) - gp_cov)
-# print(np.max(residual))
-# axes[1].pcolormesh(*mesh_, residual, cmap=plt.cm.binary, vmin=0, vmax=0.5)
-# axes[1].set_title('Absolute difference between the approx. and true GP covariances')
-# plt.tight_layout(pad=0.1)
-# plt.show()
+import matplotlib.pyplot as plt
+
+plt.rcParams.update({
+    'text.usetex': True,
+    'font.family': "serif",
+    'text.latex.preamble': r'\usepackage{amsmath,amsfonts}',
+    'font.size': 16})
+
+fig, axes = plt.subplots(ncols=2, figsize=(12, 5))
+axes[0].plot(zs, gp_mean, linewidth=2, linestyle='--', c='black', label='GP mean')
+axes[0].plot(zs, np.mean(approx_cond_samples, axis=0), linewidth=2, linestyle='-', c='black', label='PF approx. mean')
+axes[0].grid(linestyle='--', alpha=0.3, which='both')
+axes[0].legend()
+mesh_ = np.meshgrid(zs, zs)
+residual = np.abs(np.cov(approx_cond_samples, rowvar=False) - gp_cov)
+print(np.max(residual))
+axes[1].pcolormesh(*mesh_, residual, cmap=plt.cm.binary, vmin=0, vmax=0.5)
+axes[1].set_title('Absolute difference between the approx. and true GP covariances')
+plt.tight_layout(pad=0.1)
+plt.show()
