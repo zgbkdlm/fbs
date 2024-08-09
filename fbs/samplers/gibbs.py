@@ -169,96 +169,70 @@ def gibbs_kernel(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JA
     return x0_next, us_star_next, bs_star_next, bs_star_next != bs_star
 
 
-def gibbs_kernel_aug(key: JKey, x0: JArray, y0: JArray, us_star: JArray, bs_star: JArray,
-                     ts: JArray,
-                     fwd_sampler: Callable[[JKey, JArray, JArray, Optional], JArray],
-                     sde: LinearSDE,
-                     unpack: Callable,
-                     nparticles: int,
-                     transition_sampler: Callable,
-                     transition_logpdf: Callable,
-                     likelihood_logpdf: Callable,
-                     marg_y: bool = False,
-                     explicit_backward: bool = True,
-                     explicit_final: bool = False,
-                     **kwargs) -> Tuple[JArray, JArray, JArray, JArray]:
-    """Gibbs kernel for our forward-backward conditional sampler.
-
-    Parameters
-    ----------
-    key : JKey
-        A JAX random key.
-    x0 : JArray (...)
-        The initial state (any shape).
-    y0 : JArray (...)
-        The observation (any shape) to be conditioned on.
-    us_star : JArray (nsteps + 1, ...)
-        The backward filtering trajectory. Legacy parameter, not used.
-    bs_star : JArray (nsteps + 1, ...)
-        The backward filtering indices.
-    ts : JArray (nsteps + 1, )
-        The times `t_0, t_1, ... t_{nsteps}`.
-    fwd_sampler : Callable (JKey, ..., ..., **kwargs)
-        The forward noising sampler, which takes three arguments: random key, x0, and y0. The output is a trajectory of
-        x and y.
-    sde : StationaryLinLinearSDE
-        A linear SDE instance.
-    unpack : Callable
-        A function that splits (X, Y). In the simplest case, where the joint is a concatenation of X and Y,
-        then `unpack` is just `jnp.concatenate`. However, for image super-resolution or inpainting, this can be more
-        complicated. See `fbs.data.images` for how we implemented `unpack` for the image tasks.
-    nparticles : int
-        The number of particles.
-    transition_sampler : Callable (n, du), (dv, ), (), JKey -> (n, du)
-        The transition sampler of `p(u_{k} | u_{k-1}, v_{k-1}, t_{k-1})` of the discretised backward SDE.
-    transition_logpdf : Callable (du, ), (n, du), (dv, ), () -> (n, du)
-        The logpdf of the transition distribution.
-    likelihood_logpdf : Callable (dv, ), (n, du), () -> (n, )
-        The logpdf of the likelihood model `p(v_{k} | u_{k-1}, v_{k-1}, t_{k-1})`.
-    marg_y : bool, default=False
-        Whether to use the Doob's diffusion bridge to marginalise out the path of `y`. Not used in our paper.
-    explicit_backward : bool, default=True
-        Whether do the backward sampling in CSMC explicitly.
-    explicit_final : bool, default=False
-        Whether to use the explicit reference distribution to initialise the backward CSMC.
-
-    Returns
-    -------
-    JArray (...), JArray (nsteps + 1, ...), JArray (nsteps + 1, ), JArray (nsteps + 1, )
-        The new x0, us_star, bs_star, and bools.
+def gibbs_mh_kernel(key: JKey, xs: JArray, ys: JArray, bs_star: JArray,
+                    ts: JArray,
+                    fwd_sampler: Callable[[JKey, JArray, JArray, Optional], JArray],
+                    unpack: Callable,
+                    nparticles: int,
+                    log_bwd: Callable,
+                    log_fwd: Callable,
+                    transition_sampler: Callable,
+                    transition_logpdf: Callable,
+                    likelihood_logpdf: Callable,
+                    explicit_backward: bool = True,
+                    explicit_final: bool = False,
+                    **kwargs) -> Tuple[JArray, JArray, JArray, JArray]:
+    """Gibbs kernel additionally with Metropolis--Hasting acc for X and Y
     """
-    key_fwd, key_csmc, key_bridge = jax.random.split(key, num=3)
-    path_xy = fwd_sampler(key_fwd, x0, y0, **kwargs)
-    path_x, path_y = unpack(path_xy, **kwargs)
-    us = path_x[::-1]
-    vs = bridge_sampler(key_bridge, path_y[0], path_y[-1], ts, sde)[::-1] if marg_y else path_y[::-1]
+    key_fwd, key_csmc, key_mh = jax.random.split(key, num=3)
+    xys_prop = fwd_sampler(key_fwd, xs[0], ys[0], **kwargs)
+    xs_prop, ys_prop = unpack(xys_prop, **kwargs)
 
-    def init_sampler(*_):
-        return us[0] * jnp.ones((nparticles, *us.shape[1:]))
+    us = xs_prop[::-1]
+    vs = ys_prop[::-1]
 
-    def init_likelihood_logpdf(*_):
-        return -math.log(nparticles) * jnp.ones(nparticles)
+    log_acc_prob = jnp.minimum(0., log_bwd(us, vs) - log_fwd(xs_prop, ys_prop) - (
+                log_bwd(ys[::-1], xs[::-1]) - log_fwd(ys, xs)))
+    e = jax.random.uniform(key_mh)
+    us, vs = jax.lax.cond(jnp.log(e) < log_acc_prob,
+                          lambda _: (us, vs),
+                          lambda _: (xs[::-1], ys[::-1]),
+                          None)
+
+    if explicit_final:
+        def init_sampler(key_, n_samples):
+            return jax.random.normal(key_, (n_samples, *us.shape[1:]))
+
+        def init_likelihood_logpdf(v0, u0s, v1, **kwargs):
+            return likelihood_logpdf(v0, u0s, v1, ts[0], **kwargs)
+
+    else:
+        def init_sampler(*_):
+            return us[0] * jnp.ones((nparticles, *us.shape[1:]))
+
+        def init_likelihood_logpdf(*_):
+            return -math.log(nparticles) * jnp.ones(nparticles)
 
     if explicit_backward:
         key_csmc_fwd, key_csmc_x0, key_csmc_bwd_us, key_csmc_bwd_bs = jax.random.split(key_csmc, num=4)
-        _, log_ws, uss = csmc_fwd_aug(key_csmc_fwd, us, bs_star, vs, ts, init_sampler, init_likelihood_logpdf,
-                                      transition_sampler, likelihood_logpdf, killing, nparticles,
-                                      **kwargs)
+        _, log_ws, uss = csmc_fwd(key_csmc_fwd, us, bs_star, vs, ts, init_sampler, init_likelihood_logpdf,
+                                  transition_sampler, likelihood_logpdf, killing, nparticles,
+                                  **kwargs)
 
         idx, _ = force_move(key_csmc_x0, jnp.exp(log_ws[-1]), bs_star[-1])
         x0 = uss[-1, idx]
-        us_star_next = unpack(fwd_sampler(key_csmc_bwd_us, x0, y0, **kwargs), **kwargs)[0][::-1]
+        us_star_next = unpack(fwd_sampler(key_csmc_bwd_us, x0, ys[0], **kwargs), **kwargs)[0][::-1]
         bs_star_next = jax.random.randint(key_csmc_bwd_bs, (us.shape[0],), minval=0, maxval=nparticles)
     else:
-        us_star_next, bs_star_next = csmc_kernel_aug(key_csmc,
-                                                     us, bs_star,
-                                                     vs, ts,
-                                                     init_sampler, init_likelihood_logpdf,
-                                                     transition_sampler, transition_logpdf,
-                                                     likelihood_logpdf,
-                                                     killing, nparticles,
-                                                     backward=False,
-                                                     **kwargs)
+        us_star_next, bs_star_next = csmc_kernel(key_csmc,
+                                                 us, bs_star,
+                                                 vs, ts,
+                                                 init_sampler, init_likelihood_logpdf,
+                                                 transition_sampler, transition_logpdf,
+                                                 likelihood_logpdf,
+                                                 killing, nparticles,
+                                                 backward=False,
+                                                 **kwargs)
     x0_next = us_star_next[-1]
     return x0_next, us_star_next, bs_star_next, bs_star_next != bs_star
 
