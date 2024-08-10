@@ -180,6 +180,7 @@ def gibbs_mh_kernel(key: JKey, xs: JArray, ys: JArray, bs_star: JArray,
                     likelihood_logpdf: Callable,
                     explicit_backward: bool = True,
                     explicit_final: bool = False,
+                    use_mh: bool = False,
                     **kwargs) -> Tuple[JArray, JArray, JArray, JArray, JFloat]:
     """Gibbs kernel additionally with Metropolis--Hasting acc for X and Y
     """
@@ -190,8 +191,11 @@ def gibbs_mh_kernel(key: JKey, xs: JArray, ys: JArray, bs_star: JArray,
     us = xs_prop[::-1]
     vs = ys_prop[::-1]
 
-    log_acc_prob = jnp.minimum(0., log_bwd(us, vs, **kwargs) - log_fwd(xs_prop, ys_prop, **kwargs) - (
-            log_bwd(xs[::-1], ys[::-1], **kwargs) - log_fwd(xs, ys, **kwargs)))
+    if use_mh:
+        log_acc_prob = jnp.minimum(0., log_bwd(us, vs, **kwargs) - log_fwd(xs_prop, ys_prop, **kwargs) - (
+                log_bwd(xs[::-1], ys[::-1], **kwargs) - log_fwd(xs, ys, **kwargs)))
+    else:
+        log_acc_prob = 0.
     e = jax.random.uniform(key_mh)
     us, vs = jax.lax.cond(jnp.log(e) < log_acc_prob,
                           lambda _: (us, vs),

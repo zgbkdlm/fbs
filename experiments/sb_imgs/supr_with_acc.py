@@ -29,6 +29,7 @@ parser.add_argument('--y0_id', type=int, default=10)
 parser.add_argument('--nparticles', type=int, default=100)
 parser.add_argument('--nsamples', type=int, default=100)
 parser.add_argument('--init_method', type=str, default='smoother')
+parser.add_argument('--use_mh', type=bool, default=True)
 
 args = parser.parse_args()
 dataset_name = 'mnist'
@@ -36,6 +37,10 @@ resolution = 28
 nchannels = 1
 cmap = 'gray' if nchannels == 1 else 'viridis'
 sr_rate = args.rate
+if args.use_mh:
+    print('Use MH')
+else:
+    print('No MH')
 
 # General configs
 # jax.config.update("jax_enable_x64", True)
@@ -201,7 +206,7 @@ def gibbs_kernel(key_, xs_, ys_, bs_star_, mask_):
     return _gibbs_kernel(key_, xs_, ys_, bs_star_,
                          ts, fwd_sampler, unpack, nparticles, log_bwd, log_fwd,
                          transition_sampler, transition_logpdf, likelihood_logpdf,
-                         explicit_backward=True, explicit_final=True, mask_=mask_)
+                         explicit_backward=True, explicit_final=True, use_mh=args.use_mh, mask_=mask_)
 
 
 def to_imsave(img):
@@ -261,7 +266,7 @@ for i in range(nsamples):
         path_head_img + f'-gibbs-eb-ef-{x0_sampler_name}-{i}.png',
         to_imsave(restored),
         cmap=cmap)
-    print(f'Inpainting-{sr_rate} | Gibbs | {x0_sampler_name} | iter: {i}, mh_acc: {mh_acc}')
+    print(f'Supr-{sr_rate} | Gibbs | {x0_sampler_name} | iter: {i}, mh_acc: {mh_acc}')
 np.savez(
     path_head_arr + f'-gibbs-eb-ef-{x0_sampler_name}',
     restored_imgs=restored_imgs, mh_acc=mh_accs)
