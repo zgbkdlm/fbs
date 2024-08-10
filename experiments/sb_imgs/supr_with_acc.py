@@ -13,7 +13,7 @@ from fbs.data import MNISTRestore
 from fbs.data.images import normalise
 from fbs.sdes import StationaryConstLinearSDE, StationaryLinLinearSDE
 from fbs.sdes.simulators import euler_maruyama
-from fbs.samplers import gibbs_kernel as _gibbs_kernel, gibbs_init as _gibbs_init
+from fbs.samplers import gibbs_mh_kernel as _gibbs_kernel, gibbs_init as _gibbs_init
 from fbs.nn.models import make_st_nn
 from fbs.nn.unet import UNet
 from functools import partial
@@ -133,14 +133,14 @@ def log_bwd(us, vs):
     path_ = jax.scipy.stats.norm.logpdf(uvs[1:],
                                         uvs[:-1] + jax.vmap(reverse_drift, in_axes=[0, 0])(uvs[:-1], ts[:-1]) * dt,
                                         math.sqrt(dt) * reverse_dispersion(ts[:-1]))
-    return init_ + path_
+    return init_ + jnp.sum(path_)
 
 
 def log_fwd(xs, ys):
     xys = jnp.concatenate([xs, ys], axis=-1)
-    return jax.scipy.stats.norm.logpdf(xys[1:],
-                                       xys[:-1] + jax.vmap(drift, in_axes=[0, 0])(xys[:-1], ts[:-1]) * dt,
-                                       math.sqrt(dt) * dispersion(ts[:-1]))
+    return jnp.sum(jax.scipy.stats.norm.logpdf(xys[1:],
+                                               xys[:-1] + jax.vmap(drift, in_axes=[0, 0])(xys[:-1], ts[:-1]) * dt,
+                                               math.sqrt(dt) * dispersion(ts[:-1])))
 
 
 def likelihood_logpdf(v, u_prev, v_prev, t_prev, mask_):
@@ -197,15 +197,11 @@ def gibbs_init(key_, x0_, y0_, mask_):
 
 
 @jax.jit
-def gibbs_kernel(key_, x0_, y0_, us_star_, bs_star_, mask_):
-    return _gibbs_kernel(key_, x0_, y0_, us_star_, bs_star_,
-                         ts, fwd_sampler, sde, unpack, nparticles,
+def gibbs_kernel(key_, xs_, ys_, bs_star_, mask_):
+    return _gibbs_kernel(key_, xs_, ys_, bs_star_,
+                         ts, fwd_sampler, unpack, nparticles, log_bwd, log_fwd,
                          transition_sampler, transition_logpdf, likelihood_logpdf,
-                         marg_y=False, explicit_backward=True, explicit_final=True, mask_=mask_)
-
-
-def mh_gibbs_kernel(key_, x0_, y0_, us_star_, bs_star_, mask_):
-    pass
+                         explicit_backward=True, explicit_final=True, mask_=mask_)
 
 
 def to_imsave(img):
@@ -224,8 +220,8 @@ for _ in range(args.y0_id):
     data_key, subkey = jax.random.split(data_key)
 
 test_img, test_y0, mask = dataset_sampler(subkey)
-path_head_img = f'./sb_imgs/results/{dataset_name}-{sr_rate}-{args.sde}-{nparticles}-{args.y0_id}'
-path_head_arr = f'./sb_imgs/results/{dataset_name}-{sr_rate}-{args.sde}-{nparticles}-{args.y0_id}'
+path_head_img = f'./sb_imgs_mh/results/{dataset_name}-{sr_rate}-{args.sde}-{nparticles}-{args.y0_id}'
+path_head_arr = f'./sb_imgs_mh/results/{dataset_name}-{sr_rate}-{args.sde}-{nparticles}-{args.y0_id}'
 
 plt.imsave(path_head_img + '-true.png', to_imsave(test_img), cmap=cmap)
 np.savez(path_head_arr + '-true', test_img=test_img, *mask)
@@ -240,28 +236,30 @@ plt.imsave(path_head_img + '-corrupt-lr.png',
 restored_imgs = np.zeros((nsamples, resolution, resolution, nchannels))
 
 # Do conditional sampling
-for x0_sampler, x0_sampler_name in zip([random_x0_sampler, blank_x0_sampler, interp_x0_sampler],
-                                       ['random', 'blank', 'interp']):
+x0_sampler = interp_x0_sampler
+x0_sampler_name = 'interp'
 
+key, subkey = jax.random.split(key)
+x0 = interp_x0_sampler(subkey, test_y0, mask_=mask)
+key, subkey = jax.random.split(key)
+x0, xs = gibbs_init(subkey, x0, test_y0, mask)
+key, subkey = jax.random.split(key)
+ys = unpack(fwd_sampler(subkey, x0, test_y0, mask_=mask), mask_=mask)[1]
+bs_star = jnp.zeros((nsteps + 1), dtype=int)
+restored = dataset.concat(x0, test_y0, mask)
+plt.imsave(path_head_img + '-gibbs-init.png', to_imsave(restored), cmap=cmap)
+np.save(path_head_arr + '-gibbs-init', restored)
+
+for i in range(nsamples):
     key, subkey = jax.random.split(key)
-    x0 = x0_sampler(subkey, test_y0, mask_=mask)
-    key, subkey = jax.random.split(key)
-    x0, us_star = gibbs_init(subkey, x0, test_y0, mask)
-    bs_star = jnp.zeros((nsteps + 1), dtype=int)
+    xs, ys, bs_star, csmc_acc, mh_acc = gibbs_kernel(subkey, xs, ys, bs_star, mask)
     restored = dataset.concat(x0, test_y0, mask)
-    plt.imsave(path_head_img + '-gibbs-init.png', to_imsave(restored), cmap=cmap)
-    np.save(path_head_arr + '-gibbs-init', restored)
-
-    for i in range(nsamples):
-        key, subkey = jax.random.split(key)
-        x0, us_star, bs_star, acc = gibbs_kernel(subkey, x0, test_y0, us_star, bs_star, mask)
-        restored = dataset.concat(x0, test_y0, mask)
-        restored_imgs[i] = restored
-        plt.imsave(
-            path_head_img + f'-gibbs-eb-ef-{x0_sampler_name}-{i}.png',
-            to_imsave(restored),
-            cmap=cmap)
-        print(f'Inpainting-{sr_rate} | Gibbs | {x0_sampler_name} | iter: {i}, acc: {acc}')
-    np.save(
-        path_head_arr + f'-gibbs-eb-ef-{x0_sampler_name}',
-        restored_imgs)
+    restored_imgs[i] = restored
+    plt.imsave(
+        path_head_img + f'-gibbs-eb-ef-{x0_sampler_name}-{i}.png',
+        to_imsave(restored),
+        cmap=cmap)
+    print(f'Inpainting-{sr_rate} | Gibbs | {x0_sampler_name} | iter: {i}, mh_: {mh_acc}')
+np.save(
+    path_head_arr + f'-gibbs-eb-ef-{x0_sampler_name}',
+    restored_imgs)

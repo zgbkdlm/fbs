@@ -4,9 +4,8 @@ import math
 import jax
 import jax.numpy as jnp
 from fbs.sdes.simulators import doob_bridge_simulator
-from fbs.samplers.csmc.csmc import csmc_kernel, csmc_kernel_aug
+from fbs.samplers.csmc.csmc import csmc_kernel
 from fbs.samplers.csmc.csmc import forward_pass as csmc_fwd
-from fbs.samplers.csmc.csmc import forward_pass_aug as csmc_fwd_aug
 from fbs.samplers.csmc.resamplings import killing
 from fbs.samplers.smc import bootstrap_filter, bootstrap_backward_smoother
 from fbs.samplers.resampling import stratified
@@ -181,7 +180,7 @@ def gibbs_mh_kernel(key: JKey, xs: JArray, ys: JArray, bs_star: JArray,
                     likelihood_logpdf: Callable,
                     explicit_backward: bool = True,
                     explicit_final: bool = False,
-                    **kwargs) -> Tuple[JArray, JArray, JArray, JArray]:
+                    **kwargs) -> Tuple[JArray, JArray, JArray, JArray, JFloat]:
     """Gibbs kernel additionally with Metropolis--Hasting acc for X and Y
     """
     key_fwd, key_csmc, key_mh = jax.random.split(key, num=3)
@@ -233,8 +232,9 @@ def gibbs_mh_kernel(key: JKey, xs: JArray, ys: JArray, bs_star: JArray,
                                                  killing, nparticles,
                                                  backward=False,
                                                  **kwargs)
-    x0_next = us_star_next[-1]
-    return x0_next, us_star_next, bs_star_next, bs_star_next != bs_star
+    xs_next = us_star_next[::-1]
+    ys_next = vs[::-1]
+    return xs_next, ys_next, bs_star_next, bs_star_next != bs_star, jnp.exp(log_acc_prob)
 
 
 def force_move(key: JKey, weights: JArray, k: FloatScalar) -> Tuple[JInt, JFloat]:
