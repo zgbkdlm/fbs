@@ -128,7 +128,7 @@ def transition_logpdf(u, u_prev, v_prev, t_prev, mask_):
 
 
 def log_bwd(us, vs):
-    uvs = jnp.concatenate([us, vs], axis=-1)
+    uvs = jnp.concatenate([us, vs], axis=-2)
     init_ = jnp.sum(jax.scipy.stats.norm.logpdf(uvs[0]))
     path_ = jax.scipy.stats.norm.logpdf(uvs[1:],
                                         uvs[:-1] + jax.vmap(reverse_drift, in_axes=[0, 0])(uvs[:-1], ts[:-1]) * dt,
@@ -137,7 +137,7 @@ def log_bwd(us, vs):
 
 
 def log_fwd(xs, ys):
-    xys = jnp.concatenate([xs, ys], axis=-1)
+    xys = jnp.concatenate([xs, ys], axis=-2)
     return jnp.sum(jax.scipy.stats.norm.logpdf(xys[1:],
                                                xys[:-1] + jax.vmap(drift, in_axes=[0, 0])(xys[:-1], ts[:-1]) * dt,
                                                math.sqrt(dt) * dispersion(ts[:-1])))
