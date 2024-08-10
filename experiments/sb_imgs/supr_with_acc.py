@@ -29,7 +29,7 @@ parser.add_argument('--y0_id', type=int, default=10)
 parser.add_argument('--nparticles', type=int, default=100)
 parser.add_argument('--nsamples', type=int, default=100)
 parser.add_argument('--init_method', type=str, default='smoother')
-parser.add_argument('--use_mh', type=bool, default=True)
+parser.add_argument('--use_mh', action='store_true', default=False)
 
 args = parser.parse_args()
 dataset_name = 'mnist'
