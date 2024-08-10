@@ -265,7 +265,7 @@ for k in range(args.ny0s):
             path_head_img + f'-gibbs-eb-ef-{x0_sampler_name}-{i}.png',
             to_imsave(restored),
             cmap=cmap)
-        print(f'Supr-{sr_rate} | Gibbs | {x0_sampler_name} | iter: {i}, mh_acc: {mh_acc}')
+        print(f'Supr-{sr_rate} | Gibbs | {x0_sampler_name} | {k} | iter: {i}, mh_acc: {mh_acc}')
     np.savez(
         path_head_arr + f'-gibbs-eb-ef-{x0_sampler_name}{"-mh" if args.use_mh else ""}',
         restored_imgs=restored_imgs, mh_acc=mh_accs)
