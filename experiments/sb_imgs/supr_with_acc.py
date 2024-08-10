@@ -25,7 +25,7 @@ parser.add_argument('--sde', type=str, default='lin')
 parser.add_argument('--test_nsteps', type=int, default=128)
 parser.add_argument('--sb_step', type=int, default=9)
 parser.add_argument('--test_seed', type=int, default=666)
-parser.add_argument('--y0_id', type=int, default=10)
+parser.add_argument('--ny0s', type=int, default=10)
 parser.add_argument('--nparticles', type=int, default=100)
 parser.add_argument('--nsamples', type=int, default=100)
 parser.add_argument('--init_method', type=str, default='smoother')
@@ -220,53 +220,52 @@ def dataset_sampler(key_):
 
 
 # Do
-data_key, subkey = jax.random.split(data_key)
-for _ in range(args.y0_id):
+for k in range(args.ny0s):
     data_key, subkey = jax.random.split(data_key)
 
-test_img, test_y0, mask = dataset_sampler(subkey)
-path_head_img = f'./sb_imgs_mh/imgs/{dataset_name}-{sr_rate}-{args.sde}-{nparticles}-{args.y0_id}'
-path_head_arr = f'./sb_imgs_mh/arrs/{dataset_name}-{sr_rate}-{args.sde}-{nparticles}-{args.y0_id}'
+    test_img, test_y0, mask = dataset_sampler(subkey)
+    path_head_img = f'./sb_imgs_mh/imgs/{dataset_name}-{sr_rate}-{args.sde}-{nparticles}-{k}'
+    path_head_arr = f'./sb_imgs_mh/arrs/{dataset_name}-{sr_rate}-{args.sde}-{nparticles}-{k}'
 
-plt.imsave(path_head_img + '-true.png', to_imsave(test_img), cmap=cmap)
-np.savez(path_head_arr + '-true', test_img=test_img, *mask)
-plt.imsave(path_head_img + '-corrupt.png',
-           to_imsave(dataset.concat(jnp.zeros(x_shape), test_y0, mask)),
-           cmap=cmap)
-low_res = resolution // sr_rate
-plt.imsave(path_head_img + '-corrupt-lr.png',
-           to_imsave(jnp.reshape(test_y0, (low_res, low_res, nchannels))),
-           cmap=cmap)
+    plt.imsave(path_head_img + '-true.png', to_imsave(test_img), cmap=cmap)
+    np.savez(path_head_arr + '-true', test_img=test_img, *mask)
+    plt.imsave(path_head_img + '-corrupt.png',
+               to_imsave(dataset.concat(jnp.zeros(x_shape), test_y0, mask)),
+               cmap=cmap)
+    low_res = resolution // sr_rate
+    plt.imsave(path_head_img + '-corrupt-lr.png',
+               to_imsave(jnp.reshape(test_y0, (low_res, low_res, nchannels))),
+               cmap=cmap)
 
-restored_imgs = np.zeros((nsamples, resolution, resolution, nchannels))
+    restored_imgs = np.zeros((nsamples, resolution, resolution, nchannels))
 
-# Do conditional sampling
-x0_sampler = interp_x0_sampler
-x0_sampler_name = 'interp'
+    # Do conditional sampling
+    x0_sampler = interp_x0_sampler
+    x0_sampler_name = 'interp'
 
-key, subkey = jax.random.split(key)
-x0 = interp_x0_sampler(subkey, test_y0, mask_=mask)
-key, subkey = jax.random.split(key)
-x0, xs = gibbs_init(subkey, x0, test_y0, mask)
-key, subkey = jax.random.split(key)
-ys = unpack(fwd_sampler(subkey, x0, test_y0, mask_=mask), mask_=mask)[1]
-bs_star = jnp.zeros((nsteps + 1), dtype=int)
-restored = dataset.concat(x0, test_y0, mask)
-plt.imsave(path_head_img + '-gibbs-init.png', to_imsave(restored), cmap=cmap)
-np.save(path_head_arr + '-gibbs-init', restored)
-
-mh_accs = np.zeros(nsamples)
-for i in range(nsamples):
     key, subkey = jax.random.split(key)
-    xs, ys, bs_star, csmc_acc, mh_acc = gibbs_kernel(subkey, xs, ys, bs_star, mask)
+    x0 = interp_x0_sampler(subkey, test_y0, mask_=mask)
+    key, subkey = jax.random.split(key)
+    x0, xs = gibbs_init(subkey, x0, test_y0, mask)
+    key, subkey = jax.random.split(key)
+    ys = unpack(fwd_sampler(subkey, x0, test_y0, mask_=mask), mask_=mask)[1]
+    bs_star = jnp.zeros((nsteps + 1), dtype=int)
     restored = dataset.concat(x0, test_y0, mask)
-    restored_imgs[i] = restored
-    mh_accs[i] = mh_acc
-    plt.imsave(
-        path_head_img + f'-gibbs-eb-ef-{x0_sampler_name}-{i}.png',
-        to_imsave(restored),
-        cmap=cmap)
-    print(f'Supr-{sr_rate} | Gibbs | {x0_sampler_name} | iter: {i}, mh_acc: {mh_acc}')
-np.savez(
-    path_head_arr + f'-gibbs-eb-ef-{x0_sampler_name}{"-mh" if args.use_mh else ""}',
-    restored_imgs=restored_imgs, mh_acc=mh_accs)
+    plt.imsave(path_head_img + '-gibbs-init.png', to_imsave(restored), cmap=cmap)
+    np.save(path_head_arr + '-gibbs-init', restored)
+
+    mh_accs = np.zeros(nsamples)
+    for i in range(nsamples):
+        key, subkey = jax.random.split(key)
+        xs, ys, bs_star, csmc_acc, mh_acc = gibbs_kernel(subkey, xs, ys, bs_star, mask)
+        restored = dataset.concat(x0, test_y0, mask)
+        restored_imgs[i] = restored
+        mh_accs[i] = mh_acc
+        plt.imsave(
+            path_head_img + f'-gibbs-eb-ef-{x0_sampler_name}-{i}.png',
+            to_imsave(restored),
+            cmap=cmap)
+        print(f'Supr-{sr_rate} | Gibbs | {x0_sampler_name} | iter: {i}, mh_acc: {mh_acc}')
+    np.savez(
+        path_head_arr + f'-gibbs-eb-ef-{x0_sampler_name}{"-mh" if args.use_mh else ""}',
+        restored_imgs=restored_imgs, mh_acc=mh_accs)
