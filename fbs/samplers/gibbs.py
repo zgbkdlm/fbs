@@ -191,7 +191,7 @@ def gibbs_mh_kernel(key: JKey, xs: JArray, ys: JArray, bs_star: JArray,
     vs = ys_prop[::-1]
 
     log_acc_prob = jnp.minimum(0., log_bwd(us, vs, **kwargs) - log_fwd(xs_prop, ys_prop, **kwargs) - (
-            log_bwd(ys[::-1], xs[::-1], **kwargs) - log_fwd(ys, xs, **kwargs)))
+            log_bwd(xs[::-1], ys[::-1], **kwargs) - log_fwd(xs, ys, **kwargs)))
     e = jax.random.uniform(key_mh)
     us, vs = jax.lax.cond(jnp.log(e) < log_acc_prob,
                           lambda _: (us, vs),
