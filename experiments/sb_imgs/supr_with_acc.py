@@ -268,5 +268,5 @@ for i in range(nsamples):
         cmap=cmap)
     print(f'Supr-{sr_rate} | Gibbs | {x0_sampler_name} | iter: {i}, mh_acc: {mh_acc}')
 np.savez(
-    path_head_arr + f'-gibbs-eb-ef-{x0_sampler_name}',
+    path_head_arr + f'-gibbs-eb-ef-{x0_sampler_name}{"-mh" if args.use_mh else ""}',
     restored_imgs=restored_imgs, mh_acc=mh_accs)
