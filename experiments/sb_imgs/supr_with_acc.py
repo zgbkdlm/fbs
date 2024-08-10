@@ -220,8 +220,8 @@ for _ in range(args.y0_id):
     data_key, subkey = jax.random.split(data_key)
 
 test_img, test_y0, mask = dataset_sampler(subkey)
-path_head_img = f'./sb_imgs_mh/results/{dataset_name}-{sr_rate}-{args.sde}-{nparticles}-{args.y0_id}'
-path_head_arr = f'./sb_imgs_mh/results/{dataset_name}-{sr_rate}-{args.sde}-{nparticles}-{args.y0_id}'
+path_head_img = f'./sb_imgs_mh/imgs/{dataset_name}-{sr_rate}-{args.sde}-{nparticles}-{args.y0_id}'
+path_head_arr = f'./sb_imgs_mh/arrs/{dataset_name}-{sr_rate}-{args.sde}-{nparticles}-{args.y0_id}'
 
 plt.imsave(path_head_img + '-true.png', to_imsave(test_img), cmap=cmap)
 np.savez(path_head_arr + '-true', test_img=test_img, *mask)
@@ -250,16 +250,18 @@ restored = dataset.concat(x0, test_y0, mask)
 plt.imsave(path_head_img + '-gibbs-init.png', to_imsave(restored), cmap=cmap)
 np.save(path_head_arr + '-gibbs-init', restored)
 
+mh_accs = np.zeros(nsamples)
 for i in range(nsamples):
     key, subkey = jax.random.split(key)
     xs, ys, bs_star, csmc_acc, mh_acc = gibbs_kernel(subkey, xs, ys, bs_star, mask)
     restored = dataset.concat(x0, test_y0, mask)
     restored_imgs[i] = restored
+    mh_accs[i] = mh_acc
     plt.imsave(
         path_head_img + f'-gibbs-eb-ef-{x0_sampler_name}-{i}.png',
         to_imsave(restored),
         cmap=cmap)
-    print(f'Inpainting-{sr_rate} | Gibbs | {x0_sampler_name} | iter: {i}, mh_: {mh_acc}')
-np.save(
+    print(f'Inpainting-{sr_rate} | Gibbs | {x0_sampler_name} | iter: {i}, mh_acc: {mh_acc}')
+np.savez(
     path_head_arr + f'-gibbs-eb-ef-{x0_sampler_name}',
-    restored_imgs)
+    restored_imgs=restored_imgs, mh_acc=mh_accs)
