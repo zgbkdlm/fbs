@@ -262,7 +262,7 @@ for k in range(args.ny0s):
         restored_imgs[i] = restored
         mh_accs[i] = mh_acc
         plt.imsave(
-            path_head_img + f'-gibbs-eb-ef-{x0_sampler_name}-{i}.png',
+            path_head_img + f'-gibbs-eb-ef-{x0_sampler_name}{"-mh" if args.use_mh else ""}-{i}.png',
             to_imsave(restored),
             cmap=cmap)
         print(f'Supr-{sr_rate} | Gibbs | {x0_sampler_name} | {k} | iter: {i}, mh_acc: {mh_acc}')
